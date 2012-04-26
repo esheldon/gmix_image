@@ -14,27 +14,137 @@ struct PyGMixObject {
   struct PyGVecObject* gvec_obj;
 };
 
+static int
+get_dict_double(PyObject* dict, const char* key, double *val)
+{
+    int status=1;
+    PyObject *obj=NULL;
+
+    obj = PyDict_GetItemString(dict, key);
+    if (obj == NULL) {
+        PyErr_Format(PyExc_ValueError,
+                    "Key '%s' not present in dict", key);
+        status=0;
+        goto _get_dict_double_bail;
+    }
+
+    *val = PyFloat_AsDouble(obj);
+    if (PyErr_Occurred()) {
+        status=0;
+    }
+
+_get_dict_double_bail:
+    return status;
+}
+static int
+gauss_copy_from_dict(struct gauss *self, PyObject *dict)
+{
+    int status=1;
+
+    if (!get_dict_double(dict,"p", &self->p)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+    if (!get_dict_double(dict,"row", &self->row)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+    if (!get_dict_double(dict,"col", &self->col)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+    if (!get_dict_double(dict,"irr", &self->irr)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+    if (!get_dict_double(dict,"irc", &self->irc)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+    if (!get_dict_double(dict,"icc", &self->icc)) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
+
+    self->det = self->irr*self->icc - self->irc*self->irc;
+
+_gauss_copy_from_dict_bail:
+    return status;
+}
+
+static int
+gvec_copy_list_of_dicts(struct PyGVecObject* self, PyObject* lod)
+{
+    int status=1;
+    Py_ssize_t num=0, i=0;
+    PyObject *dict;
+
+    self->gvec = NULL;
+
+    if (!PyList_Check(lod)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "You must init GVec with a list of dictionaries");
+        status=0;
+        goto _gvec_copy_list_of_dicts_bail;
+    }
+
+    num = PyList_Size(lod);
+    if (num <= 0) {
+        PyErr_SetString(PyExc_ValueError, 
+                        "You must init GVec with a lis of dictionaries "
+                        "of size > 0");
+        status=0;
+        goto _gvec_copy_list_of_dicts_bail;
+    }
+
+    self->gvec = gvec_new(num);
+
+    if (self->gvec==NULL) {
+        PyErr_Format(PyExc_MemoryError, 
+                     "GVec failed to allocate %ld gaussians",num);
+        status=0;
+        goto _gvec_copy_list_of_dicts_bail;
+    }
+
+    for (i=0; i<num; i++) {
+
+        dict = PyList_GET_ITEM(lod, i);
+
+        if (!PyDict_Check(dict)) {
+            PyErr_Format(PyExc_ValueError, 
+                    "Element %ld is not a dict", i);
+            status=0;
+            goto _gvec_copy_list_of_dicts_bail;
+        }
+        if (!gauss_copy_from_dict(&self->gvec->data[i], dict)) {
+            status=0;
+            goto _gvec_copy_list_of_dicts_bail;
+        }
+    }
+    
+_gvec_copy_list_of_dicts_bail:
+    if (status != 1) {
+        if (self->gvec) {
+            free(self->gvec);
+            self->gvec=NULL;
+        }
+    }
+    return status;
+}
 
 static int
 PyGVecObject_init(struct PyGVecObject* self, PyObject *args, PyObject *kwds)
 {
-    int num=0;
-    if (!PyArg_ParseTuple(args, (char*)"i", &num)) {
+    // a list of dicts
+    PyObject* list_of_pars=NULL;
+    if (!PyArg_ParseTuple(args, (char*)"O", &list_of_pars)) {
         return -1;
     }
 
-    if (num <= 0) {
-        PyErr_Format(PyExc_IOError, 
-                     "GVec test data must have size >= 0, got %d",num);
+    if (!gvec_copy_list_of_dicts(self, list_of_pars)) {
         return -1;
     }
 
-    self->gvec = gvec_new(num);
-    if (self->gvec==NULL) {
-        PyErr_Format(PyExc_IOError, 
-                     "GVec failed to allocate %d gaussians",num);
-        return -1;
-    }
     return 0;
 }
 
