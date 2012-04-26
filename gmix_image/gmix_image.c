@@ -92,6 +92,7 @@ _gmix_image_new_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
+    iter_struct = iter_free(iter_struct);
     return flags;
 }
 

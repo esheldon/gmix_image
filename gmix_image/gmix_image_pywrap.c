@@ -2,6 +2,8 @@
 #include <numpy/arrayobject.h> 
 
 #include "gvec.h"
+#include "image.h"
+#include "gmix_image.h"
 
 struct PyGVecObject {
   PyObject_HEAD
@@ -12,6 +14,15 @@ struct PyGVecObject {
 struct PyGMixObject {
   PyObject_HEAD
   struct PyGVecObject* gvec_obj;
+
+  // we will increment the ref count and keep until we don't need it
+  PyObject* image_obj;
+  // Don't call image_free on this; it does not own its data, only
+  // pointing to the data of the image_obj
+  struct image image;
+
+  int flags;
+  size_t numiter;
 };
 
 static int
@@ -30,6 +41,8 @@ get_dict_double(PyObject* dict, const char* key, double *val)
 
     *val = PyFloat_AsDouble(obj);
     if (PyErr_Occurred()) {
+        PyErr_Format(PyExc_ValueError,
+                    "Error converting '%s' to a double", key);
         status=0;
     }
 
@@ -180,9 +193,58 @@ PyGVecObject_repr(struct PyGVecObject* self) {
 }
 
 
+static double* 
+check_double_image(PyObject* image, size_t *nrows, size_t *ncols)
+{
+    double* ptr=NULL;
+    npy_intp *dims=NULL;
+    if (!PyArray_Check(image)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "image must be a 2D numpy array of type 64-bit float");
+        return NULL;
+    }
+    if (2 != PyArray_NDIM((PyArrayObject*)image)) {
+        PyErr_Format(PyExc_ValueError,
+                     "image must be a 2D numpy array of type 64-bit float");
+        return NULL;
+    }
+    if (NPY_DOUBLE != PyArray_TYPE((PyArrayObject*)image)) {
+        PyErr_Format(PyExc_ValueError,
+                     "image must be a 2D numpy array of type 64-bit float");
+        return NULL;
+    }
+
+    ptr = PyArray_DATA((PyArrayObject*)image);
+    dims = PyArray_DIMS((PyArrayObject*)image);
+
+    *nrows = dims[0];
+    *ncols = dims[1];
+    return ptr;
+}
 
 
+/*
+ * no copy is made
+ */
+static int associate_image(struct PyGMixObject* self, PyObject* image_obj)
+{
+    int status=1;
 
+    self->image_obj=NULL;
+
+    self->image.data = 
+        check_double_image(image_obj, &self->image.nrows, &self->image.ncols);
+    if (!self->image.data) {
+        status=0;
+    }
+
+    self->image_obj=image_obj;
+    self->image.size = self->image.nrows*self->image.ncols;
+
+    // successful association, incref the object
+    Py_XINCREF(image_obj);
+    return status;
+}
 
 /*
  * We rely on the python wrapper to make sure the Object passed in is
@@ -191,13 +253,30 @@ PyGVecObject_repr(struct PyGVecObject* self) {
 static int
 PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 {
-    PyObject* gvec_obj;
-    if (!PyArg_ParseTuple(args, (char*)"O", &gvec_obj)) {
+    struct gmix gmix = {0};
+    PyObject* gvec_obj=NULL;
+    PyObject* image_obj=NULL;
+    self->image.has_sky=1;
+    self->image.has_counts=1;
+    unsigned int maxiter=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOddIi", 
+                &gvec_obj, &image_obj, 
+                &self->image.sky, &self->image.counts, &maxiter, &gmix.verbose)) {
         return -1;
     }
 
-    // rely on python code to make sure this makes sense
+    if (!associate_image(self, image_obj)) {
+        return -1;
+    }
+    // rely on python code to make sure this is the right type
     self->gvec_obj = (struct PyGVecObject *) gvec_obj;
+
+    gmix.maxiter = maxiter;
+    self->flags = gmix_image(&gmix, 
+                             &self->image, 
+                             self->gvec_obj->gvec, 
+                             &self->numiter);
     return 0;
 }
 
@@ -205,6 +284,7 @@ static void
 PyGMixObject_dealloc(struct PyGMixObject* self)
 {
     Py_XDECREF( (PyObject*) self->gvec_obj);
+    Py_XDECREF( self->image_obj);
 
 #if ((PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6) || (PY_MAJOR_VERSION == 3))
     Py_TYPE(self)->tp_free((PyObject*)self);
