@@ -24,5 +24,5 @@ Examples
     print 'fractional diff on last iteration:',gm.numiter
 
     pars = gm.pars
-    print 'best fit center for first guass:',pars[0]['row'],pars[0]['col']
+    print 'center for first guassian:',pars[0]['row'],pars[0]['col']
 
