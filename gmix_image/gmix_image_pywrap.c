@@ -25,6 +25,12 @@ struct PyGMixObject {
   size_t numiter;
 };
 
+
+/*
+ * PyGVecObject methods
+ */
+
+
 static int
 get_dict_double(PyObject* dict, const char* key, double *val)
 {
@@ -50,7 +56,7 @@ _get_dict_double_bail:
     return status;
 }
 static int
-gauss_copy_from_dict(struct gauss *self, PyObject *dict)
+gauss_from_dict(struct gauss *self, PyObject *dict)
 {
     int status=1;
 
@@ -129,7 +135,7 @@ gvec_copy_list_of_dicts(struct PyGVecObject* self, PyObject* lod)
             status=0;
             goto _gvec_copy_list_of_dicts_bail;
         }
-        if (!gauss_copy_from_dict(&self->gvec->data[i], dict)) {
+        if (!gauss_from_dict(&self->gvec->data[i], dict)) {
             status=0;
             goto _gvec_copy_list_of_dicts_bail;
         }
@@ -178,9 +184,10 @@ PyGVecObject_dealloc(struct PyGVecObject* self)
 }
 
 static PyObject*
-PyGVecObject_print_n(struct PyGVecObject* self)
+PyGVecObject_write(struct PyGVecObject* self)
 {
-    fprintf(stderr,"GVec n: %lu\n", self->gvec->size);
+    printf("GVec ngauss: %lu\n", self->gvec->size);
+    gvec_print(self->gvec,stdout);
     Py_RETURN_NONE;
 }
 
@@ -188,9 +195,66 @@ static PyObject *
 PyGVecObject_repr(struct PyGVecObject* self) {
     char buff[1024];
 
-    sprintf(buff,"GVec n: %lu", self->gvec->size);
+    sprintf(buff,"GVec ngauss: %lu", self->gvec->size);
     return PyString_FromString(buff);
 }
+
+
+// With dicts we must decref the object we insert
+void add_double_to_dict(PyObject* dict, const char* key, double value) {
+    PyObject* tobj=NULL;
+    tobj=PyFloat_FromDouble(value);
+    PyDict_SetItemString(dict, key, tobj);
+    Py_XDECREF(tobj);
+}
+
+static
+PyObject *gauss_to_dict(struct gauss *self)
+{
+    PyObject *dict=NULL;
+
+    dict = PyDict_New();
+    add_double_to_dict(dict, "p", self->p);
+    add_double_to_dict(dict, "row", self->row);
+    add_double_to_dict(dict, "col", self->col);
+    add_double_to_dict(dict, "irr", self->irr);
+    add_double_to_dict(dict, "irc", self->irc);
+    add_double_to_dict(dict, "icc", self->icc);
+    add_double_to_dict(dict, "det", self->det);
+
+    return dict;
+}
+static PyObject*
+PyGVecObject_asdicts(struct PyGVecObject* self)
+{
+    PyObject* lod=NULL;
+    PyObject* tdict=NULL;
+    size_t i=0;
+    struct gvec *gvec=NULL;
+    struct gauss *gauss=NULL;
+
+    gvec = self->gvec;
+    lod=PyList_New(0);
+
+    gauss=gvec->data;
+    for (i=0; i<gvec->size; i++) {
+        tdict = gauss_to_dict(gauss);
+        PyList_Append(lod, tdict);
+        Py_XDECREF(tdict);
+        gauss++;
+    }
+    return lod;
+}
+
+
+
+
+
+
+
+/*
+ * PyGMixObject methods
+ */
 
 
 static double* 
@@ -296,17 +360,28 @@ PyGMixObject_dealloc(struct PyGMixObject* self)
 }
 
 static PyObject*
-PyGMixObject_print_n(struct PyGMixObject* self)
+PyGMixObject_write(struct PyGMixObject* self)
 {
-    fprintf(stderr,"GMix GVec n: %lu\n", self->gvec_obj->gvec->size);
     Py_RETURN_NONE;
+    printf("GMix\n"
+           "\tngauss: %lu\n"
+           "\timage[%lu,%lu]"
+           ,self->gvec_obj->gvec->size,
+           self->image.nrows, self->image.ncols);
+
+    gvec_print(self->gvec_obj->gvec,stdout);
 }
 
 static PyObject *
 PyGMixObject_repr(struct PyGMixObject* self) {
     char buff[1024];
 
-    sprintf(buff,"GMix GVec n: %lu", self->gvec_obj->gvec->size);
+    sprintf(buff,
+            "GMix\n"
+            "\tngauss: %lu\n"
+            "\timage[%lu,%lu]"
+            ,self->gvec_obj->gvec->size,
+            self->image.nrows, self->image.ncols);
     return PyString_FromString(buff);
 }
 
@@ -318,12 +393,16 @@ PyGMixObject_repr(struct PyGMixObject* self) {
 
 
 static PyMethodDef PyGMixObject_methods[] = {
-    {"print_n", (PyCFunction)PyGMixObject_print_n, METH_VARARGS, "print n\n"},
+    {"write", (PyCFunction)PyGMixObject_write, METH_VARARGS, 
+        "print a representation\n"},
     {NULL}
 };
 
 static PyMethodDef PyGVecObject_methods[] = {
-    {"print_n", (PyCFunction)PyGVecObject_print_n, METH_VARARGS, "print n\n"},
+    {"write", (PyCFunction)PyGVecObject_write, METH_VARARGS,
+        "print a representation\n"},
+    {"asdicts", (PyCFunction)PyGVecObject_asdicts, METH_VARARGS, 
+        "Get the gaussian parameters as a list of dictionaries\n"},
     {NULL}
 };
 

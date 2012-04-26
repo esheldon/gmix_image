@@ -1,14 +1,15 @@
 import numpy
 import _gmix_image
+import pprint
 
-
-def dotest():
+def dotest(add_noise=False):
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
           {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
     gv = _gmix_image.GVec(gd)
-    gv.print_n()
+    gv.write()
     print gv
+    print
 
     im1=ogrid_image('gauss',dims,
                     [gd[0]['row'],gd[0]['col']],
@@ -21,14 +22,24 @@ def dotest():
 
     # must have non-zero sky
     sky=1.0
-    im = sky + gd[0]['p']*im1 + gd[1]['p']*im2
+    im = gd[0]['p']*im1 + gd[1]['p']*im2
+    if add_noise:
+        im += 1.0*numpy.random.random(im.size).reshape(dims[0],dims[1])
+    im += sky
 
     counts=im.sum()
     maxiter=500
     verbose=1
     gm = _gmix_image.GMix(gv,im,sky,counts,maxiter,verbose)
-    gm.print_n()
+    print
+    gm.write()
+    print
     print gm
+    print
+    gv.write()
+    dicts = gv.asdicts()
+    for d in dicts:
+        pprint.pprint(d)
 
 
 def ogrid_image(model, dims, cen, cov, counts=1.0):
@@ -65,4 +76,4 @@ def ogrid_image(model, dims, cen, cov, counts=1.0):
     return image
 
 if __name__ == "__main__":
-    dotest()
+    dotest(add_noise=True)
