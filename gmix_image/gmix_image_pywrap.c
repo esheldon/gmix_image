@@ -1,17 +1,17 @@
 #include <Python.h>
 #include <numpy/arrayobject.h> 
 
+#include "gvec.h"
+
 struct PyGVecObject {
   PyObject_HEAD
-  int n;
-  double *test;
+  struct gvec *gvec;
 };
 
 
 struct PyGMixObject {
   PyObject_HEAD
-  int n;
-  double *test;
+  struct PyGVecObject* gvec_obj;
 };
 
 
@@ -29,12 +29,10 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args, PyObject *kwds)
         return -1;
     }
 
-    self->n=num;
-    self->test=calloc(num, sizeof(double));
-
-    if (self->test==NULL) {
+    self->gvec = gvec_new(num);
+    if (self->gvec==NULL) {
         PyErr_Format(PyExc_IOError, 
-                     "GVec failed to allocate %d doubles",num);
+                     "GVec failed to allocate %d gaussians",num);
         return -1;
     }
     return 0;
@@ -45,7 +43,7 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args, PyObject *kwds)
 static void
 PyGVecObject_dealloc(struct PyGVecObject* self)
 {
-    free(self->test);
+    self->gvec = gvec_free(self->gvec);
 
 #if ((PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6) || (PY_MAJOR_VERSION == 3))
     Py_TYPE(self)->tp_free((PyObject*)self);
@@ -59,7 +57,7 @@ PyGVecObject_dealloc(struct PyGVecObject* self)
 static PyObject*
 PyGVecObject_print_n(struct PyGVecObject* self)
 {
-    fprintf(stderr,"GVec n: %d\n", self->n);
+    fprintf(stderr,"GVec n: %lu\n", self->gvec->size);
     Py_RETURN_NONE;
 }
 
@@ -67,7 +65,7 @@ static PyObject *
 PyGVecObject_repr(struct PyGVecObject* self) {
     char buff[1024];
 
-    sprintf(buff,"GVec n: %d", self->n);
+    sprintf(buff,"GVec n: %lu", self->gvec->size);
     return PyString_FromString(buff);
 }
 
@@ -76,35 +74,27 @@ PyGVecObject_repr(struct PyGVecObject* self) {
 
 
 
+/*
+ * We rely on the python wrapper to make sure the Object passed in is
+ * a GVec object!
+ */
 static int
 PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 {
-    int num=0;
-    if (!PyArg_ParseTuple(args, (char*)"i", &num)) {
+    PyObject* gvec_obj;
+    if (!PyArg_ParseTuple(args, (char*)"O", &gvec_obj)) {
         return -1;
     }
 
-    if (num <= 0) {
-        PyErr_Format(PyExc_IOError, 
-                     "GMix test data must have size >= 0, got %d",num);
-        return -1;
-    }
-
-    self->n=num;
-    self->test=calloc(num, sizeof(double));
-
-    if (self->test==NULL) {
-        PyErr_Format(PyExc_IOError, 
-                     "GMix failed to allocate %d doubles",num);
-        return -1;
-    }
+    // rely on python code to make sure this makes sense
+    self->gvec_obj = (struct PyGVecObject *) gvec_obj;
     return 0;
 }
 
 static void
 PyGMixObject_dealloc(struct PyGMixObject* self)
 {
-    free(self->test);
+    Py_XDECREF( (PyObject*) self->gvec_obj);
 
 #if ((PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6) || (PY_MAJOR_VERSION == 3))
     Py_TYPE(self)->tp_free((PyObject*)self);
@@ -118,7 +108,7 @@ PyGMixObject_dealloc(struct PyGMixObject* self)
 static PyObject*
 PyGMixObject_print_n(struct PyGMixObject* self)
 {
-    fprintf(stderr,"GMix n: %d\n", self->n);
+    fprintf(stderr,"GMix GVec n: %lu\n", self->gvec_obj->gvec->size);
     Py_RETURN_NONE;
 }
 
@@ -126,7 +116,7 @@ static PyObject *
 PyGMixObject_repr(struct PyGMixObject* self) {
     char buff[1024];
 
-    sprintf(buff,"GMix n: %d", self->n);
+    sprintf(buff,"GMix GVec n: %lu", self->gvec_obj->gvec->size);
     return PyString_FromString(buff);
 }
 
