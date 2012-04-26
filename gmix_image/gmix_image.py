@@ -91,12 +91,14 @@ class GMix(_gmix_image.GMix):
 
     examples
     --------
+    import gmix_image
+
     # initial guesses
-    gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
-          {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
+    guess = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
+             {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
 
     # create the gaussian mixture
-    gm = gmix_image.GMix(image, gd, sky=100, maxiter=2000, tol=1.e-6)
+    gm = gmix_image.GMix(image, guess, sky=100, maxiter=2000, tol=1.e-6)
 
     # Work with the results
     if gm.flags != 0:
@@ -106,7 +108,7 @@ class GMix(_gmix_image.GMix):
     print 'fractional diff on last iteration:',gm.numiter
 
     pars = gm.pars
-    print 'best fit center for guassian 1:',pars[0]['row'],pars[0]['col']
+    print 'best fit center for first guass:',pars[0]['row'],pars[0]['col']
     """
     def __init__(self, im, gauss_guess, 
                  sky=None,
