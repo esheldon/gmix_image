@@ -324,9 +324,13 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     self->image.has_counts=1;
     unsigned int maxiter=0;
 
-    if (!PyArg_ParseTuple(args, (char*)"OOddIi", 
+    if (!PyArg_ParseTuple(args, (char*)"OOddIdi", 
                 &gvec_obj, &image_obj, 
-                &self->image.sky, &self->image.counts, &maxiter, &gmix.verbose)) {
+                &self->image.sky, 
+                &self->image.counts, 
+                &maxiter, 
+                &gmix.tol,
+                &gmix.verbose)) {
         return -1;
     }
 
@@ -365,7 +369,7 @@ PyGMixObject_write(struct PyGMixObject* self)
     Py_RETURN_NONE;
     printf("GMix\n"
            "\tngauss: %lu\n"
-           "\timage[%lu,%lu]"
+           "\timage[%lu,%lu]\n"
            ,self->gvec_obj->gvec->size,
            self->image.nrows, self->image.ncols);
 
