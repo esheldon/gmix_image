@@ -3,15 +3,13 @@ from numpy import sqrt, array, ogrid, random, exp
 import gmix_image
 import pprint
 
-def dotest(add_noise=False):
+def test(add_noise=False):
     print '\nnoise:',add_noise
     tol=1.e-6
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
           {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
     gv = gmix_image.GVec(gd)
-    gv.write()
-    print gv
 
     im1=ogrid_image('gauss',dims,
                     [gd[0]['row'],gd[0]['col']],
@@ -44,12 +42,6 @@ def dotest(add_noise=False):
                          tol=tol,
                          verbose=verbose)
     gm.write()
-    print gm
-    print 'flags:',gm.flags
-    print 'numiter:',gm.numiter
-    print 'fdiff:',gm.fdiff
-    print 'pars:',gm.pars
-    gv.write()
     print 'truth'
     for i,d in enumerate(gd):
         print '%i'% i,
@@ -57,12 +49,6 @@ def dotest(add_noise=False):
             print '%s: %9.6lf' % (k,d[k]),
         print
 
-    """
-    dicts = gv.asdicts()
-    print 'as dicts'
-    for d in dicts:
-        pprint.pprint(d)
-    """
 
 def ogrid_image(model, dims, cen, cov, counts=1.0):
 
@@ -98,5 +84,5 @@ def ogrid_image(model, dims, cen, cov, counts=1.0):
     return image
 
 if __name__ == "__main__":
-    dotest(add_noise=False)
-    dotest(add_noise=True)
+    test(add_noise=False)
+    test(add_noise=True)

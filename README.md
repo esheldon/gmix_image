@@ -26,3 +26,7 @@ Examples
     pars = gm.pars
     print 'center for first guassian:',pars[0]['row'],pars[0]['col']
 
+    # run the test suite
+    gmix_image.test()
+    gmix_image.test(add_noise=True)
+
