@@ -46,7 +46,8 @@
 int gmix_image(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
-               size_t *iter)
+               size_t *iter,
+               double *fdiff)
 {
     int flags=0;
     size_t ngauss = gvec->size;
@@ -81,7 +82,8 @@ int gmix_image(struct gmix* self,
 
         wmom /= iter_struct->psum;
         wmomdiff = fabs(wmom-wmomlast);
-        if (wmomdiff/wmom < self->tol) {
+        *fdiff = wmomdiff/wmom;
+        if (*fdiff < self->tol) {
             break;
         }
         wmomlast = wmom;
@@ -93,6 +95,7 @@ _gmix_image_new_bail:
         flags += GMIX_ERROR_MAXIT;
     }
     iter_struct = iter_free(iter_struct);
+
     return flags;
 }
 

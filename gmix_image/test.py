@@ -1,6 +1,6 @@
 import numpy
 from numpy import sqrt, array, ogrid, random, exp
-import _gmix_image
+import gmix_image
 import pprint
 
 def dotest(add_noise=False):
@@ -9,7 +9,7 @@ def dotest(add_noise=False):
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
           {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
-    gv = _gmix_image.GVec(gd)
+    gv = gmix_image.GVec(gd)
     gv.write()
     print gv
 
@@ -36,10 +36,19 @@ def dotest(add_noise=False):
 
     counts=im.sum()
     maxiter=500
-    verbose=0
-    gm = _gmix_image.GMix(gv,im,sky,counts,maxiter,tol,verbose)
+    verbose=False
+    gm = gmix_image.GMix(im,gd,
+                         sky=sky,
+                         counts=counts,
+                         maxiter=maxiter,
+                         tol=tol,
+                         verbose=verbose)
     gm.write()
     print gm
+    print 'flags:',gm.flags
+    print 'numiter:',gm.numiter
+    print 'fdiff:',gm.fdiff
+    print 'pars:',gm.pars
     gv.write()
     print 'truth'
     for i,d in enumerate(gd):

@@ -50,14 +50,8 @@ struct iter {
 int gmix_image(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
-               size_t *niter);
-/*
-int gmix_image_old(struct gmix* self,
-               struct image *image, 
-               struct gvec *gvec,
-               size_t *niter);
-*/
-
+               size_t *iter,
+               double *fdiff);
 
 int gmix_get_sums(struct image *image,
                   struct gvec *gvec,

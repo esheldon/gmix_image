@@ -23,6 +23,9 @@ struct PyGMixObject {
 
   int flags;
   size_t numiter;
+
+  double fdiff; // the fractional diff in weighted moments of 
+                // the last iteration
 };
 
 
@@ -324,10 +327,11 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     self->image.has_counts=1;
     unsigned int maxiter=0;
 
-    if (!PyArg_ParseTuple(args, (char*)"OOddIdi", 
-                &gvec_obj, &image_obj, 
+    if (!PyArg_ParseTuple(args, (char*)"OddOIdi", 
+                &image_obj, 
                 &self->image.sky, 
                 &self->image.counts, 
+                &gvec_obj, 
                 &maxiter, 
                 &gmix.tol,
                 &gmix.verbose)) {
@@ -344,7 +348,8 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     self->flags = gmix_image(&gmix, 
                              &self->image, 
                              self->gvec_obj->gvec, 
-                             &self->numiter);
+                             &self->numiter,
+                             &self->fdiff);
     return 0;
 }
 
@@ -366,14 +371,21 @@ PyGMixObject_dealloc(struct PyGMixObject* self)
 static PyObject*
 PyGMixObject_write(struct PyGMixObject* self)
 {
-    Py_RETURN_NONE;
     printf("GMix\n"
            "\tngauss: %lu\n"
            "\timage[%lu,%lu]\n"
-           ,self->gvec_obj->gvec->size,
-           self->image.nrows, self->image.ncols);
+            "\tflags: %d\n"
+            "\tnumiter: %lu\n"
+            "\tfdiff: %g\n"
+            ,self->gvec_obj->gvec->size,
+            self->image.nrows, 
+            self->image.ncols,
+            self->flags,
+            self->numiter,
+            self->fdiff);
 
     gvec_print(self->gvec_obj->gvec,stdout);
+    Py_RETURN_NONE;
 }
 
 static PyObject *
@@ -383,10 +395,34 @@ PyGMixObject_repr(struct PyGMixObject* self) {
     sprintf(buff,
             "GMix\n"
             "\tngauss: %lu\n"
-            "\timage[%lu,%lu]"
+            "\timage[%lu,%lu]\n"
+            "\tflags: %d\n"
+            "\tnumiter: %lu\n"
+            "\tfdiff: %g"
             ,self->gvec_obj->gvec->size,
-            self->image.nrows, self->image.ncols);
+            self->image.nrows, 
+            self->image.ncols,
+            self->flags,
+            self->numiter,
+            self->fdiff);
     return PyString_FromString(buff);
+    Py_RETURN_NONE;
+}
+
+static PyObject*
+PyGMixObject_get_flags(struct PyGMixObject* self)
+{
+    return PyInt_FromLong((long) self->flags);
+}
+static PyObject*
+PyGMixObject_get_numiter(struct PyGMixObject* self)
+{
+    return PyInt_FromLong((long) self->numiter);
+}
+static PyObject*
+PyGMixObject_get_fdiff(struct PyGMixObject* self)
+{
+    return PyFloat_FromDouble(self->fdiff);
 }
 
 
@@ -399,6 +435,12 @@ PyGMixObject_repr(struct PyGMixObject* self) {
 static PyMethodDef PyGMixObject_methods[] = {
     {"write", (PyCFunction)PyGMixObject_write, METH_VARARGS, 
         "print a representation\n"},
+    {"get_flags", (PyCFunction)PyGMixObject_get_flags, METH_VARARGS, 
+        "get the flags from the processing\n"},
+    {"get_numiter", (PyCFunction)PyGMixObject_get_numiter, METH_VARARGS, 
+        "get the number of iterations during processing\n"},
+    {"get_fdiff", (PyCFunction)PyGMixObject_get_fdiff, METH_VARARGS, 
+        "get the number of iterations during processing\n"},
     {NULL}
 };
 
