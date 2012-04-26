@@ -1,8 +1,8 @@
 gmix_image
 ==========
 
-Python/C code to fit a gaussian mixture model to an image using Expectation
-Maximization
+Python code to fit a gaussian mixture model to an image using Expectation
+Maximization.  Under the hood, a C library is used for speed.
 
 Examples
 ========
