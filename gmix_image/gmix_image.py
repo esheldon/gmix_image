@@ -13,7 +13,6 @@ import copy
 import numpy
 from numpy import median
 import _gmix_image
-from _gmix_image import GVec
 
 GMIX_ERROR_NEGATIVE_DET         = 0x1
 GMIX_ERROR_MAXIT                = 0x2
@@ -29,7 +28,7 @@ class GMix(_gmix_image.GMix):
     image: numpy array
         A two dimensional, 64-bit float numpy array.  If the image
         is a different type it will be converted.
-    gauss_guess: list of dictionaries
+    guess: list of dictionaries
         A list of dictionaries, with each dict defining the starting
         parameters for a gaussian.  The length of this list determines
         how many gaussians are fit and the initial start parameters.
@@ -41,6 +40,9 @@ class GMix(_gmix_image.GMix):
             irr: Covariance matrix element for row*row
             irc: Covariance matrix element for row*col
             icc: Covariance matrix element for col*col
+
+        Note the normalizations are only meaningful in a relative sense.
+
     sky: number
         The sky level in the image. Must be non-zero for the EM algorithm to
         converge, since it is essentially treated like an infinitely wide
@@ -63,7 +65,7 @@ class GMix(_gmix_image.GMix):
     ----------
     pars: list of dictionaries
         The gaussian parameters at the end of the last iteration.  These have
-        the same entries as the gauss_guess parameter with the addition of
+        the same entries as the guess parameter with the addition of
         "det", which has the determinant of the covariance matrix.  There
         is a corresponding method get_pars() if you prefer.
 
@@ -114,7 +116,7 @@ class GMix(_gmix_image.GMix):
     gmix_image.test()
     gmix_image.test(add_noise=True)
     """
-    def __init__(self, im, gauss_guess, 
+    def __init__(self, im, guess, 
                  sky=None,
                  counts=None,
                  maxiter=1000,
@@ -122,7 +124,7 @@ class GMix(_gmix_image.GMix):
                  verbose=False):
 
         self._image = numpy.array(im, ndmin=2, dtype='f8', copy=False)
-        self._gauss_guess = copy.deepcopy(gauss_guess)
+        self._guess = copy.deepcopy(guess)
         self._sky=sky
         self._counts=counts
         self._maxiter=maxiter
@@ -139,24 +141,17 @@ class GMix(_gmix_image.GMix):
         else:
             verbosity=0
 
-        # this will get modified internally
-        self._gvec = _gmix_image.GVec(self._gauss_guess)
+        # the gaussian vector will get modified internally
         super(GMix,self).__init__(self._image,
                                   self._sky,
                                   self._counts,
-                                  self._gvec,
+                                  self._guess,
                                   self._maxiter,
                                   self._tol,
                                   verbosity)
 
-    def get_pars(self):
-        """
-        Get the gaussian parameters for the last iteration
-        as a list of dictionaries.
-        """
-        return self._gvec.asdicts()
-
-    pars=property(get_pars)
+    # just to make access nicer.
+    pars=property(_gmix_image.GMix.get_pars)
     flags=property(_gmix_image.GMix.get_flags)
     numiter=property(_gmix_image.GMix.get_numiter)
     fdiff=property(_gmix_image.GMix.get_fdiff)

@@ -9,7 +9,6 @@ def test(add_noise=False):
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
           {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
-    gv = gmix_image.GVec(gd)
 
     im1=ogrid_image('gauss',dims,
                     [gd[0]['row'],gd[0]['col']],
