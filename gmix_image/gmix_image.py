@@ -141,7 +141,6 @@ class GMix(_gmix_image.GMix):
         else:
             verbosity=0
 
-        # the gaussian vector will get modified internally
         super(GMix,self).__init__(self._image,
                                   self._sky,
                                   self._counts,
