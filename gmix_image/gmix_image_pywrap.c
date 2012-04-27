@@ -341,8 +341,12 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     if (!associate_image(self, image_obj)) {
         return -1;
     }
+
     // rely on python code to make sure this is the right type
     self->gvec_obj = (struct PyGVecObject *) gvec_obj;
+
+    // we are going to keep this around, so need to incref
+    Py_XINCREF(gvec_obj);
 
     gmix.maxiter = maxiter;
     self->flags = gmix_image(&gmix, 
