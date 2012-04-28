@@ -20,8 +20,8 @@ Examples
     if gm.flags != 0:
         print 'failed with flags:',gm.flags
 
-    print 'number of iterations:',gm.fdiff
-    print 'fractional diff on last iteration:',gm.numiter
+    print 'number of iterations:',gm.numiter
+    print 'fractional diff on last iteration:',gm.fdiff
 
     pars = gm.pars
     print 'center for first guassian:',pars[0]['row'],pars[0]['col']
