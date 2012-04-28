@@ -71,7 +71,7 @@ int gmix_image(struct gmix* self,
         flags = gmix_get_sums(image, gvec, iter_struct);
 
         if (flags!=0)
-            goto _gmix_image_new_bail;
+            goto _gmix_image_bail;
 
         gmix_set_gvec_fromiter(gvec, iter_struct);
 
@@ -90,7 +90,7 @@ int gmix_image(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_new_bail:
+_gmix_image_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
