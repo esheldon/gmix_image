@@ -69,10 +69,11 @@ int main(int argc, char** argv)
 
     clock_gettime(CLOCK_MONOTONIC, &ts_start);
     int flags;
+    double fdiff=0;
     if (force_same) {
         flags = gmix_image_samecen(&gmix, image, gvec, &niter);
     } else {
-        flags = gmix_image(&gmix, image, gvec, &niter);
+        flags = gmix_image(&gmix, image, gvec, &niter, &fdiff);
     }
     clock_gettime(CLOCK_MONOTONIC, &ts_end);
     double sec = 

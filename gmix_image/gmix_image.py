@@ -11,7 +11,7 @@ for that code.
 """
 import copy
 import numpy
-from numpy import median
+from numpy import median, zeros
 import _gmix_image
 
 GMIX_ERROR_NEGATIVE_DET         = 0x1
@@ -121,6 +121,7 @@ class GMix(_gmix_image.GMix):
                  counts=None,
                  maxiter=1000,
                  tol=1.e-6,
+                 psf=None,
                  verbose=False):
 
         self._image = numpy.array(im, ndmin=2, dtype='f8', copy=False)
@@ -129,6 +130,7 @@ class GMix(_gmix_image.GMix):
         self._counts=counts
         self._maxiter=maxiter
         self._tol=tol
+        self._psf=self._fixup_psf(copy.deepcopy(psf))
         self._verbose=verbose
 
         if self._sky is None:
@@ -147,10 +149,39 @@ class GMix(_gmix_image.GMix):
                                   self._guess,
                                   self._maxiter,
                                   self._tol,
-                                  verbosity)
+                                  psf=self._psf,
+                                  verbose=verbosity)
 
     # just to make access nicer.
     pars=property(_gmix_image.GMix.get_pars)
     flags=property(_gmix_image.GMix.get_flags)
     numiter=property(_gmix_image.GMix.get_numiter)
     fdiff=property(_gmix_image.GMix.get_fdiff)
+
+    def _fixup_psf(self, psf):
+        """
+        Add center info if not there, just to make it a full gvec definition
+        """
+        for p in psf:
+            if 'row' not in p:
+                p['row'] = -1
+            if 'col' not in p:
+                p['col'] = -1
+        return psf
+
+def gmix2image(gauss_list, dims, counts=1.0):
+    from fimage import model_image
+    im = zeros(dims)
+
+    for g in gauss_list:
+        tmp_im = model_image('gauss',
+                             dims,
+                             [g['row'],g['col']],
+                             [g['irr'],g['irc'],g['icc']],
+                             counts=g['p'],
+                             nsub=1)
+        im += tmp_im
+
+    im *= counts/im.sum()
+    return im
+

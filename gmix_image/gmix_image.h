@@ -37,7 +37,6 @@ struct iter {
     size_t ngauss;
 
     // sums over all pixels and all gaussians
-    double gtot;
     double skysum;
     double psum;
 

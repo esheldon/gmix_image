@@ -81,8 +81,8 @@ int gmix_image(struct gmix* self,
         wmom = gvec_wmomsum(gvec);
 
         wmom /= iter_struct->psum;
-        wmomdiff = fabs(wmom-wmomlast);
-        *fdiff = wmomdiff/wmom;
+        wmomdiff = wmom-wmomlast;
+        *fdiff = fabs(wmomdiff/wmom);
         if (*fdiff < self->tol) {
             break;
         }
@@ -109,7 +109,7 @@ int gmix_get_sums(struct image *image,
                   struct iter* iter)
 {
     int flags=0;
-    double igrat=0, imnorm=0, gtot=0, tau=0, b=0, chi2=0;
+    double igrat=0, imnorm=0, gtot=0, wtau=0, b=0, chi2=0;
     double u=0, v=0, uv=0, u2=0, v2=0;
     size_t i=0, col=0, row=0;
     struct gauss* gauss=NULL;
@@ -156,10 +156,15 @@ int gmix_get_sums(struct image *image,
             igrat = imnorm/gtot;
             sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
-                tau = sums->gi*igrat;  // Dave's tau*imnorm
-                iter->psum += tau;
+                // wtau is gi[pix]/gtot[pix]*imnorm[pix]
+                // which is Dave's tau*imnorm = wtau
+                wtau = sums->gi*igrat;  
+                //wtau = sums->gi*imnorm/gtot;  
 
-                sums->pnew += tau;
+                iter->psum += wtau;
+                sums->pnew += wtau;
+
+                // row*gi/gtot*imnorm
                 sums->rowsum += sums->trowsum*igrat;
                 sums->colsum += sums->tcolsum*igrat;
                 sums->u2sum  += sums->tu2sum*igrat;
@@ -229,7 +234,6 @@ struct iter *iter_free(struct iter *self)
 /* we don't clear psky or nsky or sums */
 void iter_clear(struct iter *self)
 {
-    self->gtot=0;
     self->skysum=0;
     self->psum=0;
     memset(self->sums,0,self->ngauss*sizeof(struct sums));

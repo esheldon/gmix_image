@@ -18,6 +18,11 @@ int main(int argc, char** argv)
     struct timespec ts_start;
     struct timespec ts_end;
 
+    if (argc != 2) {
+        printf("usage: test image\n");
+        exit(1);
+    }
+
     gmix.maxiter=1000;
     gmix.tol = 1.e-6;
     //gmix.tol = 1.e-5;
@@ -44,7 +49,8 @@ int main(int argc, char** argv)
     // set the deteminants
     gvec_set_dets(ginit);
     //image = image_new(31,31);
-    image = image_read_text("/astro/u/esheldon/tmp/timage-sky-noisy.dat");
+    //image = image_read_text("/astro/u/esheldon/tmp/timage-sky-noisy.dat");
+    image = image_read_text(argv[1]);
     //image = image_read_text("/astro/u/esheldon/tmp/timage-sky.dat");
     if (image==NULL)
         exit(EXIT_FAILURE);
@@ -55,8 +61,8 @@ int main(int argc, char** argv)
     gvec_copy(ginit, gvec);
 
     clock_gettime(CLOCK_MONOTONIC, &ts_start);
-    int flags = gmix_image(&gmix, image, gvec, &niter);
-    //int flags = gmix_image_old(&gmix, image, gvec, &niter);
+    double fdiff=0;
+    int flags = gmix_image(&gmix, image, gvec, &niter, &fdiff);
     clock_gettime(CLOCK_MONOTONIC, &ts_end);
     double sec = 
         ((double)ts_end.tv_sec-ts_start.tv_sec)
