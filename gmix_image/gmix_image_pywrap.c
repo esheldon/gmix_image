@@ -253,14 +253,16 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     PyObject* image_obj=NULL;
     unsigned int maxiter=0;
 
-    if (!PyArg_ParseTuple(args, (char*)"OddOIdi", 
-                &image_obj, 
-                &image.sky, 
-                &image.counts, 
-                &gauss_lod,  // this has the guesses
-                &maxiter, 
-                &gmix.tol,
-                &gmix.verbose)) {
+    static char* argnames[] = {"image", "sky", "counts", "guess",
+                               "maxiter", "tol", "verbose", NULL};
+    if (!PyArg_ParseTuple(args, kwds, (char*)"OddOIdi", argnames,
+                          &image_obj, 
+                          &image.sky, 
+                          &image.counts, 
+                          &gauss_lod,  // this has the guesses
+                          &maxiter, 
+                          &gmix.tol,
+                          &gmix.verbose)) {
         return -1;
     }
 
