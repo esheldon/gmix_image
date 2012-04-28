@@ -243,10 +243,6 @@ static int associate_image(struct image *self, PyObject* image_obj)
     return status;
 }
 
-/*
- * We rely on the python wrapper to make sure the Object passed in is
- * a GVec object!
- */
 static int
 PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 {
