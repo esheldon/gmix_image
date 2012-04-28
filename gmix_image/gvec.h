@@ -13,15 +13,6 @@ struct gauss {
     double det;
 };
 
-/*
-#include "matrix.h"
-struct gauss2 {
-    double p;
-    struct vec2 cen;
-    struct mtx2 cov;
-};
-*/
-
 struct gvec {
     size_t size;
     struct gauss* data;
