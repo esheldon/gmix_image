@@ -16,11 +16,16 @@ struct gauss {
 struct gvec {
     size_t size;
     struct gauss* data;
+
+    double total_irr;
+    double total_irc;
+    double total_icc;
 };
 
 struct gvec *gvec_new(size_t n);
 struct gvec *gvec_free(struct gvec *self);
 void gvec_set_dets(struct gvec *self);
+void gvec_set_total_moms(struct gvec *self);
 
 // this is actually kind of unclear to use in practice since it is easy to
 // screw up which parameters go where

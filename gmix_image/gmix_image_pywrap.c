@@ -185,6 +185,8 @@ static struct gvec
         }
     }
     
+    gvec_set_total_moms(self);
+
 _gvec_copy_list_of_dicts_bail:
     if (status != 1) {
         if (self) {
@@ -295,6 +297,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     gmix.maxiter = maxiter;
 
     if (self->gvec_psf) {
+
         self->flags = gmix_image_convolved(&gmix, 
                                            &image, 
                                            self->gvec, 

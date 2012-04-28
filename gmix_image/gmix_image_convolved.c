@@ -8,6 +8,10 @@
 #include "gvec.h"
 #include "defs.h"
 
+/*
+ * make sure that gvec_set_total_moms has been called
+ * on the gvec_psf
+ */
 int gmix_image_convolved(struct gmix* self,
                          struct image *image, 
                          struct gvec *gvec,
@@ -17,7 +21,7 @@ int gmix_image_convolved(struct gmix* self,
 {
     int flags=0;
     size_t ngauss = gvec->size;
-    double wmomlast=0, wmom=0, wmomdiff=0;
+    double wmomlast=0, wmom=0;
 
     double sky=image_sky(image);
     double counts=image_counts(image);
@@ -49,14 +53,15 @@ int gmix_image_convolved(struct gmix* self,
         wmom = gvec_wmomsum(gvec);
 
         wmom /= iter_struct->psum;
-        wmomdiff = fabs(wmom-wmomlast);
-        *fdiff = fabs(wmomdiff/wmom);
+        *fdiff = fabs((wmom-wmomlast)/wmom);
         if (*fdiff < self->tol) {
             break;
         }
         wmomlast = wmom;
         (*iter)++;
     }
+
+    gvec_set_total_moms(gvec);
 
 _gmix_image_convolved_bail:
     if (self->maxiter == (*iter)) {
@@ -213,21 +218,8 @@ void gmix_set_gvec_fromiter_convolved(struct gvec *gvec,
     struct gauss *gauss=NULL;
     size_t i=0;
 
-    double psf_irr_mean=0,psf_irc_mean=0, psf_icc_mean=0;
-    double psum=0;
-
-    // average the moments.  We should store this in the gvec
-    gauss=gvec_psf->data;
-    for (i=0; i<gvec_psf->size; i++) {
-        psf_irr_mean += gauss->p*gauss->irr;
-        psf_irc_mean += gauss->p*gauss->irc;
-        psf_icc_mean += gauss->p*gauss->icc;
-        psum+=gauss->p;
-        gauss++;
-    }
-    psf_irr_mean /= psum;
-    psf_irc_mean /= psum;
-    psf_icc_mean /= psum;
+    //fprintf(stderr,"mean psf moms: %g %g %g\n", 
+    //        gvec_psf->total_irr, gvec_psf->total_irc, gvec_psf->total_icc);
 
     sums=iter->sums;
     gauss=gvec->data;
@@ -236,9 +228,9 @@ void gmix_set_gvec_fromiter_convolved(struct gvec *gvec,
         gauss->row = sums->rowsum/sums->pnew;
         gauss->col = sums->colsum/sums->pnew;
 
-        gauss->irr = sums->u2sum/sums->pnew - psf_irr_mean;
-        gauss->irc = sums->uvsum/sums->pnew - psf_irc_mean;
-        gauss->icc = sums->v2sum/sums->pnew - psf_icc_mean;
+        gauss->irr = sums->u2sum/sums->pnew - gvec_psf->total_irr;
+        gauss->irc = sums->uvsum/sums->pnew - gvec_psf->total_irc;
+        gauss->icc = sums->v2sum/sums->pnew - gvec_psf->total_icc;
 
         gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
 

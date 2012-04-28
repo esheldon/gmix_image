@@ -51,7 +51,7 @@ int gmix_image(struct gmix* self,
 {
     int flags=0;
     size_t ngauss = gvec->size;
-    double wmomlast=0, wmom=0, wmomdiff=0;
+    double wmomlast=0, wmom=0;
 
     double sky=image_sky(image);
     double counts=image_counts(image);
@@ -81,14 +81,15 @@ int gmix_image(struct gmix* self,
         wmom = gvec_wmomsum(gvec);
 
         wmom /= iter_struct->psum;
-        wmomdiff = wmom-wmomlast;
-        *fdiff = fabs(wmomdiff/wmom);
+        *fdiff = fabs((wmom-wmomlast)/wmom);
         if (*fdiff < self->tol) {
             break;
         }
         wmomlast = wmom;
         (*iter)++;
     }
+
+    gvec_set_total_moms(gvec);
 
 _gmix_image_bail:
     if (self->maxiter == (*iter)) {

@@ -79,13 +79,12 @@ def test_psf_colocate(add_noise=False, npsf=1):
     #      {'p':0.6,'row':15.,'col':15.,'irr':1.7,'irc':0.3,'icc':1.5}]
     gd = [{'p':0.4,'row':15.,'col':15.,'irr':2.0,'irc':0.0,'icc':2.0},
           {'p':0.6,'row':15.,'col':15.,'irr':1.0,'irc':0.0,'icc':1.0}]
-    im_prepsf = gmix_image.gmix2image(gd,dims)
 
     if npsf==2:
-        gpsf = [{'p':0.8,'irr':1.0,'irc':0.2,'icc':1.0},
-                {'p':0.2,'irr':2.0,'irc':0.1,'icc':2.0}]
+        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
+                {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
     else:
-        gpsf = [{'p':1.0,'irr':1.0,'irc':0.0,'icc':1.0}]
+        gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
 
     im1conv = ogrid_image_convolved('gauss',dims,
                                     [gd[0]['row'], gd[0]['col']],
@@ -149,42 +148,30 @@ def test_psf_colocate(add_noise=False, npsf=1):
         raise ValueError("halting")
 
     if have_images:
-        pars = gm.pars
-        im_fit = gmix_image.gmix2image(pars,dims)
+        import fimage
 
+        pars = gm.pars
+        im_prepsf = gmix_image.gmix2image(gd,dims)
+        im_fit = gmix_image.gmix2image(pars,dims)
+        mom_uw = fimage.statistics.fmom(im_prepsf)
+        fit_mom_uw = fimage.statistics.fmom(im_fit)
+        print 'uw moms:',mom_uw['cov']
+        print 'uw fit moms:',fit_mom_uw['cov']
         #images.multiview(im_prepsf, title='true')
         #images.multiview(im_fit, title='fit')
         images.multiview(im-sky)
         images.compare_images(im_prepsf, im_fit)
 
-        Irr=0.0
-        Irc=0.0
-        Icc=0.0
-        eIrr=0.0
-        eIrc=0.0
-        eIcc=0.0
-        Psum=0.0
-        ePsum=0.0
-        for i in xrange(len(gd)):
-            Psum += gd[i]['p']
-            ePsum += pars[i]['p']
-            Irr += gd[i]['p']*gd[i]['irr']
-            Irc += gd[i]['p']*gd[i]['irc']
-            Icc += gd[i]['p']*gd[i]['icc']
+        mean_moms = gmix_image.total_moms(gd)
+        fit_mean_moms = gmix_image.total_moms(pars)
+        psf_mean_moms = gmix_image.total_moms(gpsf)
 
-            eIrr += pars[i]['p']*pars[i]['irr']
-            eIrc += pars[i]['p']*pars[i]['irc']
-            eIcc += pars[i]['p']*pars[i]['icc']
-
-        Irr /= Psum
-        Irc /= Psum
-        Icc /= Psum
-        eIrr /= ePsum
-        eIrc /= ePsum
-        eIcc /= ePsum
-
-        print 'input total moms:    ',Irr,Irc,Icc
-        print 'estimated total moms:',eIrr,eIrc,eIcc
+        print 'psf total moms:', \
+            psf_mean_moms['irr'],psf_mean_moms['irc'],psf_mean_moms['icc']
+        print 'input total moms:    ', \
+            mean_moms['irr'],mean_moms['irc'],mean_moms['icc']
+        print 'estimated total moms:', \
+            fit_mean_moms['irr'],fit_mean_moms['irc'],fit_mean_moms['icc']
 
 def test_psf(add_noise=False, npsf=1):
     print '\nnoise:',add_noise
@@ -269,8 +256,6 @@ def test_psf(add_noise=False, npsf=1):
         pars = gm.pars
         im_fit = gmix_image.gmix2image(pars,dims)
 
-        #images.multiview(im_prepsf, title='true')
-        #images.multiview(im_fit, title='fit')
         images.compare_images(im_prepsf, im_fit)
 
 def ogrid_image_convolved(model, dims, cen, cov, gpsf, counts=1.0):

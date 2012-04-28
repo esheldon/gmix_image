@@ -104,10 +104,36 @@ double gvec_wmomsum(struct gvec* gvec)
     return wmom;
 }
 
+void gvec_set_total_moms(struct gvec *self)
+{
+    size_t i=0;
+    double p=0, psum=0;
+    struct gauss *gauss=NULL;
+
+    self->total_irr=0;
+    self->total_irc=0;
+    self->total_icc=0;
+
+    gauss = self->data;
+    for (i=0; i<self->size; i++) {
+        p = gauss->p;
+        psum += p;
+
+        self->total_irr += p*gauss->irr;
+        self->total_irc += p*gauss->irc;
+        self->total_icc += p*gauss->icc;
+        gauss++;
+    }
+
+    self->total_irr /= psum;
+    self->total_irc /= psum;
+    self->total_icc /= psum;
+}
+
+
 /*
  
- Find the weighted average center and set all centers
- equal to this value.
+ Find the weighted average center
 
  for j gaussians
 
@@ -116,7 +142,7 @@ double gvec_wmomsum(struct gvec* gvec)
  where the mus are mean vectors and the C are the covarance
  matrices.
 
- The following would be a lot simple if we use vec2 and mtx2
+ The following would be a lot simpler if we use vec2 and mtx2
  types in the gaussian!  Maybe some other day.
 
  */

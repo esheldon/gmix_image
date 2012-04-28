@@ -185,3 +185,17 @@ def gmix2image(gauss_list, dims, counts=1.0):
     im *= counts/im.sum()
     return im
 
+def total_moms(gauss_list):
+    d={'irr':0.0, 'irc':0.0, 'icc':0.0}
+    psum=0.0
+    for g in gauss_list:
+        p=g['p']
+        psum += p
+        d['irr'] += p*g['irr']
+        d['irc'] += p*g['irc']
+        d['icc'] += p*g['icc']
+
+    d['irr'] /= psum
+    d['irc'] /= psum
+    d['icc'] /= psum
+    return d
