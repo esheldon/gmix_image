@@ -9,8 +9,8 @@
 #include "defs.h"
 
 /*
- * make sure that gvec_set_total_moms has been called
- * on the gvec_psf
+ * This one convolves the mixture model with the psf mixture model, so the
+ * result is pre-psf
  */
 int gmix_image_convolved(struct gmix* self,
                          struct image *image, 
@@ -29,8 +29,11 @@ int gmix_image_convolved(struct gmix* self,
 
     struct iter *iter_struct = iter_new(ngauss);
 
+
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/npoints);
+
+    gvec_set_total_moms(gvec_psf);
 
     wmomlast=-9999;
     *iter=0;

@@ -184,8 +184,6 @@ static struct gvec
             goto _gvec_copy_list_of_dicts_bail;
         }
     }
-    
-    gvec_set_total_moms(self);
 
 _gvec_copy_list_of_dicts_bail:
     if (status != 1) {
