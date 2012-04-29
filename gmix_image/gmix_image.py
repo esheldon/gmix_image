@@ -223,9 +223,10 @@ def gmix2image_psf(gauss_list, psf_list, dims, counts=1.0):
                                   dims,
                                   [row,col],
                                   [irr,irc,icc],
-                                  counts=psf['p']*g['p']*counts)
-
-        im += tmp_im/p_psum
+                                  counts=g['p']*psf['p']*counts)
+        tmp_im /= p_psum
+        im += tmp_im
+        #im += tmp_im*(g['p']/p_psum)
 
     im /= g_psum
     return im

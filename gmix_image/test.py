@@ -58,10 +58,12 @@ def test_psf_colocate(add_noise=False, npsf=1):
     tol=1.e-6
     maxiter=2000
     verbose=False
+    counts=1000
 
-    dims=[31,31]
-    gd = [{'p':0.4,'row':15.,'col':15.,'irr':2.5,'irc':0.1,'icc':3.1},
-          {'p':0.6,'row':15.,'col':15.,'irr':1.7,'irc':0.3,'icc':1.5}]
+    dims=[21,21]
+    cen=[(dims[0]-1)/2., (dims[1]-1)/2.]
+    gd = [{'p':0.4,'row':cen[0],'col':cen[1],'irr':2.5,'irc':0.1,'icc':3.1},
+          {'p':0.6,'row':cen[0],'col':cen[1],'irr':1.7,'irc':0.3,'icc':1.5}]
 
     if npsf==3:
         gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
@@ -73,20 +75,24 @@ def test_psf_colocate(add_noise=False, npsf=1):
     else:
         gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
 
-    im = gmix2image_psf(gd,gpsf,dims,counts=1000.)
+    im_prepsf = gmix2image(gd,dims,counts=counts)
+    im = gmix2image_psf(gd,gpsf,dims,counts=counts)
 
     if add_noise:
         skysig=0.05*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
         im += skysig*random.random(im.size).reshape(dims[0],dims[1])
+    else:
+        skysig=None
 
     # must have non-zero sky
     im_nosky = im.copy()
 
-    im -= im.min()
-    sky = 0.01*im.max()
-    im += sky
+    sky=1
+    im_min=im.min()
+    if im_min < 0:
+        im += (sky-im_min)
 
     guess=copy.deepcopy(gd)
     for g in guess:
@@ -96,10 +102,10 @@ def test_psf_colocate(add_noise=False, npsf=1):
         g['irc'] += 0.2*random.random()
         g['icc'] += 0.2*random.random()
     print guess
-    counts=im.sum()
+    post_counts=im.sum()
     gm = gmix_image.GMix(im,guess,
                          sky=sky,
-                         counts=counts,
+                         counts=post_counts,
                          maxiter=maxiter,
                          tol=tol,
                          psf=gpsf,
@@ -116,25 +122,15 @@ def test_psf_colocate(add_noise=False, npsf=1):
         raise ValueError("halting")
 
     if have_images:
-        import fimage
-
         pars = gm.pars
-        im_prepsf = gmix_image.gmix2image(gd,dims)
-        im_fit = gmix_image.gmix2image(pars,dims)
-        mom_uw = fimage.statistics.fmom(im_prepsf)
-        fit_mom_uw = fimage.statistics.fmom(im_fit)
 
-        im_mom = fimage.statistics.fmom(im_nosky)
-        im_mom_exp = gmix_image.total_moms_psf(gd, gpsf)
+        im_fit = gmix2image(pars,dims,counts=counts)
+        im_fit_conv = gmix2image_psf(pars,gpsf,dims,counts=counts)
 
-        print 'uw moms:',mom_uw['cov']
-        print 'uw fit moms:',fit_mom_uw['cov']
-        print 'convolved image mom:',im_mom['cov']
-        print 'expected: ',im_mom_exp['irr'],im_mom_exp['irc'],im_mom_exp['icc']
-
-
-        images.multiview(im-sky)
         images.compare_images(im_prepsf, im_fit)
+
+        # im_nosky includes noise
+        images.compare_images(im_nosky, im_fit_conv, skysig=skysig)
 
         mean_moms = gmix_image.total_moms(gd)
         fit_mean_moms = gmix_image.total_moms(pars)
@@ -161,11 +157,15 @@ def test_psf(add_noise=False, npsf=1):
 
     #gd = [{'p':0.4,'row':15,'col':15,'irr':2.5,'irc':0.1,'icc':3.1}]
 
-    if npsf==2:
-        gpsf = [{'p':0.8,'irr':1.0,'irc':0.2,'icc':1.0},
-                {'p':0.2,'irr':2.0,'irc':0.1,'icc':2.0}]
+    if npsf==3:
+        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
+                {'p':0.4,'irr':2.0,'irc':0.1,'icc':1.5},
+                {'p':0.1,'irr':4.0,'irc':0.4,'icc':3.2}]
+    elif npsf==2:
+        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
+                {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
     else:
-        gpsf = [{'p':1.0,'irr':1.0,'irc':0.0,'icc':1.0}]
+        gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
 
     im = gmix_image.gmix2image_psf(gd,gpsf,dims,counts=counts)
 
