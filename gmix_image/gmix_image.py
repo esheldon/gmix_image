@@ -1,13 +1,34 @@
 """
 gmix_image
 
-Defines a class to fit a gaussian mixture model to an image using Expectation
-Maximization.  
+Classes
+-------
+GMix: 
+    A class to fit a gaussian mixture model to an image using Expectation
+    Maximization.  
 
-See docs for gmix_image.GMix for more details.
+    See docs for gmix_image.GMix for more details.
 
-The code is primarily in a C library. The GMix object is a convenience wrapper
-for that code.
+    The code is primarily in a C library. The GMix object is a convenience
+    wrapper for that code.
+
+functions
+---------
+gmix2image:
+    Create an image from the gaussian input mixture model.
+
+gmix2image_psf:
+    Create an image from the input gaussian mixture model and psf mixture
+    model.
+ogrid_image:
+    Create an image using the ogrid function from numpy
+
+total_moms:
+    Get the total moments for the mixture model; only easily
+    interpreted when the centers coincide.
+total_moms_psf:
+    Get the total moments for the mixture model and psf; only easily
+    interpreted when the centers coincide.
 """
 import copy
 import numpy
@@ -43,22 +64,25 @@ class GMix(_gmix_image.GMix):
 
         Note the normalizations are only meaningful in a relative sense.
 
-    sky: number
+    sky: number, optional
         The sky level in the image. Must be non-zero for the EM algorithm to
         converge, since it is essentially treated like an infinitely wide
         gaussian.  If not sent, the median of the image is used, so it is
         recommeded to send your best estimate.
 
-    counts: number
+    counts: number, optional
         The total counts in the image.  If not sent it is calculated
         from the image, which is fine.
         
-    maxiter: number
+    psf: list of dictionaries, optional
+        A gaussian mixture model representing the PSF.  The best fit gaussian
+        mixture will thus be the pre-psf values.
+    maxiter: number, optional
         The maximum number of iterations.
-    tol:
+    tol: number, optional
         The tolerance to determine convergence.  This is the fractional
         difference in the weighted summed moments between iterations.
-    verbose:
+    verbose: bool, optional
         Print out some information for each iteration.
 
     properties
@@ -180,7 +204,7 @@ class GMix(_gmix_image.GMix):
 
 def gmix2image(gauss_list, dims, psf=None, counts=1.0):
     """
-    Create an image for the gaussian list.
+    Create an image from the gaussian input mixture model.
     """
     from fimage import model_image
 
@@ -200,7 +224,8 @@ def gmix2image(gauss_list, dims, psf=None, counts=1.0):
 
 def gmix2image_psf(gauss_list, psf_list, dims, counts=1.0):
     """
-    Create an image for the gaussian and psf lists.
+    Create an image from the input gaussian mixture model and psf mixture
+    model.
     """
     from fimage import model_image
     im = zeros(dims)
