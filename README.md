@@ -26,7 +26,17 @@ Examples
     pars = gm.pars
     print 'center for first guassian:',pars[0]['row'],pars[0]['col']
 
+    # Find the gaussian mixture accounting for a point spread function.  The
+    # psf is just another gaussian mixture model.  The fit gaussian mixture
+    # will thus be "pre-psf". Centers are not necessary for the psf.
+
+    psf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
+           {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
+    gm = gmix_image.GMix(image, guess, psf=psf, sky=100)
+
     # run the test suite
     gmix_image.test()
     gmix_image.test(add_noise=True)
+    gmix_image.test_psf(add_noise=False)
+    gmix_image.test_psf_colocate(add_noise=True)
 

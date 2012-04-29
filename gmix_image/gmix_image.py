@@ -44,16 +44,19 @@ class GMix(_gmix_image.GMix):
     """
     Fit a gaussian mixture model to an image using Expectation Maximization.
 
+    A gaussian mixture model is represented by a list of dictionaries with the
+    gaussian parameters.
+
     construction parameters
     -----------------------
     image: numpy array
         A two dimensional, 64-bit float numpy array.  If the image
         is a different type it will be converted.
     guess: list of dictionaries
-        A list of dictionaries, with each dict defining the starting
-        parameters for a gaussian.  The length of this list determines
-        how many gaussians are fit and the initial start parameters.
-        Each dict must have the following entries
+        A gaussian mixture model represented as a list of dictionaries.  Each
+        dict defines the guessed parameters for a gaussian.  The length of this
+        list determines how many gaussians will be fit and the initial start
+        parameters.  Each dict must have the following entries
 
             p: A normalization
             row: center of the gaussian in the first dimension
@@ -76,7 +79,9 @@ class GMix(_gmix_image.GMix):
         
     psf: list of dictionaries, optional
         A gaussian mixture model representing the PSF.  The best fit gaussian
-        mixture will thus be the pre-psf values.
+        mixture will thus be the pre-psf values.  Centers are not
+        necessary for the psf mixture model.
+
     maxiter: number, optional
         The maximum number of iterations.
     tol: number, optional
@@ -119,7 +124,7 @@ class GMix(_gmix_image.GMix):
     --------
     import gmix_image
 
-    # initial guesses
+    # initial guesses as a gaussian mixture model
     guess = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
              {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
 
@@ -136,9 +141,20 @@ class GMix(_gmix_image.GMix):
     pars = gm.pars
     print 'center for first guassian:',pars[0]['row'],pars[0]['col']
 
+    # Find the gaussian mixture accounting for a point spread function.  The
+    # psf is just another gaussian mixture model.  The fit gaussian mixture
+    # will thus be "pre-psf". Centers are not necessary for the psf.
+
+    psf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
+           {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
+    gm = gmix_image.GMix(image, guess, psf=psf, sky=100)
+
     # run the test suite
     gmix_image.test()
     gmix_image.test(add_noise=True)
+    gmix_image.test_psf(add_noise=False)
+    gmix_image.test_psf_colocate(add_noise=True)
+
     """
     def __init__(self, im, guess, 
                  sky=None,
