@@ -162,9 +162,16 @@ class GMix(_gmix_image.GMix):
         """
         Add center info if not there, just to make it a full gvec definition
         """
-        if not isinstance(psf,list):
+        if psf is None:
             return None
+
+        if not isinstance(psf,list):
+            raise ValueError("expected psf to be a list of dicts")
+
         for p in psf:
+            if not isinstance(p,dict):
+                raise ValueError("expected psf to be a list of dicts")
+
             if 'row' not in p:
                 p['row'] = -1
             if 'col' not in p:

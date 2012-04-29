@@ -21,7 +21,7 @@ def test(add_noise=False):
     im = gmix2image(gd, dims, counts=counts)
 
     if add_noise:
-        skysig=0.05
+        skysig=0.1*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
         im += skysig*random.random(im.size).reshape(dims[0],dims[1])
@@ -76,7 +76,7 @@ def test_psf_colocate(add_noise=False, npsf=1):
     im = gmix2image_psf(gd,gpsf,dims,counts=1000.)
 
     if add_noise:
-        skysig=0.05
+        skysig=0.05*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
         im += skysig*random.random(im.size).reshape(dims[0],dims[1])
@@ -152,6 +152,7 @@ def test_psf(add_noise=False, npsf=1):
     tol=1.e-8
     maxiter=2000
     verbose=False
+    counts=1000.
 
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
@@ -166,7 +167,7 @@ def test_psf(add_noise=False, npsf=1):
     else:
         gpsf = [{'p':1.0,'irr':1.0,'irc':0.0,'icc':1.0}]
 
-    im = gmix_image.gmix2image_psf(gd,gpsf,dims,counts=1000.)
+    im = gmix_image.gmix2image_psf(gd,gpsf,dims,counts=counts)
 
     if add_noise:
         skysig=0.05*im.max()
