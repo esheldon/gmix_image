@@ -1,6 +1,6 @@
 """
 gmix_image
-    Code to fit and work with gaussian mixture models.
+    Fit gaussian mixture models to images.
 
 Classes
 -------
@@ -12,17 +12,20 @@ GMix:
 functions
 ---------
 gmix2image:
-    Create an image from the gaussian input mixture model.
+    Create an image from the gaussian input mixture model.  Optionally
+    send a PSF, which results in a call to gmix2image_psf.
 
 gmix2image_psf:
     Create an image from the input gaussian mixture model and psf mixture
     model.
+
 ogrid_image:
     Create an image using the ogrid function from numpy
 
 total_moms:
     Get the total moments for the mixture model; only easily
-    interpreted when the centers coincide.
+    interpreted when the centers coincide.  Optionally send a
+    psf, which results in a call to total_moms_psf
 total_moms_psf:
     Get the total moments for the mixture model and psf; only easily
     interpreted when the centers coincide.
@@ -223,8 +226,17 @@ def gmix2image(gauss_list, dims, psf=None, counts=1.0):
     ----------
     gauss_list:
         The gaussian mixture model as a list of dictionaries.
+    dims:
+        The dimensions of the result.  This matters since
+        the gaussian centers are in this coordinate syste.
+    psf: optional
+        An optional gaussian mixture PSf model.  The models will be convolved
+        with this PSF.
+    counts: optional
+        The total counts in the image.  Default 1.
     """
-    from fimage import model_image
+    if psf is not None:
+        return gmix2image_psf(gauss_list, psf_list, dims, counts=counts)
 
     im = zeros(dims)
 
@@ -245,7 +257,6 @@ def gmix2image_psf(gauss_list, psf_list, dims, counts=1.0):
     Create an image from the input gaussian mixture model and psf mixture
     model.
     """
-    from fimage import model_image
     im = zeros(dims)
     tmp_im = zeros(dims)
 
@@ -327,10 +338,21 @@ def ogrid_image(model, dims, cen, cov, counts=1.0):
 
 
 
-def total_moms(gauss_list):
+def total_moms(gauss_list, psf=None):
     """
     Only makes sense if the centers are the same
+
+    parameters
+    ----------
+    gauss_list: 
+        A gaussian mixture model as a list of dicts.
+    psf: optional
+        A PSF as a gaussian mixture model.  The result
+        will be convolved with the PSF.
     """
+    if psf is not None:
+        return total_moms_psf(gauss_list, psf)
+
     d={'irr':0.0, 'irc':0.0, 'icc':0.0}
     psum=0.0
     for g in gauss_list:
