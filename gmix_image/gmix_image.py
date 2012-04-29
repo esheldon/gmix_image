@@ -149,7 +149,7 @@ class GMix(_gmix_image.GMix):
            {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
     gm = gmix_image.GMix(image, guess, psf=psf, sky=100)
 
-    # run the test suite
+    # run some unit tests
     gmix_image.test()
     gmix_image.test(add_noise=True)
     gmix_image.test_psf(add_noise=False)
