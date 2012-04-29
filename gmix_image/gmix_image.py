@@ -1,16 +1,13 @@
 """
 gmix_image
+    Code to fit and work with gaussian mixture models.
 
 Classes
 -------
+
 GMix: 
     A class to fit a gaussian mixture model to an image using Expectation
-    Maximization.  
-
-    See docs for gmix_image.GMix for more details.
-
-    The code is primarily in a C library. The GMix object is a convenience
-    wrapper for that code.
+    Maximization.  See docs for gmix_image.GMix for more details.
 
 functions
 ---------
@@ -30,6 +27,7 @@ total_moms_psf:
     Get the total moments for the mixture model and psf; only easily
     interpreted when the centers coincide.
 """
+
 import copy
 import numpy
 from numpy import array, median, zeros, ogrid, exp
@@ -54,8 +52,8 @@ class GMix(_gmix_image.GMix):
         is a different type it will be converted.
     guess: list of dictionaries
         A gaussian mixture model represented as a list of dictionaries.  Each
-        dict defines the guessed parameters for a gaussian.  The length of this
-        list determines how many gaussians will be fit and the initial start
+        dict defines the parameters of a gaussian.  The length of this list
+        determines how many gaussians will be fit and the initial start
         parameters.  Each dict must have the following entries
 
             p: A normalization
@@ -76,11 +74,11 @@ class GMix(_gmix_image.GMix):
     counts: number, optional
         The total counts in the image.  If not sent it is calculated
         from the image, which is fine.
-        
+
     psf: list of dictionaries, optional
         A gaussian mixture model representing the PSF.  The best fit gaussian
-        mixture will thus be the pre-psf values.  Centers are not
-        necessary for the psf mixture model.
+        mixture will thus be the pre-psf values.  Centers are not necessary for
+        the psf mixture model.
 
     maxiter: number, optional
         The maximum number of iterations.
@@ -93,18 +91,17 @@ class GMix(_gmix_image.GMix):
     properties
     ----------
     pars: list of dictionaries
-        The gaussian parameters at the end of the last iteration.  These have
-        the same entries as the guess parameter with the addition of
-        "det", which has the determinant of the covariance matrix.  There
-        is a corresponding method get_pars() if you prefer.
+        The fitted gaussian mixture model at the end of the last iteration.
+        These have the same entries as the guess parameter with the addition of
+        "det", which has the determinant of the covariance matrix.  There is a
+        corresponding method get_pars() if you prefer.
 
     flags: number
-
         A bitmask holding flags for the processing.  Should be zero for
         success.  These flags are defined as attributes to the gmix_image
         module.
 
-            GMIX_ERROR_NEGATIVE_DET         1 # negative determinant in covar
+            GMIX_ERROR_NEGATIVE_DET         1 # determinant <= 0 in covar
             GMIX_ERROR_MAXIT                2 # max iteration reached
             GMIX_ERROR_NEGATIVE_DET_SAMECEN 4 # not used currently
 
@@ -221,6 +218,11 @@ class GMix(_gmix_image.GMix):
 def gmix2image(gauss_list, dims, psf=None, counts=1.0):
     """
     Create an image from the gaussian input mixture model.
+
+    parameters
+    ----------
+    gauss_list:
+        The gaussian mixture model as a list of dictionaries.
     """
     from fimage import model_image
 
