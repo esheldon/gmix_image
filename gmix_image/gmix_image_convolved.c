@@ -61,8 +61,6 @@ int gmix_image_convolved(struct gmix* self,
         (*iter)++;
     }
 
-    gvec_set_total_moms(gvec);
-
 _gmix_image_convolved_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
@@ -146,7 +144,8 @@ _gmix_get_sums_convolved_bail:
     return flags;
 }
 
-/* mathematically this comes down to averaging over
+/* 
+   mathematically this comes down to averaging over
    the convolved gaussians.
 
        sum_i( g*psf_i*p_i )/sum(p_i)

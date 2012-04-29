@@ -11,7 +11,7 @@ for that code.
 """
 import copy
 import numpy
-from numpy import median, zeros
+from numpy import array, median, zeros, ogrid, exp
 import _gmix_image
 
 GMIX_ERROR_NEGATIVE_DET         = 0x1
@@ -124,7 +124,7 @@ class GMix(_gmix_image.GMix):
                  psf=None,
                  verbose=False):
 
-        self._image = numpy.array(im, ndmin=2, dtype='f8', copy=False)
+        self._image = array(im, ndmin=2, dtype='f8', copy=False)
         self._guess = copy.deepcopy(guess)
         self._sky=sky
         self._counts=counts
@@ -162,6 +162,8 @@ class GMix(_gmix_image.GMix):
         """
         Add center info if not there, just to make it a full gvec definition
         """
+        if not isinstance(psf,list):
+            return None
         for p in psf:
             if 'row' not in p:
                 p['row'] = -1
@@ -169,23 +171,115 @@ class GMix(_gmix_image.GMix):
                 p['col'] = -1
         return psf
 
-def gmix2image(gauss_list, dims, counts=1.0):
+def gmix2image(gauss_list, dims, psf=None, counts=1.0):
+    """
+    Create an image for the gaussian list.
+    """
     from fimage import model_image
+
     im = zeros(dims)
 
+    psum=0.0
     for g in gauss_list:
-        tmp_im = model_image('gauss',
-                             dims,
-                             [g['row'],g['col']],
-                             [g['irr'],g['irc'],g['icc']],
-                             counts=g['p'],
-                             nsub=1)
-        im += tmp_im
+        psum += g['p']
+        im += ogrid_image('gauss',
+                          dims,
+                          [g['row'],g['col']],
+                          [g['irr'],g['irc'],g['icc']],
+                          counts=g['p']*counts)
 
-    im *= counts/im.sum()
+    im /= psum
     return im
 
+def gmix2image_psf(gauss_list, psf_list, dims, counts=1.0):
+    """
+    Create an image for the gaussian and psf lists.
+    """
+    from fimage import model_image
+    im = zeros(dims)
+    tmp_im = zeros(dims)
+
+    g_psum=0.0
+    for g in gauss_list:
+        row=g['row']
+        col=g['col']
+        g_psum += g['p']
+
+        tmp_im[:,:] = 0.0
+        p_psum = 0.0
+        for psf in psf_list:
+            p_psum += psf['p']
+            irr = g['irr'] + psf['irr']
+            irc = g['irc'] + psf['irc']
+            icc = g['icc'] + psf['icc']
+            tmp_im += ogrid_image('gauss',
+                                  dims,
+                                  [row,col],
+                                  [irr,irc,icc],
+                                  counts=psf['p']*g['p']*counts)
+
+        im += tmp_im/p_psum
+
+    im /= g_psum
+    return im
+
+def ogrid_image(model, dims, cen, cov, counts=1.0):
+    """
+    Create an image using the ogrid function from numpy
+
+    parameters
+    ----------
+    model: string
+        gauss,exp,dev
+    dims: list
+        two element list giving the dimensions
+    cen: list
+        two element list giving the center position
+    cov: list
+        Three element list giving the covariance
+        elements Irr,Irc,Icc
+    counts: number, optional
+        The total counts.
+    """
+    Irr,Irc,Icc = cov
+    det = Irr*Icc - Irc**2
+    if det == 0.0:
+        raise RuntimeError("Determinant is zero")
+
+    Wrr = Irr/det
+    Wrc = Irc/det
+    Wcc = Icc/det
+
+    # ogrid is so useful
+    row,col=ogrid[0:dims[0], 0:dims[1]]
+
+    rm = array(row - cen[0], dtype='f8')
+    cm = array(col - cen[1], dtype='f8')
+
+    rr = rm**2*Wcc -2*rm*cm*Wrc + cm**2*Wrr
+
+    model = model.lower()
+    if model == 'gauss':
+        rr = 0.5*rr
+    elif model == 'exp':
+        rr = sqrt(rr*3.)
+    elif model == 'dev':
+        rr = 7.67*( (rr)**(.125) -1 )
+    else: 
+        raise ValueError("model must be one of gauss, exp, or dev")
+
+    image = exp(-rr)
+
+    image *= counts/image.sum()
+
+    return image
+
+
+
 def total_moms(gauss_list):
+    """
+    Only makes sense if the centers are the same
+    """
     d={'irr':0.0, 'irc':0.0, 'icc':0.0}
     psum=0.0
     for g in gauss_list:
@@ -199,3 +293,24 @@ def total_moms(gauss_list):
     d['irc'] /= psum
     d['icc'] /= psum
     return d
+
+def total_moms_psf(gauss_list, psf_list):
+    """
+    Only makes sense if the centers are the same
+    """
+    d={'irr':0.0, 'irc':0.0, 'icc':0.0}
+    psf_totmom = total_moms(psf_list)
+
+    psum=0.0
+    for g in gauss_list:
+        p=g['p']
+        psum += p
+        d['irr'] += p*(g['irr'] + psf_totmom['irr'])
+        d['irc'] += p*(g['irc'] + psf_totmom['irc'])
+        d['icc'] += p*(g['icc'] + psf_totmom['icc'])
+
+    d['irr'] /= psum
+    d['irc'] /= psum
+    d['icc'] /= psum
+    return d
+

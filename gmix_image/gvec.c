@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "gvec.h"
 #include "defs.h"
 #include "matrix.h"
@@ -107,7 +108,7 @@ double gvec_wmomsum(struct gvec* gvec)
 void gvec_set_total_moms(struct gvec *self)
 {
     size_t i=0;
-    double p=0, psum=0;
+    double b=0, p=0, psum=0;
     struct gauss *gauss=NULL;
 
     self->total_irr=0;
@@ -116,6 +117,8 @@ void gvec_set_total_moms(struct gvec *self)
 
     gauss = self->data;
     for (i=0; i<self->size; i++) {
+        //b = M_TWO_PI*sqrt(gauss->det);
+        //p = gauss->p/b;
         p = gauss->p;
         psum += p;
 

@@ -89,8 +89,6 @@ int gmix_image(struct gmix* self,
         (*iter)++;
     }
 
-    gvec_set_total_moms(gvec);
-
 _gmix_image_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
