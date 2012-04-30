@@ -236,7 +236,7 @@ def gmix2image(gauss_list, dims, psf=None, counts=1.0):
         The total counts in the image.  Default 1.
     """
     if psf is not None:
-        return gmix2image_psf(gauss_list, psf_list, dims, counts=counts)
+        return gmix2image_psf(gauss_list, psf, dims, counts=counts)
 
     im = zeros(dims)
 
