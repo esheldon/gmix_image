@@ -10,6 +10,15 @@ try:
 except:
     have_images=False
 
+def test_all():
+    test(add_noise=False)
+    test(add_noise=True)
+    test_psf()
+    test_psf(add_noise=True)
+    test_psf_colocate(add_noise=False, npsf=1)
+    test_psf_colocate(add_noise=True, npsf=1)
+    test_psf_colocate(add_noise=False, npsf=2)
+    test_psf_colocate(add_noise=True, npsf=2)
 def test(add_noise=False):
     print '\nnoise:',add_noise
     tol=1.e-6
