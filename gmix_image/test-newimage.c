@@ -14,7 +14,7 @@ int main(int argc, char** argv)
     size_t row=0, i=0;
 
     image = image_new(10,10);
-    assert(IM_IS_OWNER(image));
+    assert(IM_OWNS_DATA(image));
 
     image_add_scalar(image, sky);
     
@@ -26,7 +26,7 @@ int main(int argc, char** argv)
     struct image *imsub = image_sub(image, &bound);
 
     assert(IM_PARENT(imsub) == image);
-    assert(!IM_IS_OWNER(imsub));
+    assert(!IM_OWNS_DATA(imsub));
     assert(IM_SIZE(imsub) == (5-3+1)*(8-4+1));
     assert(IM_NROWS(imsub) == (5-3+1));
     assert(IM_NCOLS(imsub) == (8-4+1));

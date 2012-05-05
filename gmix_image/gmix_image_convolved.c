@@ -98,8 +98,10 @@ int gmix_get_sums_convolved(struct image *image,
             gauss = &gvec->data[0];
             sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
-                u = (row-gauss->row);
-                v = (col-gauss->col);
+                // w.r.t. row0,col0 in case this is a subimage
+                // centers will be w.r.t. the main image
+                u = (row-(gauss->row-row0));
+                v = (col-(gauss->col-col0));
 
                 u2 = u*u; v2 = v*v; uv = u*v;
                 sums->gi = gmix_evaluate_convolved(gauss,

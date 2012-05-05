@@ -41,16 +41,21 @@ struct image *image_new(size_t nrows, size_t ncols)
         self->rows[i] = self->rows[i-1] + ncols;
     }
 
-    self->is_owner=1;
+    self->owns_rows=1;
+    self->owns_data=1;
     return self;
 }
 
 struct image *image_free(struct image *self)
 {
     if (self) {
-        if (self->rows && self->is_owner) {
-            free(self->rows[0]);
-            free(self->rows);
+        if (self->rows) {
+            if (self->rows[0] && self->owns_data) {
+                free(self->rows[0]);
+            }
+            if (self->owns_rows) {
+                free(self->rows);
+            }
         }
         free(self);
         self=NULL;
@@ -95,7 +100,7 @@ struct image *image_read_text(const char* filename)
                 return NULL;
             }
 
-            counts *= (*ptr);
+            counts += (*ptr);
         }
     }
 
@@ -137,7 +142,6 @@ struct image* image_sub(struct image *parent, struct bound* bound)
     self->parent=parent;
     self->rows=parent->rows;
     IM_SET_SKY(self, IM_SKY(parent));
-    self->is_owner=0;
 
     // note using size_t takes care of min values being >= 0
     rowmax = IM_NROWS(parent) -1;
@@ -158,6 +162,41 @@ struct image* image_sub(struct image *parent, struct bound* bound)
 
     return self;
 }
+
+// in this case we own the rows only, not the data to which they point
+struct image* image_from_array(double* data, size_t nrows, size_t ncols)
+{
+    struct image *self=NULL;
+    size_t nel = nrows*ncols, i=0;
+
+    self = calloc(1, sizeof(struct image));
+    if (self==NULL) {
+        fprintf(stderr,"could not allocate struct sub-image\n");
+        exit(EXIT_FAILURE);
+    }
+
+    self->nrows=nrows;
+    self->ncols=ncols;
+    self->size=nel;
+
+    self->rows = calloc(nrows,sizeof(double *));
+    if (self->rows==NULL) {
+        fprintf(stderr,"could not allocate image of dimensions [%lu,%lu]\n",
+                nrows,ncols);
+        exit(EXIT_FAILURE);
+    }
+    self->owns_rows=1;
+
+    self->rows[0] = data;
+    for(i = 1; i < nrows; i++) {
+        self->rows[i] = self->rows[i-1] + ncols;
+    }
+
+    image_calc_counts(self);
+
+    return self;
+}
+
 
 void image_calc_counts(struct image *self)
 {

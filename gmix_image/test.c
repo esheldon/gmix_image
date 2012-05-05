@@ -55,6 +55,10 @@ int main(int argc, char** argv)
     if (image==NULL)
         exit(EXIT_FAILURE);
 
+    wlog("nrows: %lu\n", IM_NROWS(image));
+    wlog("ncols: %lu\n", IM_NCOLS(image));
+    wlog("sky: %.16g\n", IM_SKY(image));
+    wlog("counts: %.16g\n", IM_COUNTS(image));
     wlog("image[7,9]: %.16g\n", IM_GET(image, 7, 9));
     wlog("image[9,7]: %.16g\n", IM_GET(image, 9, 7));
 

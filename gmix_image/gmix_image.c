@@ -112,6 +112,7 @@ int gmix_get_sums(struct image *image,
     double u=0, v=0, uv=0, u2=0, v2=0;
     size_t i=0, col=0, row=0;
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+    size_t row0=IM_ROW0(image), col0=IM_COL0(image); // could be a subimage
     struct gauss* gauss=NULL;
     struct sums *sums=NULL;
 
@@ -131,8 +132,10 @@ int gmix_get_sums(struct image *image,
                     flags+=GMIX_ERROR_NEGATIVE_DET;
                     goto _gmix_get_sums_bail;
                 }
-                u = (row-gauss->row);
-                v = (col-gauss->col);
+                // w.r.t. row0,col0 in case this is a subimage
+                // centers will be w.r.t. the main image
+                u = (row-(gauss->row-row0));
+                v = (col-(gauss->col-col0));
 
                 u2 = u*u; v2 = v*v; uv = u*v;
 

@@ -22,16 +22,21 @@ struct image {
     double sky;
     double counts;        // will get recalculated for sub-images
 
-    int is_owner;         // ==0 for sub-images
+    int owns_rows;
+    int owns_data;
 };
 
 
-#define IM_IS_OWNER(im) ((im)->is_owner)
+#define IM_OWNS_DATA(im) ((im)->owns_data)
+#define IM_OWNS_ROWS(im) ((im)->owns_rows)
 #define IM_PARENT(im) ((im)->parent)
 
 #define IM_SIZE(im) ((im)->size)
 #define IM_NROWS(im) ((im)->nrows)
 #define IM_NCOLS(im) ((im)->ncols)
+
+#define IM_ROW0(im) ((im)->row0)
+#define IM_COL0(im) ((im)->row0)
 
 #define IM_ROW(im,row) \
     ((im)->rows[(im)->row0 + (row)])
@@ -62,11 +67,13 @@ struct image *image_new(size_t nrows, size_t ncols);
 struct image *image_free(struct image *self);
 struct image *image_read_text(const char* filename);
 
+struct image* image_sub(struct image *parent, struct bound* bound);
+struct image* image_from_array(double* data, size_t nrows, size_t ncols);
+
 void image_write(struct image *self, FILE* stream);
 
 void image_calc_counts(struct image *self);
 void image_add_scalar(struct image *self, double val);
 
-struct image* image_sub(struct image *parent, struct bound* bound);
 
 #endif

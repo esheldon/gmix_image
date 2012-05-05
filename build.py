@@ -24,7 +24,7 @@ CFLAGS=['-std=gnu99','-Wall','-Werror','-O2']
 
 test_sources = ['test','gvec','image','gmix_image','matrix','bound']
 
-test_newimage_sources = ['test-newimage','newimage','bound']
+test_newimage_sources = ['test-newimage','image','bound']
 
 test_cen_sources = ['test-samecen','gvec','image',
                     'gmix_image','gmix_samecen','matrix']
@@ -40,7 +40,8 @@ programs = [{'name':sdir+'test', 'sources':test_sources},
             {'name':sdir+'test-newimage', 'sources':test_newimage_sources},
             {'name':sdir+'test-samecen', 'sources':test_cen_sources},
             {'name':sdir+'test-matrix', 'sources':test_mat_sources}]
-programs = [{'name':sdir+'test', 'sources':test_sources}]
+programs = [{'name':sdir+'test', 'sources':test_sources},
+            {'name':sdir+'test-newimage', 'sources':test_newimage_sources}]
 
 
 install_targets = [(prog['name'],'bin') for prog in programs]
