@@ -66,12 +66,12 @@ struct image *image_read_text(const char* filename)
 
     image_set_sky(image, sky);
 
-    size_t nel=IMSIZE(image);
-    double *ptr=IMGETP(image, 0, 0);
+    size_t nel=IM_SIZE(image);
+    double *ptr=IM_GETP(image, 0, 0);
     double counts=0;
     while (nel > 0) {
         if (1 != fscanf(fobj, "%lf", ptr)) {
-            size_t ntot=IMSIZE(image);
+            size_t ntot=IM_SIZE(image);
             wlog("Could not read element %lu from file %s\n",
                  ntot-nel, filename);
             image=image_free(image);
@@ -106,8 +106,8 @@ double image_sky(struct image *self)
 void image_calc_counts(struct image *self)
 {
     double counts=0;
-    double *ptr = IMGETP(self,0,0);
-    size_t nel=IMSIZE(self);
+    double *ptr = IM_GETP(self,0,0);
+    size_t nel=IM_SIZE(self);
     while (nel > 0) {
         counts += *ptr;
         ptr++;
@@ -131,8 +131,8 @@ void image_normalize(struct image *self, double norm)
 
     double new_counts=0.0;
 
-    double *ptr = IMGETP(self,0,0);
-    size_t nel=IMSIZE(self);
+    double *ptr = IM_GETP(self,0,0);
+    size_t nel=IM_SIZE(self);
     while (nel > 0) {
         *ptr *= fac;
         new_counts += *ptr;

@@ -55,8 +55,8 @@ int main(int argc, char** argv)
     //image = image_read_text("/astro/u/esheldon/tmp/timage-sky-samecen.dat");
     if (image==NULL)
         exit(EXIT_FAILURE);
-    wlog("image[7,9]: %.16g\n", IMGET(image, 7, 9));
-    wlog("image[9,7]: %.16g\n", IMGET(image, 9, 7));
+    wlog("image[7,9]: %.16g\n", IM_GET(image, 7, 9));
+    wlog("image[9,7]: %.16g\n", IM_GET(image, 9, 7));
 
     gvec = gvec_new(ginit->size);
     gvec_copy(ginit, gvec);

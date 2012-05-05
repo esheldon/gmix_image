@@ -22,17 +22,22 @@ LINKFLAGS=['-lm','-lrt']
 
 CFLAGS=['-std=gnu99','-Wall','-Werror','-O2']
 
-test_sources = ['test','gvec','image','gmix_image','matrix']
+test_sources = ['test','gvec','image','gmix_image','matrix','bound']
+
+test_newimage_sources = ['test-newimage','newimage','bound']
+
 test_cen_sources = ['test-samecen','gvec','image',
                     'gmix_image','gmix_samecen','matrix']
 
 test_mat_sources = ['test-matrix','matrix']
 
 test_sources = [sdir+s for s in test_sources]
+test_newimage_sources = [sdir+s for s in test_newimage_sources]
 test_cen_sources = [sdir+s for s in test_cen_sources]
 test_mat_sources = [sdir+s for s in test_mat_sources]
 
 programs = [{'name':sdir+'test', 'sources':test_sources},
+            {'name':sdir+'test-newimage', 'sources':test_newimage_sources},
             {'name':sdir+'test-samecen', 'sources':test_cen_sources},
             {'name':sdir+'test-matrix', 'sources':test_mat_sources}]
 

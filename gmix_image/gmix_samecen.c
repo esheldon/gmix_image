@@ -39,7 +39,7 @@ int gmix_image_samecen(struct gmix* self,
 
     double sky=image_sky(image);
     double counts=image_counts(image);
-    size_t npoints = IMSIZE(image);
+    size_t npoints = IM_SIZE(image);
 
     double nsky = sky/counts;
     double psky = sky/(counts/npoints);
@@ -83,7 +83,7 @@ int gmix_image_samecen(struct gmix* self,
             for (size_t col=0; col<image->ncols; col++) {
                 for (size_t row=0; row<image->nrows; row++) {
 
-                    imnorm=IMGET(image,row,col);
+                    imnorm=IM_GET(image,row,col);
                     imnorm /= counts;
 
                     gtot=0;
