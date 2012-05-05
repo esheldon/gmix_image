@@ -48,12 +48,13 @@ int main(int argc, char** argv)
  
     // set the deteminants
     gvec_set_dets(ginit);
-    //image = image_new(31,31);
-    //image = image_read_text("/astro/u/esheldon/tmp/timage-sky-noisy.dat");
+
+    // read the data
     image = image_read_text(argv[1]);
-    //image = image_read_text("/astro/u/esheldon/tmp/timage-sky.dat");
+
     if (image==NULL)
         exit(EXIT_FAILURE);
+
     wlog("image[7,9]: %.16g\n", IM_GET(image, 7, 9));
     wlog("image[9,7]: %.16g\n", IM_GET(image, 9, 7));
 

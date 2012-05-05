@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include "newimage.h"
+#include "image.h"
 #include "bound.h"
 #include "defs.h"
 

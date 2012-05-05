@@ -40,6 +40,8 @@ programs = [{'name':sdir+'test', 'sources':test_sources},
             {'name':sdir+'test-newimage', 'sources':test_newimage_sources},
             {'name':sdir+'test-samecen', 'sources':test_cen_sources},
             {'name':sdir+'test-matrix', 'sources':test_mat_sources}]
+programs = [{'name':sdir+'test', 'sources':test_sources}]
+
 
 install_targets = [(prog['name'],'bin') for prog in programs]
 
