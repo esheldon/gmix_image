@@ -25,7 +25,7 @@ int gmix_image_convolved(struct gmix* self,
 
     double sky=image_sky(image);
     double counts=image_counts(image);
-    size_t npoints = IMSIZE(image);
+    size_t npoints = IM_SIZE(image);
 
     struct iter *iter_struct = iter_new(ngauss);
 
@@ -90,7 +90,7 @@ int gmix_get_sums_convolved(struct image *image,
     for (col=0; col<image->ncols; col++) {
         for (row=0; row<image->nrows; row++) {
 
-            imnorm=IMGET(image,row,col);
+            imnorm=IM_GET(image,row,col);
             imnorm /= image->counts;
 
             gtot=0;
