@@ -6,6 +6,14 @@
 
 struct image *image_new(size_t nrows, size_t ncols)
 {
+    int do_alloc_data=1;
+    struct image *self=NULL;
+    self = _image_new(nrows, ncols, do_alloc_data);
+    return self;
+}
+
+struct image *_image_new(size_t nrows, size_t ncols, int alloc_data)
+{
     struct image *self=NULL;
     size_t nel = nrows*ncols, i=0;
     if (nel == 0) {
@@ -19,10 +27,15 @@ struct image *image_new(size_t nrows, size_t ncols)
         exit(EXIT_FAILURE);
     }
 
+    // These are set forever
+    self->_nrows=nrows;
+    self->_ncols=ncols;
+    self->_size=nel;
+
+    // no mask for now, but these visible sizes can change
     self->nrows=nrows;
     self->ncols=ncols;
     self->size=nel;
-
 
     self->rows = calloc(nrows,sizeof(double *));
     if (self->rows==NULL) {
@@ -30,32 +43,38 @@ struct image *image_new(size_t nrows, size_t ncols)
                 nrows,ncols);
         exit(EXIT_FAILURE);
     }
-    self->rows[0] = calloc(self->size,sizeof(double));
-    if (self->rows[0]==NULL) {
-        fprintf(stderr,"could not allocate image of dimensions [%lu,%lu]\n",
-                nrows,ncols);
-        exit(EXIT_FAILURE);
+    if (alloc_data) {
+        self->rows[0] = calloc(self->size,sizeof(double));
+        if (self->rows[0]==NULL) {
+            fprintf(stderr,"could not allocate image of dimensions [%lu,%lu]\n",
+                    nrows,ncols);
+            exit(EXIT_FAILURE);
+        }
+
+        for(i = 1; i < nrows; i++) {
+            self->rows[i] = self->rows[i-1] + ncols;
+        }
+    } else {
+        self->rows[0] = NULL;
     }
 
-    for(i = 1; i < nrows; i++) {
-        self->rows[i] = self->rows[i-1] + ncols;
-    }
 
-    self->owns_rows=1;
-    self->owns_data=1;
     return self;
 }
+
+
 
 struct image *image_free(struct image *self)
 {
     if (self) {
         if (self->rows) {
-            if (self->rows[0] && self->owns_data) {
+            if (self->rows[0]) {
                 free(self->rows[0]);
             }
-            if (self->owns_rows) {
-                free(self->rows);
-            }
+            self->rows[0]=NULL;
+
+            free(self->rows);
+            self->rows=NULL;
         }
         free(self);
         self=NULL;
@@ -111,7 +130,7 @@ struct image *image_read_text(const char* filename)
 
 
 
-void image_write(struct image *self, FILE* stream)
+void image_write(const struct image *self, FILE* stream)
 {
     size_t row=0;
     double *col=NULL, *end=NULL;
@@ -128,24 +147,12 @@ void image_write(struct image *self, FILE* stream)
         fprintf(stream,"\n");
     }
 }
-struct image* image_sub(struct image *parent, struct bound* bound)
+void image_add_mask(struct image *self, const struct bound* bound)
 {
-    struct image *self=NULL;
     size_t rowmax=0, colmax=0;
 
-    self = calloc(1, sizeof(struct image));
-    if (self==NULL) {
-        fprintf(stderr,"could not allocate struct sub-image\n");
-        exit(EXIT_FAILURE);
-    }
-
-    self->parent=parent;
-    self->rows=parent->rows;
-    IM_SET_SKY(self, IM_SKY(parent));
-
-    // note using size_t takes care of min values being >= 0
-    rowmax = IM_NROWS(parent) -1;
-    colmax = IM_NCOLS(parent) -1;
+    rowmax = IM_PARENT_NROWS(self) -1;
+    colmax = IM_PARENT_NCOLS(self) -1;
 
     self->row0 = bound->rowmin;
     self->col0 = bound->colmin;
@@ -158,34 +165,18 @@ struct image* image_sub(struct image *parent, struct bound* bound)
     self->size = self->nrows*self->ncols;
 
     // we keep the counts for the sub-image region
+    // the parent counts are still available in _counts
     image_calc_counts(self);
-
-    return self;
 }
 
 // in this case we own the rows only, not the data to which they point
 struct image* image_from_array(double* data, size_t nrows, size_t ncols)
 {
+    int dont_alloc_data=0;
+    size_t i=0;
     struct image *self=NULL;
-    size_t nel = nrows*ncols, i=0;
 
-    self = calloc(1, sizeof(struct image));
-    if (self==NULL) {
-        fprintf(stderr,"could not allocate struct sub-image\n");
-        exit(EXIT_FAILURE);
-    }
-
-    self->nrows=nrows;
-    self->ncols=ncols;
-    self->size=nel;
-
-    self->rows = calloc(nrows,sizeof(double *));
-    if (self->rows==NULL) {
-        fprintf(stderr,"could not allocate image of dimensions [%lu,%lu]\n",
-                nrows,ncols);
-        exit(EXIT_FAILURE);
-    }
-    self->owns_rows=1;
+    self = _image_new(nrows, ncols, dont_alloc_data);
 
     self->rows[0] = data;
     for(i = 1; i < nrows; i++) {
@@ -193,7 +184,6 @@ struct image* image_from_array(double* data, size_t nrows, size_t ncols)
     }
 
     image_calc_counts(self);
-
     return self;
 }
 
@@ -206,13 +196,17 @@ void image_calc_counts(struct image *self)
     size_t row=0;
     for (row=0;row<nrows;row++) {
 
-        col    = IM_ROW_ITER(self,row);
+        col = IM_ROW_ITER(self,row);
         end = IM_ROW_END(self,row);
         for (; col != end; col++) {
             counts += *col;
         }
     }
     self->counts=counts;
+
+    if (!IM_HAS_MASK(self)) {
+        self->_counts=counts;
+    }
 }
 
 void image_add_scalar(struct image *self, double val)
@@ -223,10 +217,12 @@ void image_add_scalar(struct image *self, double val)
         col    = IM_ROW_ITER(self,row);
         end = IM_ROW_END(self,row);
         for (; col != end; col++) {
+            self->counts  += val-(*col);
+            self->_counts += val-(*col);
             *col += val;
         }
     }
 
-    image_calc_counts(self);
+    self->sky += val;
 }
 
