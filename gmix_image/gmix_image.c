@@ -132,7 +132,7 @@ int gmix_get_sums(struct image *image,
                     flags+=GMIX_ERROR_NEGATIVE_DET;
                     goto _gmix_get_sums_bail;
                 }
-                // w.r.t. row0,col0 in case this is a subimage
+                // w.r.t. row0,col0 in case this is a masked image
                 // centers will be w.r.t. the main image
                 u = (row-(gauss->row-row0));
                 v = (col-(gauss->col-col0));
@@ -146,8 +146,9 @@ int gmix_get_sums(struct image *image,
                 sums->gi = gauss->p*exp( -0.5*chi2 )/b;
                 gtot += sums->gi;
 
-                sums->trowsum = row*sums->gi;
-                sums->tcolsum = col*sums->gi;
+                // keep row units in unmasked frame
+                sums->trowsum = (row0+row)*sums->gi;
+                sums->tcolsum = (col0+col)*sums->gi;
                 sums->tu2sum  = u2*sums->gi;
                 sums->tuvsum  = uv*sums->gi;
                 sums->tv2sum  = v2*sums->gi;

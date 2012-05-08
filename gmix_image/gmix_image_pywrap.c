@@ -10,6 +10,7 @@
 struct PyGMixObject {
   PyObject_HEAD
 
+  struct image *image;
   // holds the result
   struct gvec *gvec;
 
@@ -232,38 +233,46 @@ PyObject *gauss_to_dict(struct gauss *self)
 /*
  * no copy is made.
  */
-static int associate_image(struct image *self, PyObject* image_obj)
+struct image *associate_image(PyObject* image_obj)
 {
-    int status=1;
+    struct image *image=NULL;
+    size_t nrows=0, ncols=0;
+    double *data=NULL;
 
-    self->data = 
-        check_double_image(image_obj, &self->nrows, &self->ncols);
-    if (!self->data) {
-        status=0;
-    } else {
-        self->size = self->nrows*self->ncols;
+    data = check_double_image(image_obj, &nrows, &ncols);
+    if (data) {
+        image = image_from_array(data, nrows, ncols);
     }
 
-    return status;
+    return image;
+}
+
+void gmix_cleanup(struct PyGMixObject* self)
+{
+    self->image    = image_free(self->image);
+    self->gvec     = gvec_free(self->gvec);
+    self->gvec_psf = gvec_free(self->gvec_psf);
 }
 
 static int
 PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 {
+    int status=1;
     struct gmix gmix = {0};
-    struct image image = {0};
 
     PyObject* guess_lod=NULL;
     PyObject* psf_lod=NULL;
     PyObject* image_obj=NULL;
+    double sky=0, counts=0;
     unsigned int maxiter=0;
+    self->image=NULL; self->gvec=NULL; self->gvec_psf=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
                                "maxiter", "tol", "psf", "verbose", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|Oi", argnames,
                                      &image_obj, 
-                                     &image.sky, 
-                                     &image.counts, 
+                                     &sky, 
+                                     &counts, 
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
                                      &gmix.tol,
@@ -273,23 +282,23 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     }
 
     // no copying
-    if (!associate_image(&image, image_obj)) {
-        return -1;
+    self->image= associate_image(image_obj);
+    if (!self->image) {
+        goto _gmix_init_bail;
     }
-    image.has_sky=1;
-    image.has_counts=1;
+    IM_SET_SKY(self->image, sky);
 
     // copy all data from dict into the gvec as a starting point
     // need to free gvec in the destructor
     self->gvec = gvec_from_list_of_dicts(guess_lod,"guess");
     if (!self->gvec) {
-        return -1;
+        goto _gmix_init_bail;
     }
 
     if (psf_lod != NULL && psf_lod != Py_None) {
         self->gvec_psf = gvec_from_list_of_dicts(psf_lod,"psf");
         if (!self->gvec_psf) {
-            return -1;
+            goto _gmix_init_bail;
         }
     }
     gmix.maxiter = maxiter;
@@ -297,7 +306,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     if (self->gvec_psf) {
 
         self->flags = gmix_image_convolved(&gmix, 
-                                           &image, 
+                                           self->image, 
                                            self->gvec, 
                                            self->gvec_psf,
                                            &self->numiter,
@@ -305,10 +314,16 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 
     } else {
         self->flags = gmix_image(&gmix, 
-                                 &image, 
+                                 self->image, 
                                  self->gvec, 
                                  &self->numiter,
                                  &self->fdiff);
+    }
+
+_gmix_init_bail:
+    if (!status) {
+        gmix_cleanup(self);
+        return -1;
     }
     return 0;
 }
@@ -316,9 +331,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 static void
 PyGMixObject_dealloc(struct PyGMixObject* self)
 {
-
-    self->gvec = gvec_free(self->gvec);
-    self->gvec_psf = gvec_free(self->gvec_psf);
+    gmix_cleanup(self);
 
 #if ((PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION >= 6) || (PY_MAJOR_VERSION == 3))
     Py_TYPE(self)->tp_free((PyObject*)self);

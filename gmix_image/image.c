@@ -54,6 +54,7 @@ struct image *_image_new(size_t nrows, size_t ncols, int alloc_data)
         for(i = 1; i < nrows; i++) {
             self->rows[i] = self->rows[i-1] + ncols;
         }
+        self->is_owner=1;
     } else {
         self->rows[0] = NULL;
     }
@@ -68,7 +69,7 @@ struct image *image_free(struct image *self)
 {
     if (self) {
         if (self->rows) {
-            if (self->rows[0]) {
+            if (self->rows[0] && IM_IS_OWNER(self)) {
                 free(self->rows[0]);
             }
             self->rows[0]=NULL;

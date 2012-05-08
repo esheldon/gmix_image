@@ -83,6 +83,7 @@ int gmix_get_sums_convolved(struct image *image,
     double u=0, v=0, uv=0, u2=0, v2=0;
     size_t i=0, col=0, row=0;
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+    size_t row0=IM_ROW0(image), col0=IM_COL0(image); // could be a subimage
     struct gauss* gauss=NULL;
     struct sums *sums=NULL;
     //double chi2=0,b=0;
@@ -98,8 +99,7 @@ int gmix_get_sums_convolved(struct image *image,
             gauss = &gvec->data[0];
             sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
-                // w.r.t. row0,col0 in case this is a subimage
-                // centers will be w.r.t. the main image
+                // keep row units in unmasked frame
                 u = (row-(gauss->row-row0));
                 v = (col-(gauss->col-col0));
 
@@ -115,8 +115,8 @@ int gmix_get_sums_convolved(struct image *image,
 
                 gtot += sums->gi;
 
-                sums->trowsum = row*sums->gi;
-                sums->tcolsum = col*sums->gi;
+                sums->trowsum = (row0+row)*sums->gi;
+                sums->tcolsum = (col0+col)*sums->gi;
                 sums->tu2sum  = u2*sums->gi;
                 sums->tuvsum  = uv*sums->gi;
                 sums->tv2sum  = v2*sums->gi;

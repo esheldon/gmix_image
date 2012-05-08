@@ -28,6 +28,7 @@ struct image {
 
     double sky;
 
+    int is_owner;
     double **rows;
 };
 
@@ -39,6 +40,9 @@ struct image {
 #define IM_SKY(im) ( (im)->sky )
 #define IM_COUNTS(im) ( (im)->counts )
 #define IM_SET_SKY(im, val) ( (im)->sky = (val) )
+
+#define IM_IS_OWNER(im) ( (im)->is_owner )
+
 // counts will be updated consistently in most cases, so
 // this is usually not needed except maybe when using
 // image_from_array, etc.
