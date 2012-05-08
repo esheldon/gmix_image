@@ -36,6 +36,13 @@ struct image {
 #define IM_SIZE(im) ((im)->size)
 #define IM_NROWS(im) ((im)->nrows)
 #define IM_NCOLS(im) ((im)->ncols)
+#define IM_SKY(im) ( (im)->sky )
+#define IM_COUNTS(im) ( (im)->counts )
+#define IM_SET_SKY(im, val) ( (im)->sky = (val) )
+// counts will be updated consistently in most cases, so
+// this is usually not needed except maybe when using
+// image_from_array, etc.
+#define IM_SET_COUNTS(im, val) ( (im)->counts = (val) )
 
 #define IM_HAS_MASK(im)                              \
     ( (im)->row0 != 0                                \
@@ -52,11 +59,7 @@ struct image {
     (im)->counts=(im)->_counts;                                              \
 } while(0)
 
-#define IM_SKY(im) ( (im)->sky )
-#define IM_SET_SKY(im, val) ( (im)->sky = (val) )
 
-#define IM_COUNTS(im) ( (im)->counts )
-#define IM_SET_COUNTS(im, val) ( (im)->counts = (val) )
 
 #define IM_PARENT_SIZE(im) ((im)->_size)
 #define IM_PARENT_NROWS(im) ((im)->_nrows)
