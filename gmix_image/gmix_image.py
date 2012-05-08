@@ -162,6 +162,7 @@ class GMix(_gmix_image.GMix):
                  maxiter=1000,
                  tol=1.e-6,
                  psf=None,
+                 bound=None,
                  verbose=False):
 
         self._image = array(im, ndmin=2, dtype='f8', copy=False)
@@ -171,6 +172,7 @@ class GMix(_gmix_image.GMix):
         self._maxiter=maxiter
         self._tol=tol
         self._psf=self._fixup_psf(copy.deepcopy(psf))
+        self._bound=copy.deepcopy(bound)
         self._verbose=verbose
 
         if self._sky is None:
@@ -190,6 +192,7 @@ class GMix(_gmix_image.GMix):
                                   self._maxiter,
                                   self._tol,
                                   psf=self._psf,
+                                  bound=self._bound,
                                   verbose=verbosity)
 
     # just to make access nicer.

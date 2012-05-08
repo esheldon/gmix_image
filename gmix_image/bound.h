@@ -3,24 +3,26 @@
 
 #include <stdlib.h>
 
+// note bounds can have negative indices; the image code
+// should deal with it properly
 struct bound {
-    size_t rowmin;
-    size_t rowmax;
-    size_t colmin;
-    size_t colmax;
+    ssize_t rowmin;
+    ssize_t rowmax;
+    ssize_t colmin;
+    ssize_t colmax;
 };
 
 
-struct bound *bound_new(size_t rowmin, 
-                        size_t rowmax, 
-                        size_t colmin, 
-                        size_t colmax);
+struct bound *bound_new(ssize_t rowmin, 
+                        ssize_t rowmax, 
+                        ssize_t colmin, 
+                        ssize_t colmax);
 struct bound *bound_free(struct bound *self);
 
 void bound_set(struct bound* self,
-               size_t rowmin, 
-               size_t rowmax, 
-               size_t colmin, 
-               size_t colmax);
+               ssize_t rowmin, 
+               ssize_t rowmax, 
+               ssize_t colmin, 
+               ssize_t colmax);
 
 #endif

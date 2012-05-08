@@ -3,6 +3,7 @@
 
 #include "gvec.h"
 #include "image.h"
+#include "bound.h"
 #include "gmix_image.h"
 #include "gmix_image_convolved.h"
 
@@ -28,6 +29,33 @@ struct PyGMixObject {
 /*
  * methods working on python objects
  */
+
+static int
+get_dict_ssize_t(PyObject* dict, const char *key, ssize_t *val)
+{
+    int status=1;
+    PyObject *obj=NULL;
+
+    obj = PyDict_GetItemString(dict, key);
+    if (obj == NULL) {
+        PyErr_Format(PyExc_ValueError,
+                    "Key '%s' not present in dict", key);
+        status=0;
+        goto _get_dict_ssize_t_bail;
+    }
+
+    *val = (ssize_t) PyInt_AsSsize_t(obj);
+    if (PyErr_Occurred()) {
+        PyErr_Format(PyExc_ValueError,
+                    "Error converting '%s' to a ssize_t", key);
+        status=0;
+    }
+
+_get_dict_ssize_t_bail:
+    return status;
+}
+
+
 
 static int
 get_dict_double(PyObject* dict, const char* key, double *val)
@@ -247,6 +275,40 @@ struct image *associate_image(PyObject* image_obj)
     return image;
 }
 
+int add_mask_to_image(struct PyGMixObject* self, PyObject* bound_obj)
+{
+    int status=1;
+    struct bound bound = {0};
+
+    if (!PyDict_Check(bound_obj)) {
+        PyErr_SetString(PyExc_ValueError, "Bound is not a dict");
+        status=0;
+        goto _bound_copy_from_dict_bail;
+    }
+
+
+    if (!get_dict_ssize_t(bound_obj,"rowmin", &bound.rowmin)) {
+        status=0;
+        goto _bound_copy_from_dict_bail;
+    }
+    if (!get_dict_ssize_t(bound_obj,"rowmax", &bound.rowmax)) {
+        status=0;
+        goto _bound_copy_from_dict_bail;
+    }
+    if (!get_dict_ssize_t(bound_obj,"colmin", &bound.colmin)) {
+        status=0;
+        goto _bound_copy_from_dict_bail;
+    }
+    if (!get_dict_ssize_t(bound_obj,"colmax", &bound.colmax)) {
+        status=0;
+        goto _bound_copy_from_dict_bail;
+    }
+
+    image_add_mask(self->image, &bound);
+
+_bound_copy_from_dict_bail:
+    return status;
+}
 void gmix_cleanup(struct PyGMixObject* self)
 {
     self->image    = image_free(self->image);
@@ -262,14 +324,15 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 
     PyObject* guess_lod=NULL;
     PyObject* psf_lod=NULL;
+    PyObject* bound_obj=NULL;
     PyObject* image_obj=NULL;
     double sky=0, counts=0;
     unsigned int maxiter=0;
     self->image=NULL; self->gvec=NULL; self->gvec_psf=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
-                               "maxiter", "tol", "psf", "verbose", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|Oi", argnames,
+                               "maxiter", "tol", "psf", "bound", "verbose", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOi", argnames,
                                      &image_obj, 
                                      &sky, 
                                      &counts, 
@@ -277,6 +340,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
                                      &maxiter, 
                                      &gmix.tol,
                                      &psf_lod,
+                                     &bound_obj,
                                      &gmix.verbose)) {
         return -1;
     }
@@ -284,20 +348,29 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     // no copying
     self->image= associate_image(image_obj);
     if (!self->image) {
+        status=0;
         goto _gmix_init_bail;
     }
     IM_SET_SKY(self->image, sky);
 
+    if (bound_obj != NULL && bound_obj != Py_None) {
+        if (!add_mask_to_image(self, bound_obj)) {
+            status=0;
+            goto _gmix_init_bail;
+        }
+    }
     // copy all data from dict into the gvec as a starting point
     // need to free gvec in the destructor
     self->gvec = gvec_from_list_of_dicts(guess_lod,"guess");
     if (!self->gvec) {
+        status=0;
         goto _gmix_init_bail;
     }
 
     if (psf_lod != NULL && psf_lod != Py_None) {
         self->gvec_psf = gvec_from_list_of_dicts(psf_lod,"psf");
         if (!self->gvec_psf) {
+            status=0;
             goto _gmix_init_bail;
         }
     }

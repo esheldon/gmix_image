@@ -148,21 +148,46 @@ void image_write(const struct image *self, FILE* stream)
         fprintf(stream,"\n");
     }
 }
+
+// bound is gauranteed to be within [0,size).  Also maxval is
+// gauranteed to be >= minval.
+void fix_bounds(size_t dim, ssize_t *minval, ssize_t *maxval)
+{
+    if (*minval < 0) {
+        *minval=0;
+    }
+    if (*maxval < 0) {
+        *maxval=0;
+    }
+
+    if (*minval > (dim-1)) {
+        *minval=(dim-1);
+    }
+    if (*maxval > (dim-1)) {
+        *maxval=(dim-1);
+    }
+
+    if (*maxval < *minval) {
+        *maxval = *minval;
+    }
+}
 void image_add_mask(struct image *self, const struct bound* bound)
 {
-    size_t rowmax=0, colmax=0;
+    ssize_t tminval=0, tmaxval=0;
 
-    rowmax = IM_PARENT_NROWS(self) -1;
-    colmax = IM_PARENT_NCOLS(self) -1;
+    tminval=bound->rowmin;
+    tmaxval=bound->rowmax;
 
-    self->row0 = bound->rowmin;
-    self->col0 = bound->colmin;
+    fix_bounds(IM_PARENT_NROWS(self), &tminval, &tmaxval);
+    self->row0  = (size_t) tminval;
+    self->nrows = (size_t) (tmaxval - tminval + 1);
 
-    rowmax = bound->rowmax > rowmax ? rowmax : bound->rowmax;
-    colmax = bound->colmax > colmax ? colmax : bound->colmax;
+    tminval=bound->colmin;
+    tmaxval=bound->colmax;
+    fix_bounds(IM_PARENT_NCOLS(self), &tminval, &tmaxval);
+    self->col0  = (size_t) tminval;
+    self->ncols = (size_t)(tmaxval - tminval + 1);
 
-    self->nrows = rowmax - bound->rowmin + 1;
-    self->ncols = colmax - bound->colmin + 1;
     self->size = self->nrows*self->ncols;
 
     // we keep the counts for the sub-image region
