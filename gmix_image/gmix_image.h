@@ -11,6 +11,7 @@
 struct gmix {
     size_t maxiter;
     double tol;
+    int samecen;
     int fixsky;
     int verbose;
 };
@@ -49,12 +50,26 @@ struct iter {
 int gmix_image(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
+               struct gvec *gvec_psf, // can be NULL
                size_t *iter,
                double *fdiff);
+int gmix_image_samecen(struct gmix* self,
+                       struct image *image, 
+                       struct gvec *gvec,
+                       struct gvec *gvec_psf, // can be NULL
+                       size_t *iter,
+                       double *fdiff);
+
 
 int gmix_get_sums(struct image *image,
                   struct gvec *gvec,
+                  struct gvec *gvec_psf,
                   struct iter* iter_struct);
+
+double gmix_evaluate_convolved(struct gauss *gauss,
+                               struct gvec *gvec_psf,
+                               double u2, double uv, double v2,
+                               int *flags);
 
 
 
@@ -62,7 +77,23 @@ struct iter *iter_new(size_t ngauss);
 struct iter *iter_free(struct iter *self);
 void iter_clear(struct iter *self);
 
-void gmix_set_gvec_fromiter(struct gvec* gvec, struct iter* iter);
+void gmix_set_gvec_fromiter(struct gvec *gvec, 
+                            struct gvec *gvec_psf, 
+                            struct iter *iter);
 
+void gmix_set_gvec_fromiter_convolved(struct gvec *gvec, 
+                                      struct gvec *gvec_psf,
+                                      struct iter* iter);
 
+/* 
+ * when we are using same center, we want to be able to just set a new p and
+ * center *
+ */
+
+/*
+void gmix_set_p_and_cen(struct gvec* gvec, 
+                        double* pnew,
+                        double* rowsum,
+                        double* colsum);
+*/
 #endif

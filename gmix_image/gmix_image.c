@@ -42,7 +42,180 @@
 #include "gvec.h"
 #include "defs.h"
 
+int gmix_image(struct gmix* self,
+               struct image *image, 
+               struct gvec *gvec,
+               struct gvec *gvec_psf,
+               size_t *iter,
+               double *fdiff)
+{
+    int flags=0;
+    double wmomlast=0, wmom=0;
+    double sky     = IM_SKY(image);
+    double counts  = IM_COUNTS(image);
+    size_t npoints = IM_SIZE(image);
 
+    struct iter *iter_struct = iter_new(gvec->size);
+
+    iter_struct->nsky = sky/counts;
+    iter_struct->psky = sky/(counts/npoints);
+
+    if (gvec_psf)
+        gvec_set_total_moms(gvec_psf);
+
+    wmomlast=-9999;
+    *iter=0;
+    while (*iter < self->maxiter) {
+        if (self->verbose)
+            gvec_print(gvec,stderr);
+
+        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        if (flags!=0)
+            goto _gmix_image_bail;
+
+        gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+
+        // fixing sky doesn't work, need correct starting value
+        if (!self->fixsky) {
+            iter_struct->psky = iter_struct->skysum;
+            iter_struct->nsky = iter_struct->psky/npoints;
+        }
+
+        wmom = gvec_wmomsum(gvec);
+        wmom /= iter_struct->psum;
+        *fdiff = fabs((wmom-wmomlast)/wmom);
+
+        if (*fdiff < self->tol) {
+            break;
+        }
+        wmomlast = wmom;
+        (*iter)++;
+    }
+
+_gmix_image_bail:
+    if (self->maxiter == (*iter)) {
+        flags += GMIX_ERROR_MAXIT;
+    }
+    if (flags!=0)
+        fprintf(stderr,"error found at iter %lu\n", *iter);
+
+    iter_struct = iter_free(iter_struct);
+
+    return flags;
+}
+
+int gmix_image_samecen(struct gmix* self,
+                       struct image *image, 
+                       struct gvec *gvec,
+                       struct gvec *gvec_psf,
+                       size_t *iter,
+                       double *fdiff)
+{
+    int flags=0;
+    double wmomlast=0, wmom=0;
+    double sky     = IM_SKY(image);
+    double counts  = IM_COUNTS(image);
+    size_t npoints = IM_SIZE(image);
+    struct vec2 cen_new;
+    struct gvec *gcopy=NULL;
+    struct iter *iter_struct = iter_new(gvec->size);
+    struct gauss *gauss = NULL;
+    size_t i=0;
+
+    gcopy = gvec_new(gvec->size);
+
+    iter_struct->nsky = sky/counts;
+    iter_struct->psky = sky/(counts/npoints);
+
+    if (gvec_psf)
+        gvec_set_total_moms(gvec_psf);
+
+    wmomlast=-9999;
+    *iter=0;
+    while (*iter < self->maxiter) {
+        if (self->verbose)
+            gvec_print(gvec,stderr);
+
+        // first pass to get centers
+        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        if (flags!=0)
+            goto _gmix_image_samecen_bail;
+
+        // copy for getting centers only
+        gvec_copy(gvec, gcopy);
+        gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
+
+        if (!gvec_wmean_center(gcopy, &cen_new)) {
+            flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
+            goto _gmix_image_samecen_bail;
+        }
+        gauss = gvec->data;
+        for (i=0; i<gvec->size; i++) {
+            gauss->row = cen_new.v1;
+            gauss->col = cen_new.v2;
+            gauss++;
+        }
+
+        // now that we have fixed centers, we re-calculate everything
+        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        if (flags!=0)
+            goto _gmix_image_samecen_bail;
+ 
+
+        gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+
+        // fixing sky doesn't work, need correct starting value
+        if (!self->fixsky) {
+            iter_struct->psky = iter_struct->skysum;
+            iter_struct->nsky = iter_struct->psky/npoints;
+        }
+
+        wmom = gvec_wmomsum(gvec);
+        wmom /= iter_struct->psum;
+        *fdiff = fabs((wmom-wmomlast)/wmom);
+
+        if (*fdiff < self->tol) {
+            break;
+        }
+        wmomlast = wmom;
+        (*iter)++;
+    }
+
+_gmix_image_samecen_bail:
+    if (self->maxiter == (*iter)) {
+        flags += GMIX_ERROR_MAXIT;
+    }
+    if (flags!=0)
+        fprintf(stderr,"error found at iter %lu\n", *iter);
+
+    gcopy = gvec_free(gcopy);
+    iter_struct = iter_free(iter_struct);
+
+    return flags;
+}
+
+/* when we are fixing centers, we want to be able to just set a
+ * new p and center 
+ * */
+/*
+void gmix_set_p_and_cen(struct gvec* gvec, 
+                        struct iter *iter,
+                        double* pnew,
+                        double* rowsum,
+                        double* colsum)
+{
+    struct gauss *gauss=gvec->data;
+    for (size_t i=0; i<gvec->size; i++) {
+        gauss->p = pnew[i];
+        gauss->row = rowsum[i]/pnew[i];
+        gauss->col = colsum[i]/pnew[i];
+        gauss++;
+    }
+
+}
+*/
+
+/*
 int gmix_image(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
@@ -50,14 +223,12 @@ int gmix_image(struct gmix* self,
                double *fdiff)
 {
     int flags=0;
-    size_t ngauss = gvec->size;
     double wmomlast=0, wmom=0;
-
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
     size_t npoints = IM_SIZE(image);
 
-    struct iter *iter_struct = iter_new(ngauss);
+    struct iter *iter_struct = iter_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/npoints);
@@ -75,8 +246,10 @@ int gmix_image(struct gmix* self,
 
         gmix_set_gvec_fromiter(gvec, iter_struct);
 
-        iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/npoints;
+        if (!self->fixsky) {
+            iter_struct->psky = iter_struct->skysum;
+            iter_struct->nsky = iter_struct->psky/npoints;
+        }
 
         wmom = gvec_wmomsum(gvec);
 
@@ -98,13 +271,14 @@ _gmix_image_bail:
     return flags;
 }
 
-
+*/
 
 
 
 
 int gmix_get_sums(struct image *image,
                   struct gvec *gvec,
+                  struct gvec *gvec_psf,
                   struct iter* iter)
 {
     int flags=0;
@@ -139,11 +313,17 @@ int gmix_get_sums(struct image *image,
 
                 u2 = u*u; v2 = v*v; uv = u*v;
 
-                chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                chi2 /= gauss->det;
-                b = M_TWO_PI*sqrt(gauss->det);
-
-                sums->gi = gauss->p*exp( -0.5*chi2 )/b;
+                if (gvec_psf) { 
+                    sums->gi = gmix_evaluate_convolved(gauss,
+                                                       gvec_psf,
+                                                       u2,uv,v2,
+                                                       &flags);
+                } else {
+                    chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                    chi2 /= gauss->det;
+                    b = M_TWO_PI*sqrt(gauss->det);
+                    sums->gi = gauss->p*exp( -0.5*chi2 )/b;
+                }
                 gtot += sums->gi;
 
                 // keep row units in unmasked frame
@@ -186,19 +366,119 @@ _gmix_get_sums_bail:
 }
 
 
+/* 
+   mathematically this comes down to averaging over
+   the convolved gaussians.
 
-void gmix_set_gvec_fromiter(struct gvec* gvec, struct iter* iter)
+       sum_i( g*psf_i*p_i )/sum(p_i)
+
+   where g*psf_i is a convolution with psf i.
+   The convolution comes down to adding the covariance
+   matrices and then we have to do the proper normalization
+   using the convolved determinant
+
+   u is (row-rowcen) v is (col-colcen)
+
+   We will bail if *either* the gaussian determinant is
+   zero or the convolved gaussian determinant is zero
+*/
+
+
+double gmix_evaluate_convolved(struct gauss *gauss,
+                               struct gvec *gvec_psf,
+                               double u2, double uv, double v2,
+                               int *flags)
 {
-    struct sums *sums=iter->sums;
-    struct gauss *gauss = gvec->data;
     size_t i=0;
+    struct gauss *psf=NULL;
+    double irr=0, irc=0, icc=0, det=0, chi2=0, b=0;
+    double psum=0;
+    double val=0;
+
+    if (gauss->det <= 0) {
+        wlog("found obj det: %.16g\n", det);
+        *flags |= GMIX_ERROR_NEGATIVE_DET;
+        val=-9999;
+        goto _gmix_eval_conv_bail;
+    }
+
+    psf = &gvec_psf->data[0];
+    for (i=0; i<gvec_psf->size; i++) {
+
+        irr = gauss->irr + psf->irr;
+        irc = gauss->irc + psf->irc;
+        icc = gauss->icc + psf->icc;
+
+        det = irr*icc - irc*irc;
+        if (det <= 0) {
+            wlog("found convolved det: %.16g\n", det);
+            *flags |= GMIX_ERROR_NEGATIVE_DET;
+            val=-9999;
+            goto _gmix_eval_conv_bail;
+        }
+
+        chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
+        chi2 /= det;
+
+        b = M_TWO_PI*sqrt(det);
+        val += psf->p*exp( -0.5*chi2 )/b;
+        psum += psf->p;
+        psf++;
+    }
+
+    val *= gauss->p/psum;
+
+_gmix_eval_conv_bail:
+    return val;
+}
+
+
+
+
+void gmix_set_gvec_fromiter(struct gvec *gvec, 
+                            struct gvec *gvec_psf, 
+                            struct iter* iter)
+{
+    if (gvec_psf) {
+        gmix_set_gvec_fromiter_convolved(gvec, gvec_psf, iter);
+    } else {
+        struct sums *sums=iter->sums;
+        struct gauss *gauss = gvec->data;
+        size_t i=0;
+        for (i=0; i<gvec->size; i++) {
+            gauss->p   = sums->pnew;
+            gauss->row = sums->rowsum/sums->pnew;
+            gauss->col = sums->colsum/sums->pnew;
+            gauss->irr = sums->u2sum/sums->pnew;
+            gauss->irc = sums->uvsum/sums->pnew;
+            gauss->icc = sums->v2sum/sums->pnew;
+            gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+
+            sums++;
+            gauss++;
+        }
+    }
+}
+
+void gmix_set_gvec_fromiter_convolved(struct gvec *gvec, 
+                                      struct gvec *gvec_psf,
+                                      struct iter* iter)
+{
+    struct sums *sums=NULL;
+    struct gauss *gauss=NULL;
+    size_t i=0;
+
+    sums=iter->sums;
+    gauss=gvec->data;
     for (i=0; i<gvec->size; i++) {
         gauss->p   = sums->pnew;
         gauss->row = sums->rowsum/sums->pnew;
         gauss->col = sums->colsum/sums->pnew;
-        gauss->irr = sums->u2sum/sums->pnew;
-        gauss->irc = sums->uvsum/sums->pnew;
-        gauss->icc = sums->v2sum/sums->pnew;
+
+        gauss->irr = sums->u2sum/sums->pnew - gvec_psf->total_irr;
+        gauss->irc = sums->uvsum/sums->pnew - gvec_psf->total_irc;
+        gauss->icc = sums->v2sum/sums->pnew - gvec_psf->total_icc;
+
         gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
 
         sums++;

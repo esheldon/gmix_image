@@ -17,13 +17,5 @@ int gmix_get_sums_convolved(struct image *image,
                             struct gvec *gvec_psf,
                             struct iter* iter);
 
-double gmix_evaluate_convolved(struct gauss *gauss,
-                               struct gvec *gvec_psf,
-                               double u2, double uv, double v2,
-                               int *flags);
 
-
-void gmix_set_gvec_fromiter_convolved(struct gvec *gvec, 
-                                      struct gvec *gvec_psf,
-                                      struct iter* iter);
 #endif

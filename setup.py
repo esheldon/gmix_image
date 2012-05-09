@@ -7,7 +7,6 @@ data_files=[]
 ext=Extension("gmix_image._gmix_image", 
               ["gmix_image/gmix_image_pywrap.c",
                "gmix_image/gmix_image.c",
-               "gmix_image/gmix_image_convolved.c",
                "gmix_image/gvec.c",
                "gmix_image/image.c",
                "gmix_image/matrix.c"])

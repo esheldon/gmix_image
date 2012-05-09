@@ -20,20 +20,18 @@ int gmix_image_convolved(struct gmix* self,
                          double *fdiff)
 {
     int flags=0;
-    size_t ngauss = gvec->size;
     double wmomlast=0, wmom=0;
-
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
     size_t npoints = IM_SIZE(image);
 
-    struct iter *iter_struct = iter_new(ngauss);
-
+    struct iter *iter_struct = iter_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/npoints);
 
-    gvec_set_total_moms(gvec_psf);
+    if (gvec_psf)
+        gvec_set_total_moms(gvec_psf);
 
     wmomlast=-9999;
     *iter=0;
@@ -41,17 +39,24 @@ int gmix_image_convolved(struct gmix* self,
         if (self->verbose)
             gvec_print(gvec,stderr);
 
-        flags = gmix_get_sums_convolved(image, gvec, gvec_psf, iter_struct);
+        if (gvec_psf)
+            flags = gmix_get_sums_convolved(image, gvec, gvec_psf, iter_struct);
+        else
+            flags = gmix_get_sums(image, gvec, iter_struct);
 
-        if (flags!=0) {
-            fprintf(stderr,"error found at iter %lu\n", *iter);
+        if (flags!=0)
             goto _gmix_image_convolved_bail;
+
+        if (gvec_psf)
+            gmix_set_gvec_fromiter_convolved(gvec, gvec_psf, iter_struct);
+        else
+            gmix_set_gvec_fromiter(gvec, iter_struct);
+
+        // this doesn't work
+        if (!self->fixsky) {
+            iter_struct->psky = iter_struct->skysum;
+            iter_struct->nsky = iter_struct->psky/npoints;
         }
-
-        gmix_set_gvec_fromiter_convolved(gvec, gvec_psf, iter_struct);
-
-        iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/npoints;
 
         wmom = gvec_wmomsum(gvec);
 
@@ -68,6 +73,9 @@ _gmix_image_convolved_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
+    if (flags!=0)
+        fprintf(stderr,"error found at iter %lu\n", *iter);
+
     iter_struct = iter_free(iter_struct);
 
     return flags;
@@ -166,6 +174,8 @@ _gmix_get_sums_convolved_bail:
    We will bail if *either* the gaussian determinant is
    zero or the convolved gaussian determinant is zero
 */
+
+/*
 double gmix_evaluate_convolved(struct gauss *gauss,
                                struct gvec *gvec_psf,
                                double u2, double uv, double v2,
@@ -213,8 +223,9 @@ double gmix_evaluate_convolved(struct gauss *gauss,
 _gmix_eval_conv_bail:
     return val;
 }
+*/
 
-
+/*
 void gmix_set_gvec_fromiter_convolved(struct gvec *gvec, 
                                       struct gvec *gvec_psf,
                                       struct iter* iter)
@@ -243,5 +254,5 @@ void gmix_set_gvec_fromiter_convolved(struct gvec *gvec,
         gauss++;
     }
 }
-
+*/
 

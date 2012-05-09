@@ -82,12 +82,25 @@ class GMix(_gmix_image.GMix):
         A gaussian mixture model representing the PSF.  The best fit gaussian
         mixture will thus be the pre-psf values.  Centers are not necessary for
         the psf mixture model.
+    bound: dict
+        A boundary region over which to work.  The dictionary should have the
+        following integer entries
+            rowmin
+            rowmax
+            colmin
+            colmax
+        The values will be clipped to within the actual image boundaries, and
+        such that *max >= *min
 
     maxiter: number, optional
         The maximum number of iterations.
     tol: number, optional
         The tolerance to determine convergence.  This is the fractional
         difference in the weighted summed moments between iterations.
+    samecen: bool
+        If True, force the centers of all gaussians to agree.
+    fixsky: bool
+        If True, do not fit for the sky.  THIS DOESN'T CURRENTLY WORK!
     verbose: bool, optional
         Print out some information for each iteration.
 
@@ -163,6 +176,8 @@ class GMix(_gmix_image.GMix):
                  tol=1.e-6,
                  psf=None,
                  bound=None,
+                 samecen=True,
+                 fixsky=False,
                  verbose=False):
 
         self._image = array(im, ndmin=2, dtype='f8', copy=False)
@@ -173,6 +188,8 @@ class GMix(_gmix_image.GMix):
         self._tol=tol
         self._psf=self._fixup_psf(copy.deepcopy(psf))
         self._bound=copy.deepcopy(bound)
+        self._samecen = samecen
+        self._fixsky=fixsky
         self._verbose=verbose
 
         if self._sky is None:
@@ -180,10 +197,9 @@ class GMix(_gmix_image.GMix):
         if self._counts is None:
             self._counts = im.sum()
 
-        if self._verbose:
-            verbosity=1
-        else:
-            verbosity=0
+        verbosity = 1 if self._verbose else 0
+        fix_sky   = 1 if self._fixsky  else 0
+        samecen   = 1 if self._samecen else 0
 
         super(GMix,self).__init__(self._image,
                                   self._sky,
@@ -193,6 +209,8 @@ class GMix(_gmix_image.GMix):
                                   self._tol,
                                   psf=self._psf,
                                   bound=self._bound,
+                                  samecen=samecen,
+                                  fixsky=fix_sky,
                                   verbose=verbosity)
 
     # just to make access nicer.
@@ -220,6 +238,26 @@ class GMix(_gmix_image.GMix):
             if 'col' not in p:
                 p['col'] = -1
         return psf
+
+def flagname(flag):
+    if flag == GMIX_ERROR_NEGATIVE_DET:
+        return 'GMIX_ERROR_NEGATIVE_DET'
+    elif flag == GMIX_ERROR_MAXIT:
+        return 'GMIX_ERROR_MAXIT'
+    elif flag == GMIX_ERROR_NEGATIVE_DET_SAMECEN:
+        return 'GMIX_ERROR_NEGATIVE_DET_SAMECEN'
+    else:
+        raise ValueError("unknown flag value: %s" % flag)
+def flagval(flag):
+    if flag == 'GMIX_ERROR_NEGATIVE_DET':
+        return GMIX_ERROR_NEGATIVE_DET
+    elif flag == 'GMIX_ERROR_MAXIT':
+        return GMIX_ERROR_MAXIT
+    elif flag == 'GMIX_ERROR_NEGATIVE_DET_SAMECEN':
+        return GMIX_ERROR_NEGATIVE_DET_SAMECEN
+    else:
+        raise ValueError("unknown flag name: '%s'" % flag)
+
 
 def gmix2image(gauss_list, dims, psf=None, counts=1.0):
     """

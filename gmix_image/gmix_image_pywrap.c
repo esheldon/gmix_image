@@ -5,7 +5,6 @@
 #include "image.h"
 #include "bound.h"
 #include "gmix_image.h"
-#include "gmix_image_convolved.h"
 
 
 struct PyGMixObject {
@@ -331,8 +330,9 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     self->image=NULL; self->gvec=NULL; self->gvec_psf=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
-                               "maxiter", "tol", "psf", "bound", "verbose", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOi", argnames,
+                               "maxiter", "tol", "psf", "bound", 
+                               "samecen", "fixsky", "verbose", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOiii", argnames,
                                      &image_obj, 
                                      &sky, 
                                      &counts, 
@@ -341,6 +341,8 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
                                      &gmix.tol,
                                      &psf_lod,
                                      &bound_obj,
+                                     &gmix.samecen,
+                                     &gmix.fixsky,
                                      &gmix.verbose)) {
         return -1;
     }
@@ -376,23 +378,22 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     }
     gmix.maxiter = maxiter;
 
-    if (self->gvec_psf) {
-
-        self->flags = gmix_image_convolved(&gmix, 
-                                           self->image, 
-                                           self->gvec, 
-                                           self->gvec_psf,
-                                           &self->numiter,
-                                           &self->fdiff);
+    if (gmix.samecen) {
+        self->flags = gmix_image_samecen(&gmix, 
+                self->image, 
+                self->gvec, 
+                self->gvec_psf,
+                &self->numiter,
+                &self->fdiff);
 
     } else {
         self->flags = gmix_image(&gmix, 
-                                 self->image, 
-                                 self->gvec, 
-                                 &self->numiter,
-                                 &self->fdiff);
+                self->image, 
+                self->gvec, 
+                self->gvec_psf,
+                &self->numiter,
+                &self->fdiff);
     }
-
 _gmix_init_bail:
     if (!status) {
         gmix_cleanup(self);
