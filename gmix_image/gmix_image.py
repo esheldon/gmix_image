@@ -99,6 +99,9 @@ class GMix(_gmix_image.GMix):
         difference in the weighted summed moments between iterations.
     samecen: bool
         If True, force the centers of all gaussians to agree.
+    coellip: bool
+        If True, force the centers of all gaussians to agree and
+        the covariance matrices to be proportional.
     fixsky: bool
         If True, do not fit for the sky.  THIS DOESN'T CURRENTLY WORK!
     verbose: bool, optional
@@ -176,7 +179,8 @@ class GMix(_gmix_image.GMix):
                  tol=1.e-6,
                  psf=None,
                  bound=None,
-                 samecen=True,
+                 samecen=False,
+                 coellip=False,
                  fixsky=False,
                  verbose=False):
 
@@ -189,6 +193,7 @@ class GMix(_gmix_image.GMix):
         self._psf=self._fixup_psf(copy.deepcopy(psf))
         self._bound=copy.deepcopy(bound)
         self._samecen = samecen
+        self._coellip = coellip
         self._fixsky=fixsky
         self._verbose=verbose
 
@@ -197,9 +202,10 @@ class GMix(_gmix_image.GMix):
         if self._counts is None:
             self._counts = im.sum()
 
-        verbosity = 1 if self._verbose else 0
-        fix_sky   = 1 if self._fixsky  else 0
-        samecen   = 1 if self._samecen else 0
+        verbosity  = 1 if self._verbose else 0
+        fix_sky    = 1 if self._fixsky  else 0
+        do_samecen = 1 if self._samecen else 0
+        do_coellip = 1 if self._coellip else 0
 
         super(GMix,self).__init__(self._image,
                                   self._sky,
@@ -209,7 +215,8 @@ class GMix(_gmix_image.GMix):
                                   self._tol,
                                   psf=self._psf,
                                   bound=self._bound,
-                                  samecen=samecen,
+                                  samecen=do_samecen,
+                                  coellip=do_coellip,
                                   fixsky=fix_sky,
                                   verbose=verbosity)
 

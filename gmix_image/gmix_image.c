@@ -104,6 +104,18 @@ _gmix_image_bail:
     return flags;
 }
 
+static void set_means(struct gvec *gvec, struct vec2 *cen)
+{
+    size_t i=0;
+    for (i=0; i<gvec->size; i++) {
+        gvec->data[i].row = cen->v1;
+        gvec->data[i].col = cen->v2;
+    }
+}
+
+/*
+ * this could be cleaned up, some repeated code
+ */
 int gmix_image_samecen(struct gmix* self,
                        struct image *image, 
                        struct gvec *gvec,
@@ -119,8 +131,6 @@ int gmix_image_samecen(struct gmix* self,
     struct vec2 cen_new;
     struct gvec *gcopy=NULL;
     struct iter *iter_struct = iter_new(gvec->size);
-    struct gauss *gauss = NULL;
-    size_t i=0;
 
     gcopy = gvec_new(gvec->size);
 
@@ -149,12 +159,7 @@ int gmix_image_samecen(struct gmix* self,
             flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
             goto _gmix_image_samecen_bail;
         }
-        gauss = gvec->data;
-        for (i=0; i<gvec->size; i++) {
-            gauss->row = cen_new.v1;
-            gauss->col = cen_new.v2;
-            gauss++;
-        }
+        set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
         flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
@@ -163,6 +168,9 @@ int gmix_image_samecen(struct gmix* self,
  
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+        // we only wanted to update the moments, set these back.
+        // Should do with extra par in above function or something
+        set_means(gvec, &cen_new);
 
         // fixing sky doesn't work, need correct starting value
         if (!self->fixsky) {
@@ -193,6 +201,119 @@ _gmix_image_samecen_bail:
 
     return flags;
 }
+
+// set all the covariances equal to the input covariance
+// scaled to their own size
+//   cov_i = cov*(irr_i+icc_i)/(irr+icc)
+static void force_coellip(struct gvec *gvec, struct mtx2 *cov)
+{
+    double size = cov->m11+cov->m22;
+    double size_i=0.0;
+    struct gauss *gauss=gvec->data;
+    struct gauss *end=gvec->data+gvec->size;
+
+    for (; gauss != end; gauss++) {
+        size_i = gauss->irr + gauss->icc;
+
+        gauss->irr = cov->m11*size_i/size;
+        gauss->irc = cov->m12*size_i/size;
+        gauss->icc = cov->m22*size_i/size;
+
+        gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+    }
+}
+int gmix_image_coellip(struct gmix* self,
+                       struct image *image, 
+                       struct gvec *gvec,
+                       struct gvec *gvec_psf,
+                       size_t *iter,
+                       double *fdiff)
+{
+    int flags=0;
+    double wmomlast=0, wmom=0;
+    double sky     = IM_SKY(image);
+    double counts  = IM_COUNTS(image);
+    size_t npoints = IM_SIZE(image);
+    struct vec2 cen_new={0};
+    struct mtx2 cov={0};
+    struct gvec *gcopy=NULL;
+    struct iter *iter_struct = iter_new(gvec->size);
+
+    gcopy = gvec_new(gvec->size);
+
+    iter_struct->nsky = sky/counts;
+    iter_struct->psky = sky/(counts/npoints);
+
+    if (gvec_psf)
+        gvec_set_total_moms(gvec_psf);
+
+    wmomlast=-9999;
+    *iter=0;
+    while (*iter < self->maxiter) {
+        if (self->verbose)
+            gvec_print(gvec,stderr);
+
+        // first pass to get centers
+        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        if (flags!=0)
+            goto _gmix_image_samecen_bail;
+
+        // copy for getting centers only
+        gvec_copy(gvec, gcopy);
+        gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
+
+        if (!gvec_wmean_center(gcopy, &cen_new)) {
+            flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
+            goto _gmix_image_samecen_bail;
+        }
+        set_means(gvec, &cen_new);
+
+        // now that we have fixed centers, we re-calculate everything
+        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        if (flags!=0)
+            goto _gmix_image_samecen_bail;
+ 
+
+        gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+        // we only wanted to update the moments, set these back.
+        // Should do with extra par in above function or something
+        set_means(gvec, &cen_new);
+
+        // now force the covariance matrices to be proportional
+        gvec_wmean_covar(gvec, &cov);
+        force_coellip(gvec, &cov);
+
+        // fixing sky doesn't work, need correct starting value
+        if (!self->fixsky) {
+            iter_struct->psky = iter_struct->skysum;
+            iter_struct->nsky = iter_struct->psky/npoints;
+        }
+
+        wmom = gvec_wmomsum(gvec);
+        wmom /= iter_struct->psum;
+        *fdiff = fabs((wmom-wmomlast)/wmom);
+
+        if (*fdiff < self->tol) {
+            break;
+        }
+        wmomlast = wmom;
+        (*iter)++;
+    }
+
+_gmix_image_samecen_bail:
+    if (self->maxiter == (*iter)) {
+        flags += GMIX_ERROR_MAXIT;
+    }
+    if (flags!=0)
+        fprintf(stderr,"error found at iter %lu\n", *iter);
+
+    gcopy = gvec_free(gcopy);
+    iter_struct = iter_free(iter_struct);
+
+    return flags;
+}
+
+
 
 /* when we are fixing centers, we want to be able to just set a
  * new p and center 

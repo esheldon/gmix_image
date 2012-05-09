@@ -11,6 +11,7 @@
 struct gmix {
     size_t maxiter;
     double tol;
+    int coellip;
     int samecen;
     int fixsky;
     int verbose;
@@ -60,6 +61,12 @@ int gmix_image_samecen(struct gmix* self,
                        size_t *iter,
                        double *fdiff);
 
+int gmix_image_coellip(struct gmix* self,
+                       struct image *image, 
+                       struct gvec *gvec,
+                       struct gvec *gvec_psf, // can be NULL
+                       size_t *iter,
+                       double *fdiff);
 
 int gmix_get_sums(struct image *image,
                   struct gvec *gvec,

@@ -331,8 +331,9 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
                                "maxiter", "tol", "psf", "bound", 
-                               "samecen", "fixsky", "verbose", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOiii", argnames,
+                               "samecen", "coellip", "fixsky", 
+                               "verbose", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOiiii", argnames,
                                      &image_obj, 
                                      &sky, 
                                      &counts, 
@@ -342,6 +343,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
                                      &psf_lod,
                                      &bound_obj,
                                      &gmix.samecen,
+                                     &gmix.coellip,
                                      &gmix.fixsky,
                                      &gmix.verbose)) {
         return -1;
@@ -378,14 +380,21 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     }
     gmix.maxiter = maxiter;
 
-    if (gmix.samecen) {
-        self->flags = gmix_image_samecen(&gmix, 
+    if (gmix.coellip) {
+        self->flags = gmix_image_coellip(&gmix, 
                 self->image, 
                 self->gvec, 
                 self->gvec_psf,
                 &self->numiter,
                 &self->fdiff);
 
+    } else if (gmix.samecen) {
+        self->flags = gmix_image_samecen(&gmix, 
+                self->image, 
+                self->gvec, 
+                self->gvec_psf,
+                &self->numiter,
+                &self->fdiff);
     } else {
         self->flags = gmix_image(&gmix, 
                 self->image, 

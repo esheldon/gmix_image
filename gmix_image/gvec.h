@@ -50,4 +50,7 @@ double gvec_wmomsum(struct gvec* gvec);
 
 // 0 returned if a zero determinant is found somewhere, else 1
 int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
+
+void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
+
 #endif

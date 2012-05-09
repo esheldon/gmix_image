@@ -192,3 +192,28 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
 _gvec_wmean_center_bail:
     return status;
 }
+
+/*
+ * calculate the mean covariance matrix
+ *
+ *   sum(p*Covar)/sum(p)
+ */
+void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
+{
+    double psum=0.0;
+    struct gauss *gauss=gvec->data;
+    struct gauss *end=gvec->data+gvec->size;
+
+    mtx2_sprodi(cov, 0.0);
+    
+    for (; gauss != end; gauss++) {
+        psum += gauss->p;
+        cov->m11 += gauss->p*gauss->irr;
+        cov->m12 += gauss->p*gauss->irc;
+        cov->m22 += gauss->p*gauss->icc;
+    }
+
+    cov->m11 /= psum;
+    cov->m12 /= psum;
+    cov->m22 /= psum;
+}
