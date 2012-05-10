@@ -260,15 +260,26 @@ PyObject *gauss_to_dict(struct gauss *self)
 /*
  * no copy is made.
  */
-struct image *associate_image(PyObject* image_obj)
+struct image *associate_image(PyObject* image_obj, double counts)
 {
     struct image *image=NULL;
     size_t nrows=0, ncols=0;
     double *data=NULL;
+    int dont_alloc_data=0;
+    size_t i=0;
 
     data = check_double_image(image_obj, &nrows, &ncols);
     if (data) {
-        image = image_from_array(data, nrows, ncols);
+        // do this ourselves instead of using image_from_array to avoid
+        // re-calculating counts
+
+        image = _image_new(nrows, ncols, dont_alloc_data);
+
+        image->rows[0] = data;
+        for(i = 1; i < nrows; i++) {
+            image->rows[i] = image->rows[i-1] + ncols;
+        }
+        IM_SET_COUNTS(image, counts);
     }
 
     return image;
@@ -350,7 +361,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     }
 
     // no copying
-    self->image= associate_image(image_obj);
+    self->image= associate_image(image_obj, counts);
     if (!self->image) {
         status=0;
         goto _gmix_init_bail;

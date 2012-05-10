@@ -102,8 +102,6 @@ class GMix(_gmix_image.GMix):
     coellip: bool
         If True, force the centers of all gaussians to agree and
         the covariance matrices to be proportional.
-    fixsky: bool
-        If True, do not fit for the sky.  THIS DOESN'T CURRENTLY WORK!
     verbose: bool, optional
         Print out some information for each iteration.
 
@@ -181,7 +179,6 @@ class GMix(_gmix_image.GMix):
                  bound=None,
                  samecen=False,
                  coellip=False,
-                 fixsky=False,
                  verbose=False):
 
         self._image = array(im, ndmin=2, dtype='f8', copy=False)
@@ -194,7 +191,6 @@ class GMix(_gmix_image.GMix):
         self._bound=copy.deepcopy(bound)
         self._samecen = samecen
         self._coellip = coellip
-        self._fixsky=fixsky
         self._verbose=verbose
 
         if self._sky is None:
@@ -203,7 +199,6 @@ class GMix(_gmix_image.GMix):
             self._counts = im.sum()
 
         verbosity  = 1 if self._verbose else 0
-        fix_sky    = 1 if self._fixsky  else 0
         do_samecen = 1 if self._samecen else 0
         do_coellip = 1 if self._coellip else 0
 
@@ -217,7 +212,6 @@ class GMix(_gmix_image.GMix):
                                   bound=self._bound,
                                   samecen=do_samecen,
                                   coellip=do_coellip,
-                                  fixsky=fix_sky,
                                   verbose=verbosity)
 
     # just to make access nicer.

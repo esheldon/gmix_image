@@ -17,7 +17,7 @@ struct gvec* gvec_new(size_t ngauss)
     self = calloc(1, sizeof(struct gvec));
     if (self==NULL) {
         wlog("could not allocate struct gvec\n");
-        return NULL;
+        exit(EXIT_FAILURE);
     }
 
     self->size=ngauss;
@@ -26,7 +26,7 @@ struct gvec* gvec_new(size_t ngauss)
     if (self->data==NULL) {
         wlog("could not allocate %lu gaussian structs\n",ngauss);
         free(self);
-        return NULL;
+        exit(EXIT_FAILURE);
     }
 
     return self;
@@ -162,7 +162,7 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
         // p*C^-1
         mtx2_set(&C, gauss->irr, gauss->irc, gauss->icc);
         if (!mtx2_invert(&C, &Cinvp)) {
-            wlog("gvec_fix_centers: zero determinant found in C");
+            wlog("gvec_fix_centers: zero determinant found in C\n");
             status=0;
             goto _gvec_wmean_center_bail;
         }
@@ -182,7 +182,7 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
     }
 
     if (!mtx2_invert(&Cinvpsum, &Cinvpsum_inv)) {
-        wlog("gvec_fix_centers: zero determinant found in Cinvpsum");
+        wlog("gvec_fix_centers: zero determinant found in Cinvpsum\n");
         status=0;
         goto _gvec_wmean_center_bail;
     }

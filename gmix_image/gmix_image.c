@@ -66,10 +66,9 @@ int gmix_image(struct gmix* self,
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
-        if (self->verbose)
-            gvec_print(gvec,stderr);
+        if (self->verbose > 1) gvec_print(gvec,stderr);
 
-        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
             goto _gmix_image_bail;
 
@@ -96,8 +95,7 @@ _gmix_image_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
-    if (flags!=0)
-        fprintf(stderr,"error found at iter %lu\n", *iter);
+    if (flags!=0 && self->verbose) wlog("error found at iter %lu\n", *iter);
 
     iter_struct = iter_free(iter_struct);
 
@@ -143,11 +141,10 @@ int gmix_image_samecen(struct gmix* self,
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
-        if (self->verbose)
-            gvec_print(gvec,stderr);
+        if (self->verbose > 1) gvec_print(gvec,stderr);
 
         // first pass to get centers
-        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
             goto _gmix_image_samecen_bail;
 
@@ -162,7 +159,7 @@ int gmix_image_samecen(struct gmix* self,
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
-        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
             goto _gmix_image_samecen_bail;
  
@@ -193,8 +190,7 @@ _gmix_image_samecen_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
-    if (flags!=0)
-        fprintf(stderr,"error found at iter %lu\n", *iter);
+    if (flags!=0 && self->verbose) wlog("error found at iter %lu\n", *iter);
 
     gcopy = gvec_free(gcopy);
     iter_struct = iter_free(iter_struct);
@@ -250,13 +246,12 @@ int gmix_image_coellip(struct gmix* self,
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
-        if (self->verbose)
-            gvec_print(gvec,stderr);
+        if (self->verbose > 1) gvec_print(gvec,stderr);
 
         // first pass to get centers
-        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_samecen_bail;
+            goto _gmix_image_coellip_bail;
 
         // copy for getting centers only
         gvec_copy(gvec, gcopy);
@@ -264,14 +259,14 @@ int gmix_image_coellip(struct gmix* self,
 
         if (!gvec_wmean_center(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
-            goto _gmix_image_samecen_bail;
+            goto _gmix_image_coellip_bail;
         }
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
-        flags = gmix_get_sums(image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_samecen_bail;
+            goto _gmix_image_coellip_bail;
  
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
@@ -300,12 +295,11 @@ int gmix_image_coellip(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_samecen_bail:
+_gmix_image_coellip_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
-    if (flags!=0)
-        fprintf(stderr,"error found at iter %lu\n", *iter);
+    if (flags!=0 && self->verbose) wlog("error found at iter %lu\n", *iter);
 
     gcopy = gvec_free(gcopy);
     iter_struct = iter_free(iter_struct);
@@ -315,89 +309,8 @@ _gmix_image_samecen_bail:
 
 
 
-/* when we are fixing centers, we want to be able to just set a
- * new p and center 
- * */
-/*
-void gmix_set_p_and_cen(struct gvec* gvec, 
-                        struct iter *iter,
-                        double* pnew,
-                        double* rowsum,
-                        double* colsum)
-{
-    struct gauss *gauss=gvec->data;
-    for (size_t i=0; i<gvec->size; i++) {
-        gauss->p = pnew[i];
-        gauss->row = rowsum[i]/pnew[i];
-        gauss->col = colsum[i]/pnew[i];
-        gauss++;
-    }
-
-}
-*/
-
-/*
-int gmix_image(struct gmix* self,
-               struct image *image, 
-               struct gvec *gvec,
-               size_t *iter,
-               double *fdiff)
-{
-    int flags=0;
-    double wmomlast=0, wmom=0;
-    double sky     = IM_SKY(image);
-    double counts  = IM_COUNTS(image);
-    size_t npoints = IM_SIZE(image);
-
-    struct iter *iter_struct = iter_new(gvec->size);
-
-    iter_struct->nsky = sky/counts;
-    iter_struct->psky = sky/(counts/npoints);
-
-    wmomlast=-9999;
-    *iter=0;
-    while (*iter < self->maxiter) {
-        if (self->verbose)
-            gvec_print(gvec,stderr);
-
-        flags = gmix_get_sums(image, gvec, iter_struct);
-
-        if (flags!=0)
-            goto _gmix_image_bail;
-
-        gmix_set_gvec_fromiter(gvec, iter_struct);
-
-        if (!self->fixsky) {
-            iter_struct->psky = iter_struct->skysum;
-            iter_struct->nsky = iter_struct->psky/npoints;
-        }
-
-        wmom = gvec_wmomsum(gvec);
-
-        wmom /= iter_struct->psum;
-        *fdiff = fabs((wmom-wmomlast)/wmom);
-        if (*fdiff < self->tol) {
-            break;
-        }
-        wmomlast = wmom;
-        (*iter)++;
-    }
-
-_gmix_image_bail:
-    if (self->maxiter == (*iter)) {
-        flags += GMIX_ERROR_MAXIT;
-    }
-    iter_struct = iter_free(iter_struct);
-
-    return flags;
-}
-
-*/
-
-
-
-
-int gmix_get_sums(struct image *image,
+int gmix_get_sums(struct gmix* self,
+                  struct image *image,
                   struct gvec *gvec,
                   struct gvec *gvec_psf,
                   struct iter* iter)
@@ -423,7 +336,7 @@ int gmix_get_sums(struct image *image,
             sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
                 if (gauss->det <= 0) {
-                    wlog("found det: %.16g\n", gauss->det);
+                    if (self->verbose) wlog("found det: %.16g\n", gauss->det);
                     flags+=GMIX_ERROR_NEGATIVE_DET;
                     goto _gmix_get_sums_bail;
                 }
@@ -435,10 +348,14 @@ int gmix_get_sums(struct image *image,
                 u2 = u*u; v2 = v*v; uv = u*v;
 
                 if (gvec_psf) { 
-                    sums->gi = gmix_evaluate_convolved(gauss,
+                    sums->gi = gmix_evaluate_convolved(self,
+                                                       gauss,
                                                        gvec_psf,
                                                        u2,uv,v2,
                                                        &flags);
+                    if (flags != 0) {
+                        goto _gmix_get_sums_bail;
+                    }
                 } else {
                     chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                     chi2 /= gauss->det;
@@ -505,7 +422,8 @@ _gmix_get_sums_bail:
 */
 
 
-double gmix_evaluate_convolved(struct gauss *gauss,
+double gmix_evaluate_convolved(struct gmix* self,
+                               struct gauss *gauss,
                                struct gvec *gvec_psf,
                                double u2, double uv, double v2,
                                int *flags)
@@ -517,7 +435,7 @@ double gmix_evaluate_convolved(struct gauss *gauss,
     double val=0;
 
     if (gauss->det <= 0) {
-        wlog("found obj det: %.16g\n", det);
+        if (self->verbose) wlog("found obj det: %.16g\n", det);
         *flags |= GMIX_ERROR_NEGATIVE_DET;
         val=-9999;
         goto _gmix_eval_conv_bail;
@@ -532,7 +450,7 @@ double gmix_evaluate_convolved(struct gauss *gauss,
 
         det = irr*icc - irc*irc;
         if (det <= 0) {
-            wlog("found convolved det: %.16g\n", det);
+            if (self->verbose) wlog("found convolved det: %.16g\n", det);
             *flags |= GMIX_ERROR_NEGATIVE_DET;
             val=-9999;
             goto _gmix_eval_conv_bail;

@@ -68,12 +68,14 @@ int gmix_image_coellip(struct gmix* self,
                        size_t *iter,
                        double *fdiff);
 
-int gmix_get_sums(struct image *image,
+int gmix_get_sums(struct gmix* self,
+                  struct image *image,
                   struct gvec *gvec,
                   struct gvec *gvec_psf,
-                  struct iter* iter_struct);
+                  struct iter* iter);
 
-double gmix_evaluate_convolved(struct gauss *gauss,
+double gmix_evaluate_convolved(struct gmix* self,
+                               struct gauss *gauss,
                                struct gvec *gvec_psf,
                                double u2, double uv, double v2,
                                int *flags);
