@@ -6,13 +6,13 @@
 
 #define GMIX_ERROR_NEGATIVE_DET 0x1
 #define GMIX_ERROR_MAXIT 0x2
-#define GMIX_ERROR_NEGATIVE_DET_SAMECEN 0x4
+#define GMIX_ERROR_NEGATIVE_DET_COCENTER 0x4
 
 struct gmix {
     size_t maxiter;
     double tol;
     int coellip;
-    int samecen;
+    int cocenter;
     int fixsky;
     int verbose;
 };
@@ -54,12 +54,12 @@ int gmix_image(struct gmix* self,
                struct gvec *gvec_psf, // can be NULL
                size_t *iter,
                double *fdiff);
-int gmix_image_samecen(struct gmix* self,
-                       struct image *image, 
-                       struct gvec *gvec,
-                       struct gvec *gvec_psf, // can be NULL
-                       size_t *iter,
-                       double *fdiff);
+int gmix_image_cocenter(struct gmix* self,
+                        struct image *image, 
+                        struct gvec *gvec,
+                        struct gvec *gvec_psf, // can be NULL
+                        size_t *iter,
+                        double *fdiff);
 
 int gmix_image_coellip(struct gmix* self,
                        struct image *image, 

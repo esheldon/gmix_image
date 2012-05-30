@@ -38,7 +38,7 @@ import _gmix_image
 
 GMIX_ERROR_NEGATIVE_DET         = 0x1
 GMIX_ERROR_MAXIT                = 0x2
-GMIX_ERROR_NEGATIVE_DET_SAMECEN = 0x4
+GMIX_ERROR_NEGATIVE_DET_COCENTER = 0x4
 
 
 class GMix(_gmix_image.GMix):
@@ -97,7 +97,7 @@ class GMix(_gmix_image.GMix):
     tol: number, optional
         The tolerance to determine convergence.  This is the fractional
         difference in the weighted summed moments between iterations.
-    samecen: bool
+    cocenter: bool
         If True, force the centers of all gaussians to agree.
     coellip: bool
         If True, force the centers of all gaussians to agree and
@@ -120,7 +120,7 @@ class GMix(_gmix_image.GMix):
 
             GMIX_ERROR_NEGATIVE_DET         1 # determinant <= 0 in covar
             GMIX_ERROR_MAXIT                2 # max iteration reached
-            GMIX_ERROR_NEGATIVE_DET_SAMECEN 4 # not used currently
+            GMIX_ERROR_NEGATIVE_DET_COCENTER 4 # not used currently
 
         There is a corresponding method get_flags() if you prefer.
 
@@ -177,7 +177,7 @@ class GMix(_gmix_image.GMix):
                  tol=1.e-6,
                  psf=None,
                  bound=None,
-                 samecen=False,
+                 cocenter=False,
                  coellip=False,
                  verbose=False):
 
@@ -189,7 +189,7 @@ class GMix(_gmix_image.GMix):
         self._tol=tol
         self._psf=self._fixup_psf(copy.deepcopy(psf))
         self._bound=copy.deepcopy(bound)
-        self._samecen = samecen
+        self._cocenter = cocenter
         self._coellip = coellip
         self._verbose=verbose
 
@@ -199,7 +199,7 @@ class GMix(_gmix_image.GMix):
             self._counts = im.sum()
 
         verbosity  = 1 if self._verbose else 0
-        do_samecen = 1 if self._samecen else 0
+        do_cocenter = 1 if self._cocenter else 0
         do_coellip = 1 if self._coellip else 0
 
         super(GMix,self).__init__(self._image,
@@ -210,7 +210,7 @@ class GMix(_gmix_image.GMix):
                                   self._tol,
                                   psf=self._psf,
                                   bound=self._bound,
-                                  samecen=do_samecen,
+                                  cocenter=do_cocenter,
                                   coellip=do_coellip,
                                   verbose=verbosity)
 
@@ -245,8 +245,8 @@ def flagname(flag):
         return 'GMIX_ERROR_NEGATIVE_DET'
     elif flag == GMIX_ERROR_MAXIT:
         return 'GMIX_ERROR_MAXIT'
-    elif flag == GMIX_ERROR_NEGATIVE_DET_SAMECEN:
-        return 'GMIX_ERROR_NEGATIVE_DET_SAMECEN'
+    elif flag == GMIX_ERROR_NEGATIVE_DET_cocenter:
+        return 'GMIX_ERROR_NEGATIVE_DET_cocenter'
     else:
         raise ValueError("unknown flag value: %s" % flag)
 def flagval(flag):
@@ -254,8 +254,8 @@ def flagval(flag):
         return GMIX_ERROR_NEGATIVE_DET
     elif flag == 'GMIX_ERROR_MAXIT':
         return GMIX_ERROR_MAXIT
-    elif flag == 'GMIX_ERROR_NEGATIVE_DET_SAMECEN':
-        return GMIX_ERROR_NEGATIVE_DET_SAMECEN
+    elif flag == 'GMIX_ERROR_NEGATIVE_DET_cocenter':
+        return GMIX_ERROR_NEGATIVE_DET_cocenter
     else:
         raise ValueError("unknown flag name: '%s'" % flag)
 

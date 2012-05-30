@@ -114,12 +114,12 @@ static void set_means(struct gvec *gvec, struct vec2 *cen)
 /*
  * this could be cleaned up, some repeated code
  */
-int gmix_image_samecen(struct gmix* self,
-                       struct image *image, 
-                       struct gvec *gvec,
-                       struct gvec *gvec_psf,
-                       size_t *iter,
-                       double *fdiff)
+int gmix_image_cocenter(struct gmix* self,
+                        struct image *image, 
+                        struct gvec *gvec,
+                        struct gvec *gvec_psf,
+                        size_t *iter,
+                        double *fdiff)
 {
     int flags=0;
     double wmomlast=0, wmom=0;
@@ -146,22 +146,22 @@ int gmix_image_samecen(struct gmix* self,
         // first pass to get centers
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_samecen_bail;
+            goto _gmix_image_cocenter_bail;
 
         // copy for getting centers only
         gvec_copy(gvec, gcopy);
         gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
 
         if (!gvec_wmean_center(gcopy, &cen_new)) {
-            flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
-            goto _gmix_image_samecen_bail;
+            flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
+            goto _gmix_image_cocenter_bail;
         }
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_samecen_bail;
+            goto _gmix_image_cocenter_bail;
  
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
@@ -186,7 +186,7 @@ int gmix_image_samecen(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_samecen_bail:
+_gmix_image_cocenter_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
@@ -258,7 +258,7 @@ int gmix_image_coellip(struct gmix* self,
         gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
 
         if (!gvec_wmean_center(gcopy, &cen_new)) {
-            flags += GMIX_ERROR_NEGATIVE_DET_SAMECEN;
+            flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
             goto _gmix_image_coellip_bail;
         }
         set_means(gvec, &cen_new);
