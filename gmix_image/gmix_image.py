@@ -33,7 +33,7 @@ total_moms_psf:
 
 import copy
 import numpy
-from numpy import array, median, zeros, ogrid, exp
+from numpy import array, median, zeros, ogrid, exp, sqrt
 import _gmix_image
 
 GMIX_ERROR_NEGATIVE_DET         = 0x1
@@ -259,10 +259,31 @@ def flagval(flag):
     else:
         raise ValueError("unknown flag name: '%s'" % flag)
 
+def gmix_print(gmix):
+    hfmt = ['%10s']*6
+    hfmt = ' '.join(hfmt)
+    h = hfmt % ('p','row','col','irr','irc','icc')
+    print h
 
-def gmix2image(gauss_list, dims, psf=None, counts=1.0):
+    fmt = ['%10.6g']*6
+    fmt = ' '.join(fmt)
+    for g in gmix:
+        print fmt % tuple([g[k] for k in ['p','row','col','irr','irc','icc']])
+
+
+def gmix2image(gauss_list, dims, 
+               psf=None, aslist=False, renorm=True, 
+               order='c',
+               counts=1.0):
     """
     Create an image from the gaussian input mixture model.
+
+    By default
+
+        im = sum( pi*counts*imi )/sum(pi)
+
+    where imi is normalized to one.  Send renorm=False to not divide
+    by sum(pi)
 
     parameters
     ----------
@@ -274,60 +295,123 @@ def gmix2image(gauss_list, dims, psf=None, counts=1.0):
     psf: optional
         An optional gaussian mixture PSf model.  The models will be convolved
         with this PSF.
+    aslist:
+        Get a list of images.  If a psf is sent, you get a list of lists.
+
+    renorm:
+        Make images as sum( pi*counts*imi ), not dividing by sum(pi).  For
+        gmix we want to divide by sum(pi) but not in the optimizer for 
+        example.
+    order:
+        'c' for C order, 'f' for fortran order.  The images are made in
+        fortran, so using 'f' would be faster but take care.
     counts: optional
-        The total counts in the image.  Default 1.
+        The total counts in the image.  Default 1. If  renorm is False, 
+        the image sum will be sum(pi)*counts.
     """
+    try:
+        import fimage
+        model_image = fimage.model_image
+    except:
+        #print 'using ogrid_image'
+        model_image = ogrid_image
+
     if psf is not None:
         return gmix2image_psf(gauss_list, psf, dims, counts=counts)
 
-    im = zeros(dims)
+    if aslist:
+        modlist=[]
+    else:
+        im = zeros(dims)
 
-    psum=0.0
+    psum = sum([g['p'] for g in gauss_list])
     for g in gauss_list:
-        psum += g['p']
-        im += ogrid_image('gauss',
-                          dims,
-                          [g['row'],g['col']],
-                          [g['irr'],g['irc'],g['icc']],
-                          counts=g['p']*counts)
+        gp = g['p']
+        if renorm:
+            gp /= psum
 
-    im /= psum
-    return im
+        tmp =  model_image('gauss',
+                           dims,
+                           [g['row'],g['col']],
+                           [g['irr'],g['irc'],g['icc']],
+                           counts=gp*counts,
+                           order=order)
+        if aslist:
+            modlist.append(tmp)
+        else:
+            im += tmp
 
-def gmix2image_psf(gauss_list, psf_list, dims, counts=1.0):
+    if aslist:
+        return modlist
+    else:
+        return im
+
+
+def gmix2image_psf(gauss_list, psf_list, dims, 
+                   psf=None, aslist=False, renorm=True, 
+                   order='c',
+                   counts=1.0):
     """
     Create an image from the input gaussian mixture model and psf mixture
     model.
     """
-    im = zeros(dims)
-    tmp_im = zeros(dims)
+    try:
+        import fimage
+        model_image = fimage.model_image
+    except:
+        #print 'using ogrid_image'
+        model_image = ogrid_image
 
-    g_psum=0.0
+    if aslist:
+        modlist=[]
+    else:
+        im = zeros(dims)
+        tmp_im = zeros(dims)
+
+    g_psum = sum([g['p'] for g in gauss_list])
+
     for g in gauss_list:
+        gp = g['p']
+        if renorm:
+            gp /= g_psum
+
         row=g['row']
         col=g['col']
-        g_psum += g['p']
 
-        tmp_im[:,:] = 0.0
-        p_psum = 0.0
+        # we always normalize the psf
+        p_psum = sum([psf['p'] for psf in psf_list])
+
+        if aslist:
+            modlist.append([])
+        else:
+            tmp_im[:,:] = 0.0
+
         for psf in psf_list:
-            p_psum += psf['p']
+            pp = psf['p']/p_psum
             irr = g['irr'] + psf['irr']
             irc = g['irc'] + psf['irc']
             icc = g['icc'] + psf['icc']
-            tmp_im += ogrid_image('gauss',
-                                  dims,
-                                  [row,col],
-                                  [irr,irc,icc],
-                                  counts=g['p']*psf['p']*counts)
-        tmp_im /= p_psum
-        im += tmp_im
-        #im += tmp_im*(g['p']/p_psum)
 
-    im /= g_psum
-    return im
+            cnt = counts*gp*pp
+            pim = model_image('gauss',
+                              dims,
+                              [row,col],
+                              [irr,irc,icc],
+                              counts=cnt,
+                              order=order)
+            if aslist:
+                modlist[-1].append(pim)
+            else:
+                tmp_im[:,:] += pim
+        if not aslist:
+            im += tmp_im
 
-def ogrid_image(model, dims, cen, cov, counts=1.0):
+    if aslist:
+        return modlist
+    else:
+        return im
+
+def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
     """
     Create an image using the ogrid function from numpy
 
