@@ -2,7 +2,7 @@ import numpy
 from numpy import zeros, array, where, ogrid
 from fimage import model_image
 
-from gmix_image import gmix2image
+from gmix_image import gmix2image, total_moms_psf
 
 class GMixFitCoellip:
     """
@@ -15,7 +15,7 @@ class GMixFitCoellip:
     """
     def __init__(self, image, ngauss, psf=None):
         self.image=image
-        self.counts = image.sum()
+        #self.counts = image.sum()
         self.ngauss=ngauss
         self.nsub=1
 
@@ -30,77 +30,87 @@ class GMixFitCoellip:
 
         self.row,self.col=ogrid[0:image.shape[0], 0:image.shape[1]]
 
+    def dofit(self, guess):
+        """
+        Run the fit with the starting guess parameters
+        """
+        from scipy.optimize import leastsq
+        res = leastsq(self.ydiff,guess,
+                      full_output=1,
+                      Dfun=self.jacob,
+                      col_deriv=1)
+        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+
+        self.pcov=None
+        if self.pcov0 is not None:
+            self.pcov = self.scale_cov(self.popt, self.pcov0)
+ 
     def ydiff(self, pars):
         """
-        Also apply hard priors on centroid range
-        and determinant
+        Also apply hard priors on centroid range and determinant(s)
         """
 
-        # make sure p and f values are > 0
-        vals = pars[5:]
-        w,=where(vals <= 0)
-        if w.size > 0:
-            return zeros(self.image.size) + numpy.inf
-
-        det = pars[2]*pars[4]-pars[3]**2
-        if (det <= 0 
-                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
-                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+        if not self.check_hard_priors(pars):
             return zeros(self.image.size) + numpy.inf
 
         model = self.make_model(pars)
         return (model-self.image).reshape(self.image.size)
 
+    def check_hard_priors(self, pars):
+        # make sure p and f values are > 0
+        vals = pars[5:]
+        w,=where(vals <= 0)
+        if w.size > 0:
+            return False
+
+        # check determinant for all images we might have
+        # to create with psf convolutions
+        if self.psf is not None:
+            gmix=pars2gmix_coellip(pars)
+            moms = total_moms_psf(gmix, self.psf)
+            pdet = moms['irr']*moms['icc']-moms['irc']**2
+            if pdet <= 0:
+                return False
+            for g in gmix:
+                for p in self.psf:
+                    irr = g['irr'] + p['irr']
+                    irc = g['irc'] + p['irc']
+                    icc = g['icc'] + p['icc']
+                    det = irr*icc-irc**2
+                    if det <= 0:
+                        return False
+
+        # overall determinant
+        det = pars[2]*pars[4]-pars[3]**2
+        if (det <= 0 
+                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
+                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+            return False
+
+        return True
+
     def make_model(self, pars, aslist=False):
         """
         pars = [row,col,irr,irc,icc,pi...,fi...]
         """
+        #fmt = ' '.join(['%10.6f']*len(pars))
+        #print 'pars:' +fmt % tuple(pars)
         gmix = pars2gmix_coellip(pars)
         return gmix2image(gmix, 
                           self.image.shape, 
                           psf=self.psf,
                           aslist=aslist, 
                           order='f', 
+                          nsub=self.nsub,
                           renorm=False)
-
-    def make_model_old(self, pars, aslist=False):
-        """
-        pars = [row,col,irr,irc,icc,pi...,fi...]
-        """
-        if aslist:
-            modlist=[]
-        else:
-            self.model[:] = 0.0
-        cen = pars[0:2]
-        countsper = self.counts/self.ngauss
-        for i in xrange(self.ngauss):
-            pi = pars[5+i]
-            if i > 0:
-                fi = pars[5+self.ngauss+i-1]
-                covari = fi*pars[2:2+3]
-            else:
-                covari = pars[2:2+3]
-            model = model_image('gauss',
-                                self.image.shape,
-                                cen,covari,
-                                counts=pi*countsper,
-                                nsub=self.nsub,
-                                order='c')
-            if aslist:
-                modlist.append(model)
-            else:
-                self.model += model
-
-        if aslist:
-            return modlist
-        else:
-            return self.model
-
 
     def jacob(self, pars):
         """
         Calculate the jacobian for each parameter
         """
+        if self.psf is not None:
+            return self.jacob_psf(pars)
+
         # [r0, c0, Irr, Irc, Icc, pi, fi]
         det = pars[2]*pars[4]-pars[3]**2
         y = self.row-pars[0]
@@ -192,8 +202,8 @@ class GMixFitCoellip:
         """
         Calculate the jacobian for each parameter
         """
+        #import images
         # [r0, c0, Irr, Irc, Icc, pi, fi]
-        det = pars[2]*pars[4]-pars[3]**2
         y = self.row-pars[0]
         x = self.col-pars[1]
 
@@ -257,6 +267,9 @@ class GMixFitCoellip:
                 tMyy = Myy*fi + p['irr']
                 tMxy = Mxy*fi + p['irc']
                 tMxx = Mxx*fi + p['icc']
+                #print j,fi,p['irr'],p['irc'],p['icc']
+                #print 'M:',Myy,Mxy,Mxx
+                #print 'tM:',tMyy,tMxy,tMxx
 
                 det = (tMyy*tMxx - tMxy**2)
                 
@@ -266,18 +279,17 @@ class GMixFitCoellip:
                 tMyy_x = tMyy*x
 
                 yy_sum = .5*(-tMxx/det  + ((tMxx_y-tMxy_x)/det)**2)
+                xx_sum = .5*(-tMyy/det  + ((tMyy_x-tMxy_y)/det)**2 )
                 xy_sum = (tMxy/det + (tMxx_y-tMxy_x)*(tMyy_x-tMxy_y)/det**2)
-                xx_sum = .5*(-tMyy/det  + ( (tMyy_x - tMxy_y)/det)**2 )
 
-                fac_yy += fi*yy_sum
-                fac_xy += fi*xy_sum
-                fac_xx += fi*xx_sum
+                jtmp_yy += fi*pim*yy_sum
+                jtmp_xy += fi*pim*xy_sum
+                jtmp_xx += fi*pim*xx_sum
 
                 if i > 0:
-                    jtmp += Myy*yy_sum + Mxy*xy_sum + Mxx*xx_sum
+                    jtmp += pim*(Myy*yy_sum + Mxy*xy_sum + Mxx*xx_sum)
             if i > 0:
                 jf_list.append(jtmp)
-
 
         jacob.append(jtmp_yy)
         jacob.append(jtmp_xy)
@@ -291,7 +303,8 @@ class GMixFitCoellip:
             jtmp = zeros(self.image.shape)
             for j in xrange(len(plist)):
                 pim = plist[j]
-                jtmp += pim/gp
+                jtmp += pim
+            jtmp /= gp
             jacob.append(jtmp)
 
         # f derivatives go at the end

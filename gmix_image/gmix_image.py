@@ -274,6 +274,7 @@ def gmix_print(gmix):
 def gmix2image(gauss_list, dims, 
                psf=None, aslist=False, renorm=True, 
                order='c',
+               nsub=1,
                counts=1.0):
     """
     Create an image from the gaussian input mixture model.
@@ -317,8 +318,10 @@ def gmix2image(gauss_list, dims,
         model_image = ogrid_image
 
     if psf is not None:
-        return gmix2image_psf(gauss_list, psf, dims, counts=counts)
-
+        return gmix2image_psf(gauss_list, psf, dims, 
+                              aslist=aslist, renorm=renorm,
+                              order=order, nsub=nsub,
+                              counts=counts)
     if aslist:
         modlist=[]
     else:
@@ -335,6 +338,7 @@ def gmix2image(gauss_list, dims,
                            [g['row'],g['col']],
                            [g['irr'],g['irc'],g['icc']],
                            counts=gp*counts,
+                           nsub=nsub,
                            order=order)
         if aslist:
             modlist.append(tmp)
@@ -348,8 +352,9 @@ def gmix2image(gauss_list, dims,
 
 
 def gmix2image_psf(gauss_list, psf_list, dims, 
-                   psf=None, aslist=False, renorm=True, 
+                   aslist=False, renorm=True, 
                    order='c',
+                   nsub=1,
                    counts=1.0):
     """
     Create an image from the input gaussian mixture model and psf mixture
@@ -398,6 +403,7 @@ def gmix2image_psf(gauss_list, psf_list, dims,
                               [row,col],
                               [irr,irc,icc],
                               counts=cnt,
+                              nsub=nsub,
                               order=order)
             if aslist:
                 modlist[-1].append(pim)

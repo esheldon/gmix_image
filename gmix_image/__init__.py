@@ -18,5 +18,6 @@ from gmix_image import ogrid_image, total_moms, total_moms_psf
 from gmix_image import gmix_print
 
 from gmix_lm import GMixFitCoellip
+from gmix_lm import pars2gmix_coellip
 
 import test
