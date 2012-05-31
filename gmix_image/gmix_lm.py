@@ -56,10 +56,12 @@ class GMixFitCoellip:
         pars = [row,col,irr,irc,icc,pi...,fi...]
         """
         gmix = pars2gmix_coellip(pars)
-        return gmix2image(gmix, self.image.shape, 
+        return gmix2image(gmix, 
+                          self.image.shape, 
                           psf=self.psf,
                           aslist=aslist, 
-                          order='f', renorm=False)
+                          order='f', 
+                          renorm=False)
 
     def make_model_old(self, pars, aslist=False):
         """
@@ -202,22 +204,6 @@ class GMixFitCoellip:
         Mxy = pars[3]
         Mxx = pars[4]
 
-        Myy_list = [(Myy+p['irr']) for p in self.psf]
-        Mxy_list = [(Mxy+p['irc']) for p in self.psf]
-        Mxx_list = [(Mxx+p['icc']) for p in self.psf]
-        
-        '''
-        Myy_x = Myy*x
-        Mxy_y = Mxy*y
-        Mxy_x = Mxy*x
-        Mxx_y = Mxx*y
-        '''
-
-        Myy_x_list = [(Myy+p['irr'])*x for p in self.psf]
-        Mxy_y_list = [(Mxy+p['irc'])*y for p in self.psf]
-        Mxy_x_list = [(Mxy+p['irc'])*x for p in self.psf]
-        Mxx_y_list = [(Mxx+p['icc'])*y for p in self.psf]
-
         jacob = []
 
         #
@@ -225,11 +211,12 @@ class GMixFitCoellip:
         #
 
         # y0
-        jtmp = zeros(self.image.shape)
         #fac = (Mxx_y - Mxy_x)/det
-        #for i,Fi in enumerate(flist):
-        #    jtmp += Fi*fac
+        # x0
+        #fac = (Myy_x - Mxy_y)/det
 
+        jtmp_y = zeros(self.image.shape)
+        jtmp_x = zeros(self.image.shape)
         for i,plist in enumerate(flist):
             fi = 1 if i == 0 else pars[5+self.ngauss+i-1]
             for j in xrange(len(plist)):
@@ -241,89 +228,74 @@ class GMixFitCoellip:
                 tMxx = Mxx*fi + p['icc']
 
                 det = (tMyy*tMxx - tMxy**2)
-                fac = (tMxx*y - tMxy*x)/det
+                fac_y = (tMxx*y - tMxy*x)/det
+                fac_x = (tMyy*x - tMxy*y)/det
 
-                jtmp += pim*fac
-        jacob.append(jtmp)
+                jtmp_y += pim*fac_y
+                jtmp_x += pim*fac_x
+        jacob.append(jtmp_y)
+        jacob.append(jtmp_x)
 
-
-        # x0
-        jtmp = zeros(self.image.shape)
-        #fac = (Myy_x - Mxy_y)/det
-        #for i,Fi in enumerate(flist):
-        #    jtmp += Fi*fac
-        for plist in flist:
-            for i in xrange(len(plist)):
-                pim = plist[i]
-                det = (Myy_list[i]*Mxx_list[i]-Mxy_list[i]**2)
-                Myy_x = Myy_x_list[i]
-                Mxy_y = Mxy_y_list[i]
-                fac = (Myy_x - Mxy_y)/det
-
-                jtmp += pim*fac
-
-        jacob.append(jtmp)
-
-        # Myy (a)
-        jtmp = zeros(self.image.shape)
-        fac = (-Mxx/det  + 0.5*((Mxx_y-Mxy_x)/det)**2)
-        for i,Fi in enumerate(flist):
-            if i > 0:
-                fi = pars[5+self.ngauss+i-1]
-            else:
-                fi=1.
-            jtmp += Fi*fac/fi**2
-
-        for j,plist in enumerate(flist):
-            if j > 0:
-                fj = pars[5+self.ngauss+j-1]
-            else:
-                fj=1.
-            for i in xrange(len(plist)):
-                pim = plist[i]
-                det = (Myy_list[i]*Mxx_list[i]-Mxy_list[i]**2)
-                det *= fj**2
-
-        jacob.append(jtmp)
-
+        # Myy
         # Mxy
-        jtmp = zeros(self.image.shape)
-        fac = (2*Mxy/det + (Mxx_y-Mxy_x)*(Myy_x-Mxy_y)/det**2)
-        for i,Fi in enumerate(flist):
-            if i > 0:
-                fi = pars[5+self.ngauss+i-1]
-            else:
-                fi=1.
-            jtmp += Fi*fac/fi**2
-        jacob.append(jtmp)
-
         # Mxx
-        jtmp = zeros(self.image.shape)
-        fac = (-Myy/det  + 0.5*( (Myy_x - Mxy_y)/det)**2 )
-        for i,Fi in enumerate(flist):
+        # fi
+        jtmp_yy = zeros(self.image.shape)
+        jtmp_xy = zeros(self.image.shape)
+        jtmp_xx = zeros(self.image.shape)
+
+        jf_list=[] # these will go at the end of the jacobian list
+        for i,plist in enumerate(flist):
+            fi = 1 if i == 0 else pars[5+self.ngauss+i-1]
+
             if i > 0:
-                fi = pars[5+self.ngauss+i-1]
-            else:
-                fi=1.
-            jtmp += Fi*fac/fi**2
-        jacob.append(jtmp)
+                jtmp = zeros(self.image.shape)
+            for j in xrange(len(plist)):
+                p = self.psf[j]
+                pim = plist[j]
+
+                tMyy = Myy*fi + p['irr']
+                tMxy = Mxy*fi + p['irc']
+                tMxx = Mxx*fi + p['icc']
+
+                det = (tMyy*tMxx - tMxy**2)
+                
+                tMxx_y = tMxx*y
+                tMxy_x = tMxy*x
+                tMxy_y = tMxy*y
+                tMyy_x = tMyy*x
+
+                yy_sum = .5*(-tMxx/det  + ((tMxx_y-tMxy_x)/det)**2)
+                xy_sum = (tMxy/det + (tMxx_y-tMxy_x)*(tMyy_x-tMxy_y)/det**2)
+                xx_sum = .5*(-tMyy/det  + ( (tMyy_x - tMxy_y)/det)**2 )
+
+                fac_yy += fi*yy_sum
+                fac_xy += fi*xy_sum
+                fac_xx += fi*xx_sum
+
+                if i > 0:
+                    jtmp += Myy*yy_sum + Mxy*xy_sum + Mxx*xx_sum
+            if i > 0:
+                jf_list.append(jtmp)
+
+
+        jacob.append(jtmp_yy)
+        jacob.append(jtmp_xy)
+        jacob.append(jtmp_xx)
 
         # pi
         # have an entry for *each* gauss rather than summed
-        for i,Fi in enumerate(flist):
-            pi = pars[5+i]
-            jtmp = Fi/pi
+
+        for i,plist in enumerate(flist):
+            gp = pars[5+i]
+            jtmp = zeros(self.image.shape)
+            for j in xrange(len(plist)):
+                pim = plist[j]
+                jtmp += pim/gp
             jacob.append(jtmp)
 
-        # fi
-        # an entry for each gauss after the first
-        if self.ngauss > 1:
-            fac = 0.5*(Myy*x**2 - 2.*Mxy*x*y + Mxx*y**2)/det
-            for i in xrange(1,self.ngauss):
-                Fi = flist[i]
-                fi = pars[5+self.ngauss+i-1]
-                jtmp = Fi*fac/fi**2
-                jacob.append(jtmp)
+        # f derivatives go at the end
+        jacob += jf_list
 
         for i in xrange(len(jacob)):
             jacob[i] = jacob[i].reshape(self.image.size)
