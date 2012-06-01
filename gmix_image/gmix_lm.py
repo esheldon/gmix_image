@@ -6,12 +6,14 @@ from gmix_image import gmix2image, total_moms_psf
 
 class GMixFitCoellip:
     """
-    Use levenberg marquardt to fit a gaussian mixture model.  The gaussians are
-    forced to be co-elliptical.
+    Use levenberg marquardt to fit a gaussian mixture model.  
     
-    Image is assumed to be sky-subtracted
+    The gaussians are forced to be co-elliptical.  Image is assumed to be
+    sky-subtracted
 
     When we get a mask image, we can use that too within ydiff
+
+    Priors?
     """
     def __init__(self, image, ngauss, psf=None):
         self.image=image
