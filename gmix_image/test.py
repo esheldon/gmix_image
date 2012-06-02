@@ -2,7 +2,7 @@ import numpy
 from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag
 from numpy.random import random
 import gmix_image
-import gmix_lm
+import gmix_fit
 from gmix_image import ogrid_image, gmix2image, gmix2image_psf
 import copy
 
@@ -55,7 +55,7 @@ def test(add_noise=False):
 
     maxiter=500
     verbose=False
-    gm = gmix_image.GMix(im,gd,
+    gm = gmix_image.GMixEM(im,gd,
                          sky=sky,
                          counts=counts,
                          maxiter=maxiter,
@@ -120,7 +120,7 @@ def test_psf_colocate(add_noise=False, npsf=1):
         g['icc'] += 0.2*random()
     print guess
     post_counts=im.sum()
-    gm = gmix_image.GMix(im,guess,
+    gm = gmix_image.GMixEM(im,guess,
                          sky=sky,
                          counts=post_counts,
                          maxiter=maxiter,
@@ -206,7 +206,7 @@ def test_psf(add_noise=False, npsf=1):
         g['icc'] += 0.5*random()
     print guess
     counts=im.sum()
-    gm = gmix_image.GMix(im,guess,
+    gm = gmix_image.GMixEM(im,guess,
                          sky=sky,
                          counts=counts,
                          maxiter=maxiter,
@@ -254,13 +254,13 @@ def test_lm_exp():
     dims=array([dim,dim])
     cen=(dims-1)/2.
     cov=[Irr,Irc,Icc]
-    im = model_image('exp',dims,cen,cov)
+    im = model_image('exp',dims,cen,cov,nsub=1)
 
     ngauss=3
     p0 = [cen[0],cen[1],Irr,Irc,Icc,
           .9,.8,.6,0.25,7.]
 
-    gf=gmix_lm.GMixFitCoellip(im, ngauss)
+    gf=gmix_fit.GMixFitCoellip(im, ngauss)
     res=leastsq(gf.ydiff,p0,full_output=1,Dfun=gf.jacob,col_deriv=1)
     popt, pcov0, infodict, errmsg, ier = res
     if ier not in [1,2,3,4]:
@@ -273,7 +273,7 @@ def test_lm_exp():
     fmt='%.5g '*len(p0)
     for i in xrange(len(popt)):
         print '%.6g %.6g' % (popt[i],err[i])
-    gmix = gmix_lm.pars2gmix_coellip(popt)
+    gmix = gmix_fit.pars2gmix_coellip(popt)
     model = gmix2image(gmix,im.shape)
     images.compare_images(im,model)
 
@@ -325,7 +325,7 @@ def test_gmix_exp():
         stderr.write('.')
         guess = get_exp_guess(cen,cov,ngauss)
 
-        gm=gmix_image.GMix(im_fakesky, guess, sky=sky, maxiter=5000)
+        gm=gmix_image.GMixEM(im_fakesky, guess, sky=sky, maxiter=5000)
         flags = gm.flags
 
         ntry += 1

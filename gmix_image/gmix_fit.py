@@ -1,8 +1,14 @@
 import numpy
-from numpy import zeros, array, where, ogrid
+from numpy import zeros, array, where, ogrid, diag, sqrt
+from numpy.linalg import eig
 from fimage import model_image
+from sys import stderr
 
 from gmix_image import gmix2image, total_moms_psf
+
+GMIXFIT_SINGULAR_MATRIX = 2**4
+GMIXFIT_NEG_COV_EIG     = 2**5
+GMIXFIT_NEG_COV_DIAG    = 2**6
 
 class GMixFitCoellip:
     """
@@ -15,11 +21,12 @@ class GMixFitCoellip:
 
     Priors?
     """
-    def __init__(self, image, ngauss, psf=None):
+    def __init__(self, image, guess, psf=None, verbose=False):
         self.image=image
-        #self.counts = image.sum()
-        self.ngauss=ngauss
+        self.guess=guess
+        self.ngauss=(len(guess)-4)/2
         self.nsub=1
+        self.verbose=verbose
 
         # can enter the psf model as a mixture model or
         # a coelliptical psf model; gmix is more flexible..
@@ -32,21 +39,74 @@ class GMixFitCoellip:
 
         self.row,self.col=ogrid[0:image.shape[0], 0:image.shape[1]]
 
-    def dofit(self, guess):
+        self.dofit()
+
+    def dofit(self):
         """
         Run the fit with the starting guess parameters
         """
         from scipy.optimize import leastsq
-        res = leastsq(self.ydiff,guess,
+        res = leastsq(self.ydiff,self.guess,
                       full_output=1,
                       Dfun=self.jacob,
                       col_deriv=1)
         self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+        if self.ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(self.errmsg)
+
 
         self.pcov=None
+        self.perr=None
+
+
         if self.pcov0 is not None:
             self.pcov = self.scale_cov(self.popt, self.pcov0)
- 
+
+            d=diag(self.pcov)
+            w,=where(d <= 0)
+
+            if w.size == 0:
+                # only do if non negative
+                self.perr = sqrt(d)
+
+        self.set_flags()
+         
+    def set_flags(self):
+        flags = 0
+        if self.ier > 4 and self.verbose:
+            flags = 2**(self.ier-5)
+            print >>stderr,self.errmsg 
+
+        if self.pcov is None:
+            if self.verbose:
+                print >>stderr,'singular matrix'
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(self.pcov)
+            weig,=where(e <= 0)
+            if weig.size > 0:
+                if self.verbose:
+                    print >>stderr,'negative covariance eigenvalues'
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(self.pcov) <= 0)
+            if wneg.size > 0:
+                if self.verbose:
+                    if weig.size == 0:
+                        # only print if we didn't see negative eigenvalue
+                        print >>stderr,'negative covariance diagonals'
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+        self.flags = flags
+
+    def get_gmix(self):
+        return pars2gmix_coellip(self.popt)
+    gmix = property(get_gmix)
+    def get_numiter(self):
+        return self.infodict['nfev']
+    numiter = property(get_numiter)
+
     def ydiff(self, pars):
         """
         Also apply hard priors on centroid range and determinant(s)
@@ -57,6 +117,10 @@ class GMixFitCoellip:
 
         model = self.make_model(pars)
         return (model-self.image).reshape(self.image.size)
+    
+    def chi2(self, pars):
+        ydiff = self.ydiff(pars)
+        return (ydiff**2).sum()
 
     def check_hard_priors(self, pars):
         # make sure p and f values are > 0
@@ -386,3 +450,10 @@ def gmix2pars_coellip(gmix):
     return pars
 
 
+def print_pars(stream, pars, front=None):
+    fmt = ' '.join( ['%10.6g ']*len(pars) )
+    if front is not None:
+        stream.write(front)
+        stream.write(' ')
+    stream.write(fmt % tuple(pars))
+    stream.write('\n')

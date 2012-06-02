@@ -36,12 +36,12 @@ import numpy
 from numpy import array, median, zeros, ogrid, exp, sqrt
 import _gmix_image
 
-GMIX_ERROR_NEGATIVE_DET         = 0x1
-GMIX_ERROR_MAXIT                = 0x2
-GMIX_ERROR_NEGATIVE_DET_COCENTER = 0x4
+GMIXEM_ERROR_NEGATIVE_DET         = 0x1
+GMIXEM_ERROR_MAXIT                = 0x2
+GMIXEM_ERROR_NEGATIVE_DET_COCENTER = 0x4
 
 
-class GMix(_gmix_image.GMix):
+class GMixEM(_gmix_image.GMix):
     """
     Fit a gaussian mixture model to an image using Expectation Maximization.
 
@@ -118,9 +118,9 @@ class GMix(_gmix_image.GMix):
         success.  These flags are defined as attributes to the gmix_image
         module.
 
-            GMIX_ERROR_NEGATIVE_DET         1 # determinant <= 0 in covar
-            GMIX_ERROR_MAXIT                2 # max iteration reached
-            GMIX_ERROR_NEGATIVE_DET_COCENTER 4 # not used currently
+            GMIXEM_ERROR_NEGATIVE_DET         1 # determinant <= 0 in covar
+            GMIXEM_ERROR_MAXIT                2 # max iteration reached
+            GMIXEM_ERROR_NEGATIVE_DET_COCENTER 4 # not used currently
 
         There is a corresponding method get_flags() if you prefer.
 
@@ -241,21 +241,21 @@ class GMix(_gmix_image.GMix):
         return psf
 
 def flagname(flag):
-    if flag == GMIX_ERROR_NEGATIVE_DET:
-        return 'GMIX_ERROR_NEGATIVE_DET'
-    elif flag == GMIX_ERROR_MAXIT:
-        return 'GMIX_ERROR_MAXIT'
-    elif flag == GMIX_ERROR_NEGATIVE_DET_cocenter:
-        return 'GMIX_ERROR_NEGATIVE_DET_cocenter'
+    if flag == GMIXEM_ERROR_NEGATIVE_DET:
+        return 'GMIXEM_ERROR_NEGATIVE_DET'
+    elif flag == GMIXEM_ERROR_MAXIT:
+        return 'GMIXEM_ERROR_MAXIT'
+    elif flag == GMIXEM_ERROR_NEGATIVE_DET_COCENTER:
+        return 'GMIXEM_ERROR_NEGATIVE_DET_cocenter'
     else:
         raise ValueError("unknown flag value: %s" % flag)
 def flagval(flag):
-    if flag == 'GMIX_ERROR_NEGATIVE_DET':
-        return GMIX_ERROR_NEGATIVE_DET
-    elif flag == 'GMIX_ERROR_MAXIT':
-        return GMIX_ERROR_MAXIT
-    elif flag == 'GMIX_ERROR_NEGATIVE_DET_cocenter':
-        return GMIX_ERROR_NEGATIVE_DET_cocenter
+    if flag == 'GMIXEM_ERROR_NEGATIVE_DET':
+        return GMIXEM_ERROR_NEGATIVE_DET
+    elif flag == 'GMIXEM_ERROR_MAXIT':
+        return GMIXEM_ERROR_MAXIT
+    elif flag == 'GMIXEM_ERROR_NEGATIVE_DET_COCENTER':
+        return GMIXEM_ERROR_NEGATIVE_DET_COCENTER
     else:
         raise ValueError("unknown flag name: '%s'" % flag)
 
