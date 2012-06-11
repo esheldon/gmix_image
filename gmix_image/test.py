@@ -1,3 +1,5 @@
+import os
+from sys import stderr
 import numpy
 from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag
 from numpy.random import random
@@ -6,7 +8,7 @@ import gmix_fit
 from gmix_image import ogrid_image, gmix2image, gmix2image_psf
 import copy
 
-from sys import stderr
+import esutil as eu
 
 try:
     import images
@@ -230,52 +232,265 @@ def test_psf(add_noise=False, npsf=1):
 
         images.compare_images(im_prepsf, im_fit)
 
+def test_fit_dev_by_ellip(sigma, method='lm'):
+    """
+    Fixed sigma, different ellip
+    """
+    import biggles
+    from scipy.optimize import leastsq
+    from fimage import model_image
+    numpy.random.seed(35)
 
-def test_lm_exp():
+    ngauss=4
+    nsig=15
+    npars=2*ngauss+4
+    nsigma_vals=20
+
+
+    data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
+    sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
+    for isigma,sigma in enumerate(sigvals):
+        print '-'*70
+        print 'sigma:',sigma
+        T = 2*sigma**2
+
+        Irr = sigma**2
+        Irc = 0.0
+        Icc = sigma**2
+        dim = int(2*nsig*sigma)
+        if (dim % 2) == 0:
+            dim += 1
+        dims=array([dim,dim])
+        cen=(dims-1)/2.
+        cov=[Irr,Irc,Icc]
+        im = model_image('dev',dims,cen,cov,nsub=16)
+
+
+        flags=9999
+        while flags != 0:
+            stderr.write('.')
+            if ngauss == 3:
+                p0 = [cen[0],cen[1],Irr,Irc,Icc, 0.4,0.07,0.55, 0.2,3.8]
+            elif ngauss==4:
+                # at sigma==3 pixelization, expect f vals of 
+                #   0.044, 0.22, 6.0
+                # but always start on the *inside* of the expected
+                p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
+                            .22, .35, .25, .15, 
+                            .1, .25, 4.])
+                p0[5] += 0.1*(random()-0.5)
+                p0[6] += 0.1*(random()-0.5)
+                p0[7] += 0.1*(random()-0.5)
+                p0[8] += 0.1*(random()-0.5)
+
+                p0[9] += 0.1*(random()-0.5)
+                p0[10] += 0.1*(random()-0.5)
+                p0[11] += 2*(random()-0.5)
+
+            else:
+                raise ValueError("implement guess ngauss > 4")
+
+            verbose=False
+            gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=verbose)
+            flags = gf.flags
+
+        stderr.write('\n')
+        print 'numiter:',gf.numiter
+        for i in xrange(len(gf.popt)):
+            print '%.6g' % gf.popt[i]
+
+        if gf.flags != 0:
+            raise RuntimeError("failed")
+
+        data['sigma'][isigma] = sigma
+        data['pars'][isigma,:] = gf.popt
+
+    # plot the last one
+    gmix = gmix_fit.pars2gmix_coellip(gf.popt)
+    model = gmix2image(gmix,im.shape)
+    images.compare_images(im,model)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.show()
+
+
+def test_fit_dev_bysigma(method='lm'):
+    """
+    Round object as a function of sigma
+    """
+    import biggles
+    from scipy.optimize import leastsq
+    from fimage import model_image
+    numpy.random.seed(35)
+
+    ngauss=4
+    nsig=15
+    npars=2*ngauss+4
+    nsigma_vals=20
+
+    f='test-opt-dev-bysigma.rec'
+    pngf=f.replace('.rec','.png')
+    if not os.path.exists(f):
+        data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
+        sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
+        for isigma,sigma in enumerate(sigvals):
+            print '-'*70
+            print 'sigma:',sigma
+            T = 2*sigma**2
+
+            Irr = sigma**2
+            Irc = 0.0
+            Icc = sigma**2
+            dim = int(2*nsig*sigma)
+            if (dim % 2) == 0:
+                dim += 1
+            dims=array([dim,dim])
+            cen=(dims-1)/2.
+            cov=[Irr,Irc,Icc]
+            im = model_image('dev',dims,cen,cov,nsub=16)
+
+            flags=9999
+            while flags != 0:
+                stderr.write('.')
+                if ngauss == 3:
+                    p0 = [cen[0],cen[1],Irr,Irc,Icc, 0.4,0.07,0.55, 0.2,3.8]
+                elif ngauss==4:
+                    # at sigma==3 pixelization, expect f vals of 
+                    #   0.044, 0.22, 6.0
+                    # but always start on the *inside* of the expected
+                    p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
+                                .22, .35, .25, .15, 
+                                .1, .25, 4.])
+                    p0[5] += 0.1*(random()-0.5)
+                    p0[6] += 0.1*(random()-0.5)
+                    p0[7] += 0.1*(random()-0.5)
+                    p0[8] += 0.1*(random()-0.5)
+
+                    p0[9] += 0.1*(random()-0.5)
+                    p0[10] += 0.1*(random()-0.5)
+                    p0[11] += 2*(random()-0.5)
+
+                else:
+                    raise ValueError("implement guess ngauss > 4")
+
+                verbose=False
+                gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=verbose)
+                flags = gf.flags
+
+            print 'numiter:',gf.numiter
+            for i in xrange(len(gf.popt)):
+                print '%.6g' % gf.popt[i]
+
+            if gf.flags != 0:
+                raise RuntimeError("failed")
+
+            data['sigma'][isigma] = sigma
+            data['pars'][isigma,:] = gf.popt
+
+        # plot the last one
+        gmix = gmix_fit.pars2gmix_coellip(gf.popt)
+        model = gmix2image(gmix,im.shape)
+        images.compare_images(im,model)
+    else:
+        data=eu.io.read(f)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.add(biggles.Points(data['sigma'],data['pars'][:,par],
+                               type='filled circle'))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.show()
+    tab.write_img(1024,1024,pngf)
+
+def test_fit_exp(method='lm'):
+    import biggles
     from scipy.optimize import curve_fit, leastsq
     from fimage import model_image
     numpy.random.seed(35)
 
     nsig=7
-
-    T = 2*3.
-    e = 0.3
-    theta = random()*360.
-    e1 = e*cos(2*theta*numpy.pi/180.0)
-    e2 = e*sin(2*theta*numpy.pi/180.0)
-
-    Irc = e2*T/2.0
-    Icc = (1+e1)*T/2.0
-    Irr = (1-e1)*T/2.0
-    sigma = sqrt( (Irr+Icc)/2. ) 
-    dim = int(2*nsig*sigma)
-    if (dim % 2) == 0:
-        dim += 1
-    dims=array([dim,dim])
-    cen=(dims-1)/2.
-    cov=[Irr,Irc,Icc]
-    im = model_image('exp',dims,cen,cov,nsub=1)
-
     ngauss=3
-    p0 = [cen[0],cen[1],Irr,Irc,Icc,
-          .9,.8,.6,0.25,7.]
+    npars=2*ngauss+4
+    nsigma=20
+    data=numpy.zeros(nsigma,dtype=[('sigma','f8'),('pars','f8',npars)])
+    sigvals = numpy.linspace(1.5,5.0,nsigma)
+    for isigma,sigma in enumerate(sigvals):
+        print '-'*70
+        T = 2*sigma**2
+        #T = 2*8.
+        e = 0.3
+        theta = random()*360.
+        e1 = e*cos(2*theta*numpy.pi/180.0)
+        e2 = e*sin(2*theta*numpy.pi/180.0)
 
-    gf=gmix_fit.GMixFitCoellip(im, ngauss)
-    res=leastsq(gf.ydiff,p0,full_output=1,Dfun=gf.jacob,col_deriv=1)
-    popt, pcov0, infodict, errmsg, ier = res
-    if ier not in [1,2,3,4]:
-        print "failure: %s" % errmsg
-    elif pcov0 is None:
-        print 'Singular matrix!'
-    print 'numiter:',infodict['nfev']
-    pcov = gf.scale_cov(popt, pcov0)
-    err = sqrt(diag(pcov))
-    fmt='%.5g '*len(p0)
-    for i in xrange(len(popt)):
-        print '%.6g %.6g' % (popt[i],err[i])
-    gmix = gmix_fit.pars2gmix_coellip(popt)
+        Irc = e2*T/2.0
+        Icc = (1+e1)*T/2.0
+        Irr = (1-e1)*T/2.0
+        sigma = sqrt( (Irr+Icc)/2. ) 
+        dim = int(2*nsig*sigma)
+        if (dim % 2) == 0:
+            dim += 1
+        dims=array([dim,dim])
+        cen=(dims-1)/2.
+        cov=[Irr,Irc,Icc]
+        im = model_image('exp',dims,cen,cov,nsub=16)
+
+        ngauss=3
+        p0 = [cen[0],cen[1],Irr,Irc,Icc, 0.4,0.07,0.55,0.2,3.8]
+        #p0 = [cen[0],cen[1],Irr,Irc,Icc,
+        #      .9,.8,.6,0.25,7.]
+
+        gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=True)
+        if gf.flags != 0:
+            raise RuntimeError("failed")
+        print 'numiter:',gf.numiter
+        if gf.flags != 0:
+            stop
+        #pcov = gf.pcov
+        #err = sqrt(diag(pcov))
+        for i in xrange(len(gf.popt)):
+            #print '%.6g %.6g' % (gf.popt[i],err[i])
+            print '%.6g' % gf.popt[i]
+        data['sigma'][isigma] = sigma
+        data['pars'][isigma,:] = gf.popt
+    # plot the last one
+    gmix = gmix_fit.pars2gmix_coellip(gf.popt)
     model = gmix2image(gmix,im.shape)
     images.compare_images(im,model)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.show()
 
 def test_gmix_exp():
     import admom

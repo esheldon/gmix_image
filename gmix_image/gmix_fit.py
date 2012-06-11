@@ -1,14 +1,20 @@
 import numpy
-from numpy import zeros, array, where, ogrid, diag, sqrt
+from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite
 from numpy.linalg import eig
 from fimage import model_image
 from sys import stderr
 
 from gmix_image import gmix2image, total_moms_psf
 
+GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
 GMIXFIT_NEG_COV_EIG     = 2**5
 GMIXFIT_NEG_COV_DIAG    = 2**6
+GMIXFIT_NEG_MCOV_DIAG   = 2**7 # the M sub-cov matrix not positive definite
+GMIXFIT_MCOV_NOTPOSDEF  = 2**8 # more strict checks on cholesky decomposition
+GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
+GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
+
 
 class GMixFitCoellip:
     """
@@ -21,8 +27,10 @@ class GMixFitCoellip:
 
     Priors?
     """
-    def __init__(self, image, guess, psf=None, verbose=False):
+    def __init__(self, image, guess, 
+                 error=None, psf=None, method='lm', verbose=False):
         self.image=image
+        self.error=error # per pixel
         self.guess=guess
         self.ngauss=(len(guess)-4)/2
         self.nsub=1
@@ -39,11 +47,18 @@ class GMixFitCoellip:
 
         self.row,self.col=ogrid[0:image.shape[0], 0:image.shape[1]]
 
-        self.dofit()
+        if method=='lm':
+            self.dofit_lm()
+        elif method=='cg':
+            self.dofit_cg()
+        elif method=='ncg':
+            self.dofit_ncg()
+        else:
+            raise ValueError("expected method 'lm' or 'cg'")
 
-    def dofit(self):
+    def dofit_lm(self):
         """
-        Run the fit with the starting guess parameters
+        Run the fit using LM
         """
         from scipy.optimize import leastsq
         res = leastsq(self.ydiff,self.guess,
@@ -55,13 +70,14 @@ class GMixFitCoellip:
             # wrong args, this is a bug
             raise ValueError(self.errmsg)
 
+        self.numiter = self.infodict['nfev']
 
         self.pcov=None
         self.perr=None
 
 
         if self.pcov0 is not None:
-            self.pcov = self.scale_cov(self.popt, self.pcov0)
+            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
 
             d=diag(self.pcov)
             w,=where(d <= 0)
@@ -70,13 +86,56 @@ class GMixFitCoellip:
                 # only do if non negative
                 self.perr = sqrt(d)
 
-        self.set_flags()
-         
-    def set_flags(self):
+        self.set_lm_flags()
+
+        if self.flags == 0:
+            cov_inv = numpy.linalg.inv(self.pcov)
+            mcov_inv = cov_inv[2:2+3, 2:2+3]
+            self.mcov_fix = numpy.linalg.inv(mcov_inv)
+            
+
+    def dofit_cg(self):
+        """
+        Run the fit using Conjugate Gradient
+        # TODO implement calculation of covariance from jacobian
+        """
+        from scipy.optimize import fmin_cg
+        res = fmin_cg(self.ydiff_sq_sum,
+                      self.guess,
+                      fprime=self.ydiff_sq_jacob,
+                      full_output=1)
+        (self.popt, self.fopt, self.numiter, 
+            self.grad_calls, self.warnflags) = res
+
+        self.pcov=None
+        self.perr=None
+
+        self.set_cg_flags()
+
+    def dofit_ncg(self):
+        """
+        Run the fit using Newton Conjugate Gradient 
+        # TODO implement calculation of covariance from jacobian
+        """
+        from scipy.optimize import fmin_ncg
+        res = fmin_ncg(self.ydiff_sq_sum,
+                       self.guess,
+                       fprime=self.ydiff_sq_jacob,
+                       full_output=1)
+        (self.popt, self.fopt, self.numiter, 
+            self.grad_calls, self.warnflags) = res
+
+        self.pcov=None
+        self.perr=None
+
+        self.set_cg_flags()
+       
+    def set_lm_flags(self):
         flags = 0
-        if self.ier > 4 and self.verbose:
+        if self.ier > 4:
             flags = 2**(self.ier-5)
-            print >>stderr,self.errmsg 
+            if self.verbose:
+                print >>stderr,self.errmsg 
 
         if self.pcov is None:
             if self.verbose:
@@ -87,25 +146,83 @@ class GMixFitCoellip:
             weig,=where(e <= 0)
             if weig.size > 0:
                 if self.verbose:
+                    import images
                     print >>stderr,'negative covariance eigenvalues'
+                    images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_EIG 
 
             wneg,=where(diag(self.pcov) <= 0)
             if wneg.size > 0:
                 if self.verbose:
-                    if weig.size == 0:
-                        # only print if we didn't see negative eigenvalue
-                        print >>stderr,'negative covariance diagonals'
+                    import images
+                    # only print if we didn't see negative eigenvalue
+                    print >>stderr,'negative covariance diagonals'
+                    images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_DIAG 
 
+            mcov = self.pcov[2:2+3,2:2+3].copy()
+            me,v = eig(mcov)
+            weig,=where(me <= 0)
+            if weig.size > 0:
+                if self.verbose:
+                    import images
+                    print >>stderr,'negative M covariance eigenvalues'
+                    print >>stderr,me
+                    images.imprint(mcov,stream=stderr)
+                flags += GMIXFIT_NEG_MCOV_DIAG
+
+            # this has more strict checks it seems
+            try:
+                MM = numpy.linalg.cholesky(mcov)
+            except numpy.linalg.LinAlgError as e:
+                if self.verbose:
+                    import images
+                    print >>stderr,e
+                    images.imprint(mcov,stream=stderr)
+                flags += GMIXFIT_MCOV_NOTPOSDEF
+
+            if ( ((flags & GMIXFIT_MCOV_NOTPOSDEF) != 0)
+                    and ((flags & GMIXFIT_NEG_MCOV_DIAG) == 0) ):
+                import images
+                print >>stderr,'found one:'
+                print >>stderr,me
+                images.imprint(mcov,stream=stderr,fmt='%.16e')
+                print >>stderr,mcov.dtype.descr
+                print >>stderr,mcov.flags
+                print >>stderr,mcov.shape
+                stop
+
+
+            '''
+            if flags == 0 and True:
+                #print 's2n on cen0:',self.popt[0]/sqrt(self.pcov[0,0])
+                #print 's2n on popt:'
+                #for i in xrange(len(self.popt)):
+                #    print self.popt[i]/sqrt(self.pcov[i,i])
+                T = self.popt[2]+self.popt[4]
+                Terr = sqrt(self.pcov[2,2]+self.pcov[4,4]+2*self.pcov[2,4])
+                Ts2n = T/Terr
+                if T/Terr < 1.0:
+                    if self.verbose:
+                        print >>stderr,'S/N on T < 1: ',Ts2n
+                    flags += GMIXFIT_LOW_S2N 
+            '''
         self.flags = flags
+
+    def set_cg_flags(self):
+        self.flags = 0
+        if self.warnflags == 1:
+            if self.verbose:
+                print >>stderr,"maxiter reached"
+            self.flags += GMIXFIT_MAXITER
+        if self.warnflags == 1:
+            if self.verbose:
+                print >>stderr,"func/fprime calls not changing"
+            self.flags += GMIXFIT_CALLS_NOT_CHANGING
 
     def get_gmix(self):
         return pars2gmix_coellip(self.popt)
     gmix = property(get_gmix)
-    def get_numiter(self):
-        return self.infodict['nfev']
-    numiter = property(get_numiter)
 
     def ydiff(self, pars):
         """
@@ -116,11 +233,44 @@ class GMixFitCoellip:
             return zeros(self.image.size) + numpy.inf
 
         model = self.make_model(pars)
+        if not isfinite(model[0,0]):
+            #raise ValueError("NaN in model")
+            if self.verbose:
+                print >>stderr,'found NaN in model'
+            return zeros(self.image.size) + numpy.inf
         return (model-self.image).reshape(self.image.size)
     
+    def ydiff_sq_sum(self, pars):
+        """
+        Using conjugate gradient algorithm, we minimize
+        (y-data)**2
+        """
+        yd=self.ydiff(pars)
+        return (yd**2).sum()
+
+    def ydiff_sq_jacob(self, pars):
+        """
+        Using conjugate gradient algorithm, we minimize
+            (model-data)**2 = ydiff**2
+        so the jacobian is 2*(ydiff*jacob).sum()
+        """
+        # this is a list with each element the full array over pixels
+        # both jacob and ydiff are reshaped to linear for use in the 
+        # LM algorithm, but this doesn't matter
+        model_j = self.jacob(pars)
+        ydiff = self.ydiff(pars)
+
+        j = zeros(len(pars))
+        for i in xrange(len(model_j)):
+            j[i] = 2*( ydiff*model_j[i] ).sum()
+        return j
+
     def chi2(self, pars):
         ydiff = self.ydiff(pars)
         return (ydiff**2).sum()
+    def chi2per(self, pars, skysig):
+        ydiff = self.ydiff(pars)
+        return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
 
     def check_hard_priors(self, pars):
         # make sure p and f values are > 0
@@ -128,6 +278,16 @@ class GMixFitCoellip:
         w,=where(vals <= 0)
         if w.size > 0:
             return False
+
+        # make sure f values are reasonable, at least for exp, need
+        # to try dev
+        """
+        if self.ngauss > 1:
+            fvals = pars[5+self.ngauss:]
+            w,=where((fvals < 0.05) | (fvals > 15.0))
+            if w.size > 0:
+                return False
+        """
 
         # check determinant for all images we might have
         # to create with psf convolutions
@@ -172,7 +332,7 @@ class GMixFitCoellip:
 
     def jacob(self, pars):
         """
-        Calculate the jacobian for each parameter
+        Calculate the jacobian of the function for each parameter
         """
         if self.psf is not None:
             return self.jacob_psf(pars)
@@ -381,7 +541,7 @@ class GMixFitCoellip:
         return jacob
 
 
-    def scale_cov(self, popt, pcov):
+    def scale_leastsq_cov(self, popt, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
