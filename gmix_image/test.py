@@ -1,11 +1,13 @@
 import os
 from sys import stderr
 import numpy
-from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag
-from numpy.random import random
+from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag, \
+        tanh, pi
+from numpy.random import random as randu
 import gmix_image
 import gmix_fit
-from gmix_image import ogrid_image, gmix2image, gmix2image_psf
+from .gmix_fit import print_pars, ellip2eta, eta2ellip
+from .gmix_em import gmix2image, gmix2image_psf
 import copy
 
 import esutil as eu
@@ -43,7 +45,7 @@ def test(add_noise=False):
         skysig=0.1*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
-        im += skysig*random(im.size).reshape(dims[0],dims[1])
+        im += skysig*randu(im.size).reshape(dims[0],dims[1])
 
     im_min = im.min()
     if im_min < 0:
@@ -101,7 +103,7 @@ def test_psf_colocate(add_noise=False, npsf=1):
         skysig=0.05*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
-        im += skysig*random(im.size).reshape(dims[0],dims[1])
+        im += skysig*randu(im.size).reshape(dims[0],dims[1])
     else:
         skysig=None
 
@@ -115,11 +117,11 @@ def test_psf_colocate(add_noise=False, npsf=1):
 
     guess=copy.deepcopy(gd)
     for g in guess:
-        g['row'] += 0.2*random()
-        g['col'] += 0.2*random()
-        g['irr'] += 0.2*random()
-        g['irc'] += 0.2*random()
-        g['icc'] += 0.2*random()
+        g['row'] += 0.2*randu()
+        g['col'] += 0.2*randu()
+        g['irr'] += 0.2*randu()
+        g['irc'] += 0.2*randu()
+        g['icc'] += 0.2*randu()
     print guess
     post_counts=im.sum()
     gm = gmix_image.GMixEM(im,guess,
@@ -192,7 +194,7 @@ def test_psf(add_noise=False, npsf=1):
         skysig=0.05*im.max()
         print 'image max:',im.max()
         print 'skysig   :',skysig
-        im += skysig*random(im.size).reshape(dims[0],dims[1])
+        im += skysig*randu(im.size).reshape(dims[0],dims[1])
 
 
     # must have non-zero sky
@@ -202,10 +204,10 @@ def test_psf(add_noise=False, npsf=1):
 
     guess=copy.deepcopy(gd)
     for g in guess:
-        g['row'] += 0.5*random()
-        g['col'] += 0.5*random()
-        g['irr'] += 0.5*random()
-        g['icc'] += 0.5*random()
+        g['row'] += 0.5*randu()
+        g['col'] += 0.5*randu()
+        g['irr'] += 0.5*randu()
+        g['icc'] += 0.5*randu()
     print guess
     counts=im.sum()
     gm = gmix_image.GMixEM(im,guess,
@@ -278,14 +280,14 @@ def test_fit_dev_by_ellip(sigma, method='lm'):
                 p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
                             .22, .35, .25, .15, 
                             .1, .25, 4.])
-                p0[5] += 0.1*(random()-0.5)
-                p0[6] += 0.1*(random()-0.5)
-                p0[7] += 0.1*(random()-0.5)
-                p0[8] += 0.1*(random()-0.5)
+                p0[5] += 0.1*(randu()-0.5)
+                p0[6] += 0.1*(randu()-0.5)
+                p0[7] += 0.1*(randu()-0.5)
+                p0[8] += 0.1*(randu()-0.5)
 
-                p0[9] += 0.1*(random()-0.5)
-                p0[10] += 0.1*(random()-0.5)
-                p0[11] += 2*(random()-0.5)
+                p0[9] += 0.1*(randu()-0.5)
+                p0[10] += 0.1*(randu()-0.5)
+                p0[11] += 2*(randu()-0.5)
 
             else:
                 raise ValueError("implement guess ngauss > 4")
@@ -372,14 +374,14 @@ def test_fit_dev_bysigma(method='lm'):
                     p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
                                 .22, .35, .25, .15, 
                                 .1, .25, 4.])
-                    p0[5] += 0.1*(random()-0.5)
-                    p0[6] += 0.1*(random()-0.5)
-                    p0[7] += 0.1*(random()-0.5)
-                    p0[8] += 0.1*(random()-0.5)
+                    p0[5] += 0.1*(randu()-0.5)
+                    p0[6] += 0.1*(randu()-0.5)
+                    p0[7] += 0.1*(randu()-0.5)
+                    p0[8] += 0.1*(randu()-0.5)
 
-                    p0[9] += 0.1*(random()-0.5)
-                    p0[10] += 0.1*(random()-0.5)
-                    p0[11] += 2*(random()-0.5)
+                    p0[9] += 0.1*(randu()-0.5)
+                    p0[10] += 0.1*(randu()-0.5)
+                    p0[11] += 2*(randu()-0.5)
 
                 else:
                     raise ValueError("implement guess ngauss > 4")
@@ -422,7 +424,227 @@ def test_fit_dev_bysigma(method='lm'):
     tab.show()
     tab.write_img(1024,1024,pngf)
 
-def test_fit_exp(method='lm'):
+def test_fit_1gauss_fix(imove, use_jacob=True):
+
+    import images
+    numpy.random.seed(45)
+
+    T1=3.0
+    nsig=5
+    dim = int(nsig*T1)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    print >>stderr,'ellip:',ellip
+    print >>stderr,'e1:',ellip*cos(2*theta)
+    print >>stderr,'e2:',ellip*sin(2*theta)
+
+    pars=array([cen[0],cen[1],eta,theta,1.,T1])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    im=gmix2image(gmix,dims)
+    #images.multiview(im)
+    
+    p0=pars.copy()
+    if imove == 0:
+        p0[0] += 1*(randu()-0.5)  # cen0
+    elif imove == 1:
+        p0[1] += 1*(randu()-0.5)  # cen1
+    elif imove == 2:
+        p0[2] += 1*(randu()-0.5)  # eta
+    elif imove == 3:
+        p0[3] += 1*(randu()-0.5)   # theta radians
+    elif imove == 4:
+        p0[4] += 0.2*(randu()-0.5)  # p
+    elif imove == 5:
+        p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, ptype='eta',
+                                  use_jacob=use_jacob,
+                                  verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+    print gf.pcov
+
+
+def test_fit_1gauss():
+    import images
+    numpy.random.seed(35)
+
+    T1=3.0
+    nsig=5
+    dim = int(nsig*T1)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    print >>stderr,'ellip:',ellip
+    pars=array([cen[0],cen[1],eta,theta,1.,T1])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    im=gmix2image(gmix,dims)
+    #images.multiview(im)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 0.2*(randu()-0.5)  # eta
+    p0[3] += 0.5*(randu()-0.5)   # theta radians
+    p0[4] += 0.1*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+
+
+def test_fit_2gauss():
+    import images
+
+    T1=3.0
+    T2=6.0
+    nsig=5
+    dim = int(nsig*T2)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    p1=0.4
+    p2=0.6
+    print >>stderr,'ellip:',ellip
+    pars=array([cen[0],cen[1],eta,theta,p1,p2,T1,T2])
+    print >>stderr,'pars'
+
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    im=gmix2image(gmix,dims)
+    
+    p0=pars.copy()
+    p0[0] += 0.02*(randu()-0.5)  # cen0
+    p0[1] += 0.02*(randu()-0.5)  # cen1
+    p0[2] = -0.5 + 0.02*(randu()-0.5)  # eta
+    p0[3] = 15.0*numpy.pi/180. + 0.2*(randu()-0.5)   # theta radians
+    p0[4] = 0.5  # p
+    p0[5] = 0.5  # p
+    p0[6] = 2.0 + 0.5*(randu()-0.5)   # T
+    p0[7] = 3.0 + 0.5*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+    gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+    for i in xrange(len(pars)):
+        print '%10.6f %10.6f' % (pars[i],gf.popt[i])
+
+def test_fit_exp_eta():
+    import biggles
+    from scipy.optimize import leastsq
+    from fimage import model_image
+    numpy.random.seed(35)
+
+    nsig=7
+    ngauss=3
+    npars=2*ngauss+4
+    nsigma=20
+    data=numpy.zeros(nsigma,dtype=[('sigma','f8'),('pars','f8',npars)])
+    sigvals = numpy.linspace(1.5,5.0,nsigma)
+    for isigma,sigma in enumerate(sigvals):
+        print '-'*70
+        T = 2*sigma**2
+        e = 0.3
+        eta = ellip2eta(e)
+
+        #theta = randu()*360.*pi/180.
+        theta = 23.7*pi/180.
+        e1 = e*cos(2*theta)
+        e2 = e*sin(2*theta)
+
+        Irc = e2*T/2.
+        Icc = (1+e1)*T/2.
+        Irr = (1-e1)*T/2.
+        sigma = sqrt( (Irr+Icc)/2. ) 
+        dim = int(2*nsig*sigma)
+        if (dim % 2) == 0:
+            dim += 1
+        dims=array([dim,dim])
+        cen=(dims-1)/2.
+        cov=[Irr,Irc,Icc]
+        im = model_image('exp',dims,cen,cov,nsub=16)
+
+        ngauss=3
+        p0 = [cen[0],# + 0.1*(randu()-0.5),
+              cen[1],# + 0.1*(randu()-0.5),
+              eta,# + 0.2*(randu()-0.5), 
+              theta,# + 10.*pi/180.*(randu()-0.5),
+              0.2,
+              0.5,
+              0.3,
+              T,
+              0.05*T,
+              3.8*T]
+
+        gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta', verbose=True)
+        if gf.flags != 0:
+            raise RuntimeError("failed")
+        print 'numiter:',gf.numiter
+        if gf.flags != 0:
+            stop
+        #pcov = gf.pcov
+        #err = sqrt(diag(pcov))
+        for i in xrange(len(gf.popt)):
+            #print '%.6g %.6g' % (gf.popt[i],err[i])
+            print '%.6g %.6g' % (gf.popt[i],gf.perr[i])
+        data['sigma'][isigma] = sigma
+        data['pars'][isigma,:] = gf.popt
+
+        tvals = gf.popt[4+ngauss:]
+        tmax=tvals.max()
+        print 't ratios:',tvals/tmax
+        print 'p values:',gf.popt[4:4+ngauss]
+
+    # plot the last one
+    gmix = gmix_fit.pars2gmix_coellip_eta(gf.popt)
+    model = gmix2image(gmix,im.shape)
+    images.compare_images(im,model)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.show()
+
+
+
+def test_fit_exp_cov(method='lm'):
     import biggles
     from scipy.optimize import curve_fit, leastsq
     from fimage import model_image
@@ -439,7 +661,7 @@ def test_fit_exp(method='lm'):
         T = 2*sigma**2
         #T = 2*8.
         e = 0.3
-        theta = random()*360.
+        theta = randu()*360.
         e1 = e*cos(2*theta*numpy.pi/180.0)
         e2 = e*sin(2*theta*numpy.pi/180.0)
 
@@ -460,7 +682,8 @@ def test_fit_exp(method='lm'):
         #p0 = [cen[0],cen[1],Irr,Irc,Icc,
         #      .9,.8,.6,0.25,7.]
 
-        gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=True)
+        gf=gmix_fit.GMixFitCoellip(im, p0, ptype='cov',
+                                   method=method,verbose=True)
         if gf.flags != 0:
             raise RuntimeError("failed")
         print 'numiter:',gf.numiter
@@ -506,7 +729,7 @@ def test_gmix_exp():
 
     T = 2*3
     e = 0.3
-    theta = random()*360.
+    theta = randu()*360.
     e1 = e*cos(2*theta*numpy.pi/180.0)
     e2 = e*sin(2*theta*numpy.pi/180.0)
 
@@ -556,11 +779,11 @@ def get_exp_guess(cen,cov,ngauss):
     guess=[]
     for i in xrange(ngauss):
         g= {'p':1./ngauss,
-            'row':cen[0] + 0.1*(random()-0.5),
-            'col':cen[1] + 0.1*(random()-0.5),
-            'irr':cov[0] + 0.5*(random()-0.5),
-            'irc':cov[1] + 0.5*(random()-0.5),
-            'icc':cov[2] + 0.5*(random()-0.5)}
+            'row':cen[0] + 0.1*(randu()-0.5),
+            'col':cen[1] + 0.1*(randu()-0.5),
+            'irr':cov[0] + 0.5*(randu()-0.5),
+            'irc':cov[1] + 0.5*(randu()-0.5),
+            'icc':cov[2] + 0.5*(randu()-0.5)}
         guess.append(g)
     return guess
 

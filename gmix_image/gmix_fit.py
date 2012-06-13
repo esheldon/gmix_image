@@ -1,10 +1,11 @@
 import numpy
-from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite
+from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
+        tanh, arctanh, cos, sin, exp
 from numpy.linalg import eig
 from fimage import model_image
 from sys import stderr
 
-from gmix_image import gmix2image, total_moms_psf
+from .gmix_em import gmix2image, total_moms_psf
 
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
@@ -18,22 +19,60 @@ GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
 class GMixFitCoellip:
     """
-    Use levenberg marquardt to fit a gaussian mixture model.  
+    Perform a non-linear fit of the image to a gaussian mixture model.  
     
     The gaussians are forced to be co-elliptical.  Image is assumed to be
     sky-subtracted
 
-    When we get a mask image, we can use that too within ydiff
+    parameters
+    ----------
+    image: numpy array, dim=2
+        A background-subtracted image.
+    guess:
+        A starting guess for the parameters.  If ptype=='ellip'
+        then this array is
+            [cen0,cen1,eta,theta,pi,Ti]
+        Where i runs over all gaussians. Eta is defined by
+            ellip=(1+tanh(eta))/2.
+        Which allows the bounds of eta to b -inf,inf.
 
-    Priors?
+        Note ngauss=(len(guess)-4)/2
+        
+        If ptype=='cov' then the parameters are
+            [cen0,cen1,cov00,cov01,cov11,pi,fi]
+
+    ptype: string
+        Either 'ellip' or 'cov'
+    error: float
+        The error per pixel.  Note currently used.
+    psf: list of dictionaries
+        A gaussian mixture model specified as a list of
+        dictionaries.  Each dict has these entries
+            p: A normalization
+            row: center of the gaussian in the first dimension
+            col: center of the gaussian in the second dimension
+            irr: Covariance matrix element for row*row
+            irc: Covariance matrix element for row*col
+            icc: Covariance matrix element for col*col
+
+    method: string
+        method for the fit.  Only 'lm' is useful currently.
+    verbose: bool
     """
     def __init__(self, image, guess, 
-                 error=None, psf=None, method='lm', verbose=False):
+                 ptype='cov',
+                 error=None, 
+                 psf=None, 
+                 method='lm', 
+                 use_jacob=True,
+                 verbose=False):
         self.image=image
         self.error=error # per pixel
         self.guess=guess
+        self.ptype=ptype
         self.ngauss=(len(guess)-4)/2
         self.nsub=1
+        self.use_jacob=use_jacob
         self.verbose=verbose
 
         # can enter the psf model as a mixture model or
@@ -49,22 +88,29 @@ class GMixFitCoellip:
 
         if method=='lm':
             self.dofit_lm()
-        elif method=='cg':
-            self.dofit_cg()
-        elif method=='ncg':
-            self.dofit_ncg()
         else:
-            raise ValueError("expected method 'lm' or 'cg'")
+            raise ValueError("expected method 'lm'")
 
     def dofit_lm(self):
         """
         Run the fit using LM
         """
         from scipy.optimize import leastsq
-        res = leastsq(self.ydiff,self.guess,
-                      full_output=1,
-                      Dfun=self.jacob,
-                      col_deriv=1)
+        if self.ptype == 'eta':
+            res = leastsq(self.ydiff,self.guess,
+                          full_output=1,
+                          Dfun=self.jacob_eta,
+                          col_deriv=1)
+            """
+            res = leastsq(self.ydiff,self.guess,
+                          full_output=1)
+            """
+        elif self.ptype=='cov':
+            res = leastsq(self.ydiff,self.guess,
+                          full_output=1,
+                          Dfun=self.jacob_cov,
+                          col_deriv=1)
+
         self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
         if self.ier == 0:
             # wrong args, this is a bug
@@ -74,7 +120,6 @@ class GMixFitCoellip:
 
         self.pcov=None
         self.perr=None
-
 
         if self.pcov0 is not None:
             self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
@@ -94,41 +139,6 @@ class GMixFitCoellip:
             self.mcov_fix = numpy.linalg.inv(mcov_inv)
             
 
-    def dofit_cg(self):
-        """
-        Run the fit using Conjugate Gradient
-        # TODO implement calculation of covariance from jacobian
-        """
-        from scipy.optimize import fmin_cg
-        res = fmin_cg(self.ydiff_sq_sum,
-                      self.guess,
-                      fprime=self.ydiff_sq_jacob,
-                      full_output=1)
-        (self.popt, self.fopt, self.numiter, 
-            self.grad_calls, self.warnflags) = res
-
-        self.pcov=None
-        self.perr=None
-
-        self.set_cg_flags()
-
-    def dofit_ncg(self):
-        """
-        Run the fit using Newton Conjugate Gradient 
-        # TODO implement calculation of covariance from jacobian
-        """
-        from scipy.optimize import fmin_ncg
-        res = fmin_ncg(self.ydiff_sq_sum,
-                       self.guess,
-                       fprime=self.ydiff_sq_jacob,
-                       full_output=1)
-        (self.popt, self.fopt, self.numiter, 
-            self.grad_calls, self.warnflags) = res
-
-        self.pcov=None
-        self.perr=None
-
-        self.set_cg_flags()
        
     def set_lm_flags(self):
         flags = 0
@@ -142,13 +152,16 @@ class GMixFitCoellip:
                 print >>stderr,'singular matrix'
             flags += GMIXFIT_SINGULAR_MATRIX 
         else:
+            #import images
+            #print >>stderr,'pcov:'
+            #images.imprint(self.pcov,stream=stderr)
             e,v = eig(self.pcov)
             weig,=where(e <= 0)
             if weig.size > 0:
                 if self.verbose:
                     import images
                     print >>stderr,'negative covariance eigenvalues'
-                    images.imprint(self.pcov,stream=stderr)
+                    #images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_EIG 
 
             wneg,=where(diag(self.pcov) <= 0)
@@ -157,40 +170,41 @@ class GMixFitCoellip:
                     import images
                     # only print if we didn't see negative eigenvalue
                     print >>stderr,'negative covariance diagonals'
-                    images.imprint(self.pcov,stream=stderr)
+                    #images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_DIAG 
 
-            mcov = self.pcov[2:2+3,2:2+3].copy()
-            me,v = eig(mcov)
-            weig,=where(me <= 0)
-            if weig.size > 0:
-                if self.verbose:
+            if self.ptype == 'cov':
+                mcov = self.pcov[2:2+3,2:2+3].copy()
+                me,v = eig(mcov)
+                weig,=where(me <= 0)
+                if weig.size > 0:
+                    if self.verbose:
+                        import images
+                        print >>stderr,'negative M covariance eigenvalues'
+                        print >>stderr,me
+                        #images.imprint(mcov,stream=stderr)
+                    flags += GMIXFIT_NEG_MCOV_DIAG
+
+                # this has more strict checks it seems
+                try:
+                    MM = numpy.linalg.cholesky(mcov)
+                except numpy.linalg.LinAlgError as e:
+                    if self.verbose:
+                        import images
+                        print >>stderr,e
+                        #images.imprint(mcov,stream=stderr)
+                    flags += GMIXFIT_MCOV_NOTPOSDEF
+
+                if ( ((flags & GMIXFIT_MCOV_NOTPOSDEF) != 0)
+                        and ((flags & GMIXFIT_NEG_MCOV_DIAG) == 0) ):
                     import images
-                    print >>stderr,'negative M covariance eigenvalues'
+                    print >>stderr,'found one:'
                     print >>stderr,me
-                    images.imprint(mcov,stream=stderr)
-                flags += GMIXFIT_NEG_MCOV_DIAG
-
-            # this has more strict checks it seems
-            try:
-                MM = numpy.linalg.cholesky(mcov)
-            except numpy.linalg.LinAlgError as e:
-                if self.verbose:
-                    import images
-                    print >>stderr,e
-                    images.imprint(mcov,stream=stderr)
-                flags += GMIXFIT_MCOV_NOTPOSDEF
-
-            if ( ((flags & GMIXFIT_MCOV_NOTPOSDEF) != 0)
-                    and ((flags & GMIXFIT_NEG_MCOV_DIAG) == 0) ):
-                import images
-                print >>stderr,'found one:'
-                print >>stderr,me
-                images.imprint(mcov,stream=stderr,fmt='%.16e')
-                print >>stderr,mcov.dtype.descr
-                print >>stderr,mcov.flags
-                print >>stderr,mcov.shape
-                stop
+                    #images.imprint(mcov,stream=stderr,fmt='%.16e')
+                    #print >>stderr,mcov.dtype.descr
+                    #print >>stderr,mcov.flags
+                    #print >>stderr,mcov.shape
+                    stop
 
 
             '''
@@ -208,17 +222,6 @@ class GMixFitCoellip:
                     flags += GMIXFIT_LOW_S2N 
             '''
         self.flags = flags
-
-    def set_cg_flags(self):
-        self.flags = 0
-        if self.warnflags == 1:
-            if self.verbose:
-                print >>stderr,"maxiter reached"
-            self.flags += GMIXFIT_MAXITER
-        if self.warnflags == 1:
-            if self.verbose:
-                print >>stderr,"func/fprime calls not changing"
-            self.flags += GMIXFIT_CALLS_NOT_CHANGING
 
     def get_gmix(self):
         return pars2gmix_coellip(self.popt)
@@ -273,29 +276,27 @@ class GMixFitCoellip:
         return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
 
     def check_hard_priors(self, pars):
-        # make sure p and f values are > 0
-        vals = pars[5:]
+        if self.ptype == 'cov':
+            # make sure p and f values are > 0
+            vals = pars[5:]
+        elif self.ptype=='eta':
+            vals=pars[4:]
+
         w,=where(vals <= 0)
         if w.size > 0:
+            print >>stderr,'bad p/T'
+            print vals
             return False
-
-        # make sure f values are reasonable, at least for exp, need
-        # to try dev
-        """
-        if self.ngauss > 1:
-            fvals = pars[5+self.ngauss:]
-            w,=where((fvals < 0.05) | (fvals > 15.0))
-            if w.size > 0:
-                return False
-        """
 
         # check determinant for all images we might have
         # to create with psf convolutions
+
+        gmix=pars2gmix_coellip(pars, ptype=self.ptype)
         if self.psf is not None:
-            gmix=pars2gmix_coellip(pars)
             moms = total_moms_psf(gmix, self.psf)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
+                print >>stderr,'bad p det'
                 return False
             for g in gmix:
                 for p in self.psf:
@@ -304,38 +305,165 @@ class GMixFitCoellip:
                     icc = g['icc'] + p['icc']
                     det = irr*icc-irc**2
                     if det <= 0:
+                        print >>stderr,'bad p+obj det'
                         return False
 
-        # overall determinant
-        det = pars[2]*pars[4]-pars[3]**2
+        # overall determinant and centroid
+        g0 = gmix[0]
+        det = g0['irr']*g0['icc'] - g0['irc']**2
         if (det <= 0 
                 or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
                 or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+            print >>stderr,'bad det or centroid'
             return False
 
         return True
 
     def make_model(self, pars, aslist=False):
-        """
-        pars = [row,col,irr,irc,icc,pi...,fi...]
-        """
-        #fmt = ' '.join(['%10.6f']*len(pars))
-        #print 'pars:' +fmt % tuple(pars)
-        gmix = pars2gmix_coellip(pars)
+        gmix = pars2gmix_coellip(pars, ptype=self.ptype)
         return gmix2image(gmix, 
                           self.image.shape, 
                           psf=self.psf,
                           aslist=aslist, 
-                          order='f', 
+                          order='f',  # should this be 'c'?
                           nsub=self.nsub,
                           renorm=False)
 
-    def jacob(self, pars):
+    def jacob_eta(self, pars):
         """
         Calculate the jacobian of the function for each parameter
+        using the eta parametrization
         """
         if self.psf is not None:
-            return self.jacob_psf(pars)
+            return self.jacob_eta_psf(pars)
+
+        #print_pars(pars,front='\niter pars: ')
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+        flist = self.make_model(pars, aslist=True)
+
+        eta   = pars[2]
+        de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
+
+        ellip = eta2ellip(eta)
+        theta = pars[3]
+        cos2theta = cos(2*theta)
+        sin2theta = sin(2*theta)
+        e1    = ellip*cos2theta
+        e2    = ellip*sin2theta
+        overe2 = 1./(1.-ellip**2)
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        jacob = []
+
+        # 
+        # for cen we sum up contributions from each gauss
+        # 
+
+        # y0,x0
+        jy0 = zeros(self.image.shape)
+        jx0 = zeros(self.image.shape)
+        for i,Fi in enumerate(flist):
+            T = pars[4+ngauss+i]
+            yfac = y*(1.+e1) - x*e2
+            xfac = x*(1.-e1) - y*e2
+
+            yfac *= 2./T/(1-ellip**2)
+            xfac *= 2./T/(1-ellip**2)
+
+            jy0 += Fi*yfac
+            jx0 += Fi*xfac
+
+        jacob.append(jy0)
+        jacob.append(jx0)
+
+        """
+        # y0
+        jtmp = zeros(self.image.shape)
+        for i,Fi in enumerate(flist):
+            T = pars[4+ngauss+i]
+            fac = y*(1.+e1) - x*e2
+            fac *= 2./T/(1-ellip**2)
+            jtmp += Fi*fac
+        jacob.append(jtmp)
+        """
+
+
+        # eta
+        
+        # just the chain rule
+        # we calculate dF/de*de/d(eta)  and use
+        #   ellip=(1+tanh(eta))/2
+        # this is the derivative of ellip with respect
+        # to eta, using d(tanh)/d(eta) = sech^2(eta)
+        # = ( 2/(e^(\eta) + e^(-\eta)) )^2
+
+        jtmp = zeros(self.image.shape)
+        for i,Fi in enumerate(flist):
+            T = pars[4+ngauss+i]
+            # this is from dF/de
+            fac1 = ellip/(1-ellip**2)
+            fac2 = 2.*ellip*(x2+y2) - (1+ellip**2)*(x2my2*cos2theta + xy2*sin2theta)
+            fac2 *= -1./T/(1.-ellip**2)**2
+            # now multiply by de/deta and F
+            jtmp += Fi*(fac1+fac2)*de_deta
+        jacob.append(jtmp)
+
+        # theta
+        jtmp = zeros(self.image.shape)
+        for i,Fi in enumerate(flist):
+            T = pars[4+ngauss+i]
+            fac = (x2my2*e2 - xy2*e1)
+            fac *= -2./T/(1.-ellip**2)
+            jtmp += Fi*fac
+        jacob.append(jtmp)
+
+        # p
+        # have an entry for *each* gauss rather than summed
+        for i,Fi in enumerate(flist):
+            pi = pars[4+i]
+            jtmp = Fi/pi
+            jacob.append(jtmp)
+
+
+        # T
+        for i,Fi in enumerate(flist):
+            T = pars[4+ngauss+i]
+            fac1 = -1./T
+            ch = (x2*(1.-e1) - xy2*e2 + y2*(1.+e1))/T/(1.-ellip**2)
+            fac2 = ch/T
+            jtmp = Fi*(fac1+fac2)
+            jacob.append(jtmp)
+
+
+        for i in xrange(len(jacob)):
+            #print >>stderr,i
+            #print >>stderr,jacob[i]
+            jacob[i] = jacob[i].reshape(self.image.size)
+            """
+            w,=where(isfinite(jacob[i]) == False)
+            if w.size != 0:
+                print i
+                print jacob[i]
+                stop
+            """
+
+        return jacob
+
+
+
+    def jacob_cov(self, pars):
+        """
+        Calculate the jacobian of the function for each parameter
+        using the covariance parametrization
+        """
+        if self.psf is not None:
+            return self.jacob_cov_psf(pars)
 
         # [r0, c0, Irr, Irc, Icc, pi, fi]
         det = pars[2]*pars[4]-pars[3]**2
@@ -424,7 +552,7 @@ class GMixFitCoellip:
             jacob[i] = jacob[i].reshape(self.image.size)
         return jacob
 
-    def jacob_psf(self, pars):
+    def jacob_cov_psf(self, pars):
         """
         Calculate the jacobian for each parameter
         """
@@ -551,7 +679,497 @@ class GMixFitCoellip:
         return pcov * s_sq 
 
 
-def pars2gmix_coellip(pars):
+class GMixFitCoellipFix:
+    """
+    This one is for testing particular parts of the jacobian: keep
+    all parameters except one, or one type, fixed.
+
+    Perform a non-linear fit of the image to a gaussian mixture model.  
+    
+    The gaussians are forced to be co-elliptical.  Image is assumed to be
+    sky-subtracted
+
+    parameters
+    ----------
+    image: numpy array, dim=2
+        A background-subtracted image.
+    guess:
+        A starting guess for the parameters.  If ptype=='ellip'
+        then this array is
+            [cen0,cen1,eta,theta,pi,Ti]
+        Where i runs over all gaussians. Eta is defined by
+            ellip=(1+tanh(eta))/2.
+        Which allows the bounds of eta to b -inf,inf.
+
+        Note ngauss=(len(guess)-4)/2
+        
+        If ptype=='cov' then the parameters are
+            [cen0,cen1,cov00,cov01,cov11,pi,fi]
+
+    ptype: string
+        Either 'ellip' or 'cov'
+    error: float
+        The error per pixel.  Note currently used.
+    psf: list of dictionaries
+        A gaussian mixture model specified as a list of
+        dictionaries.  Each dict has these entries
+            p: A normalization
+            row: center of the gaussian in the first dimension
+            col: center of the gaussian in the second dimension
+            irr: Covariance matrix element for row*row
+            irc: Covariance matrix element for row*col
+            icc: Covariance matrix element for col*col
+
+    method: string
+        method for the fit.  Only 'lm' is useful currently.
+    verbose: bool
+    """
+    def __init__(self, image, guess, imove,
+                 use_jacob=True,
+                 ptype='cov',
+                 error=None, 
+                 psf=None, 
+                 method='lm', 
+                 verbose=False):
+
+        self.imove = imove
+        self.use_jacob=use_jacob
+
+        self.image=image
+        self.error=error # per pixel
+        self.guess=guess
+        self.ptype=ptype
+        self.ngauss=(len(guess)-4)/2
+        self.nsub=1
+        self.verbose=verbose
+
+        # can enter the psf model as a mixture model or
+        # a coelliptical psf model; gmix is more flexible..
+        # we keep the gmix version since we use gmix2image to
+        # make models
+        if isinstance(psf,numpy.ndarray):
+            self.psf = pars2gmix_coellip(psf)
+        else:
+            self.psf = psf
+
+        self.row,self.col=ogrid[0:image.shape[0], 0:image.shape[1]]
+
+        if method=='lm':
+            self.dofit_lm()
+        else:
+            raise ValueError("expected method 'lm'")
+
+    def get_full_pars(self, pars1):
+        pars = self.guess.copy()
+        pars[self.imove] = pars1[0]
+        return pars
+
+    def dofit_lm(self):
+        """
+        Run the fit using LM
+        """
+        from scipy.optimize import leastsq
+        guess = array([self.guess[self.imove]])
+        if self.use_jacob:
+            res = leastsq(self.ydiff,guess,
+                          full_output=1,
+                          Dfun=self.jacob_eta,
+                          col_deriv=1)
+        else:
+            print >>stderr,'not using jacobian'
+            res = leastsq(self.ydiff,guess,
+                          full_output=1)
+
+        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+        if self.ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(self.errmsg)
+
+        self.numiter = self.infodict['nfev']
+
+        self.pcov=None
+        self.perr=None
+
+        if self.pcov0 is not None:
+            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
+
+            d=diag(self.pcov)
+            w,=where(d <= 0)
+
+            if w.size == 0:
+                # only do if non negative
+                self.perr = sqrt(d)
+
+        self.set_lm_flags()
+
+        """
+        if self.flags == 0:
+            cov_inv = numpy.linalg.inv(self.pcov)
+            mcov_inv = cov_inv[2:2+3, 2:2+3]
+            self.mcov_fix = numpy.linalg.inv(mcov_inv)
+        """
+
+       
+    def set_lm_flags(self):
+        flags = 0
+        if self.ier > 4:
+            flags = 2**(self.ier-5)
+            if self.verbose:
+                print >>stderr,self.errmsg 
+
+        if self.pcov is None:
+            if self.verbose:
+                print >>stderr,'singular matrix'
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            #import images
+            #print >>stderr,'pcov:'
+            #images.imprint(self.pcov,stream=stderr)
+            e,v = eig(self.pcov)
+            weig,=where(e <= 0)
+            if weig.size > 0:
+                if self.verbose:
+                    import images
+                    print >>stderr,'negative covariance eigenvalues'
+                    #images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(self.pcov) <= 0)
+            if wneg.size > 0:
+                if self.verbose:
+                    import images
+                    # only print if we didn't see negative eigenvalue
+                    print >>stderr,'negative covariance diagonals'
+                    #images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+            if self.ptype == 'cov':
+                mcov = self.pcov[2:2+3,2:2+3].copy()
+                me,v = eig(mcov)
+                weig,=where(me <= 0)
+                if weig.size > 0:
+                    if self.verbose:
+                        import images
+                        print >>stderr,'negative M covariance eigenvalues'
+                        print >>stderr,me
+                        #images.imprint(mcov,stream=stderr)
+                    flags += GMIXFIT_NEG_MCOV_DIAG
+
+                # this has more strict checks it seems
+                try:
+                    MM = numpy.linalg.cholesky(mcov)
+                except numpy.linalg.LinAlgError as e:
+                    if self.verbose:
+                        import images
+                        print >>stderr,e
+                        #images.imprint(mcov,stream=stderr)
+                    flags += GMIXFIT_MCOV_NOTPOSDEF
+
+                if ( ((flags & GMIXFIT_MCOV_NOTPOSDEF) != 0)
+                        and ((flags & GMIXFIT_NEG_MCOV_DIAG) == 0) ):
+                    import images
+                    print >>stderr,'found one:'
+                    print >>stderr,me
+                    #images.imprint(mcov,stream=stderr,fmt='%.16e')
+                    #print >>stderr,mcov.dtype.descr
+                    #print >>stderr,mcov.flags
+                    #print >>stderr,mcov.shape
+                    stop
+
+
+            '''
+            if flags == 0 and True:
+                #print 's2n on cen0:',self.popt[0]/sqrt(self.pcov[0,0])
+                #print 's2n on popt:'
+                #for i in xrange(len(self.popt)):
+                #    print self.popt[i]/sqrt(self.pcov[i,i])
+                T = self.popt[2]+self.popt[4]
+                Terr = sqrt(self.pcov[2,2]+self.pcov[4,4]+2*self.pcov[2,4])
+                Ts2n = T/Terr
+                if T/Terr < 1.0:
+                    if self.verbose:
+                        print >>stderr,'S/N on T < 1: ',Ts2n
+                    flags += GMIXFIT_LOW_S2N 
+            '''
+        self.flags = flags
+
+    def get_gmix(self):
+        return pars2gmix_coellip(self.popt)
+    gmix = property(get_gmix)
+
+    def ydiff(self, pars1):
+        """
+        Also apply hard priors on centroid range and determinant(s)
+        """
+        import images
+
+        model = self.make_model(pars1)
+        #images.multiview(model)
+        #stop
+        if not isfinite(model[0,0]):
+            #raise ValueError("NaN in model")
+            if self.verbose:
+                print >>stderr,'found NaN in model'
+            return zeros(self.image.size) + numpy.inf
+        return (model-self.image).reshape(self.image.size)
+    
+    def ydiff_sq_sum(self, pars):
+        """
+        Using conjugate gradient algorithm, we minimize
+        (y-data)**2
+        """
+        yd=self.ydiff(pars)
+        return (yd**2).sum()
+
+    def ydiff_sq_jacob(self, pars):
+        """
+        Using conjugate gradient algorithm, we minimize
+            (model-data)**2 = ydiff**2
+        so the jacobian is 2*(ydiff*jacob).sum()
+        """
+        # this is a list with each element the full array over pixels
+        # both jacob and ydiff are reshaped to linear for use in the 
+        # LM algorithm, but this doesn't matter
+        model_j = self.jacob(pars)
+        ydiff = self.ydiff(pars)
+
+        j = zeros(len(pars))
+        for i in xrange(len(model_j)):
+            j[i] = 2*( ydiff*model_j[i] ).sum()
+        return j
+
+    def chi2(self, pars):
+        ydiff = self.ydiff(pars)
+        return (ydiff**2).sum()
+    def chi2per(self, pars, skysig):
+        ydiff = self.ydiff(pars)
+        return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
+
+    def check_hard_priors(self, pars):
+        if self.ptype == 'cov':
+            # make sure p and f values are > 0
+            vals = pars[5:]
+        elif self.ptype=='eta':
+            vals=pars[4:]
+
+        w,=where(vals <= 0)
+        if w.size > 0:
+            print >>stderr,'bad p/T'
+            print vals
+            return False
+
+        # check determinant for all images we might have
+        # to create with psf convolutions
+
+        gmix=pars2gmix_coellip(pars, ptype=self.ptype)
+        if self.psf is not None:
+            moms = total_moms_psf(gmix, self.psf)
+            pdet = moms['irr']*moms['icc']-moms['irc']**2
+            if pdet <= 0:
+                print >>stderr,'bad p det'
+                return False
+            for g in gmix:
+                for p in self.psf:
+                    irr = g['irr'] + p['irr']
+                    irc = g['irc'] + p['irc']
+                    icc = g['icc'] + p['icc']
+                    det = irr*icc-irc**2
+                    if det <= 0:
+                        print >>stderr,'bad p+obj det'
+                        return False
+
+        # overall determinant and centroid
+        g0 = gmix[0]
+        det = g0['irr']*g0['icc'] - g0['irc']**2
+        if (det <= 0 
+                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
+                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+            print >>stderr,'bad det or centroid'
+            return False
+
+        return True
+
+    def make_model(self, pars1, aslist=False):
+        pars = self.get_full_pars(pars1)
+        #print 'full pars:',pars
+        gmix = pars2gmix_coellip(pars, ptype=self.ptype)
+        return gmix2image(gmix, 
+                          self.image.shape, 
+                          psf=self.psf,
+                          aslist=aslist, 
+                          order='f',  # should this be 'c'?
+                          nsub=self.nsub,
+                          renorm=False)
+
+
+    def jacob_eta(self, pars1):
+        """
+        Calculate the jacobian of the function for each parameter
+        using the eta parametrization
+        """
+        import images
+        if self.psf is not None:
+            return self.jacob_eta_psf(pars)
+
+        pars=self.get_full_pars(pars1)
+        #print >>stderr,"pars:",pars
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        flist = self.make_model(pars, aslist=True)
+
+        eta   = pars[2]
+        de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
+
+        ellip = eta2ellip(eta)
+        theta = pars[3]
+        cos2theta = cos(2*theta)
+        sin2theta = sin(2*theta)
+        e1    = ellip*cos2theta
+        e2    = ellip*sin2theta
+        overe2 = 1./(1.-ellip**2)
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        jacob = []
+
+        # 
+        # for cen we sum up contributions from each gauss
+        # 
+
+        # y0,x0
+        if self.imove == 0:
+            print >>stderr,"doing y0"
+            jy0 = zeros(self.image.shape)
+            #jx0 = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                yfac = y*(1.+e1) - x*e2
+                #yfac = y*(1.-e1) - x*e2
+                yfac *= 2./T/(1-ellip**2)
+
+                jy0 += Fi*yfac
+
+            #images.multiview(jy0,title='y0')
+            #stop
+            jacob.append(jy0)
+
+        if self.imove == 1:
+            print >>stderr,"doing x0"
+            jx0 = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                xfac = x*(1.-e1) - y*e2
+                #xfac = x*(1.+e1) - y*e2
+                xfac *= 2./T/(1-ellip**2)
+
+                jx0 += Fi*xfac
+
+            #images.multiview(jx0,title='x0')
+            #stop
+            #print >>stderr,"jx0:",jx0
+            jacob.append(jx0)
+
+
+        # eta
+        
+        # just the chain rule
+        # we calculate dF/de*de/d(eta)  and use
+        #   ellip=(1+tanh(eta))/2
+        # this is the derivative of ellip with respect
+        # to eta, using d(tanh)/d(eta) = sech^2(eta)
+        # = ( 2/(e^(\eta) + e^(-\eta)) )^2
+
+        if self.imove == 2:
+            print >>stderr,"doing eta"
+            jtmp = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+                # this is from dF/de
+                fac1 = ellip/(1-ellip**2)
+                fac2 = 2.*ellip*(x2+y2) - (1+ellip**2)*(x2my2*cos2theta + xy2*sin2theta)
+                fac2 *= -1./T/(1.-ellip**2)**2
+                # now multiply by de/deta and F
+                jtmp += Fi*(fac1+fac2)*de_deta
+            jacob.append(jtmp)
+
+        if self.imove == 3:
+            # theta
+            print >>stderr,"doing theta"
+            jtmp = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+                fac = (x2my2*e2 - xy2*e1)
+                fac *= -2./T/(1.-ellip**2)
+                jtmp += Fi*fac
+            jacob.append(jtmp)
+
+        # p
+        # have an entry for *each* gauss rather than summed
+        for i,Fi in enumerate(flist):
+            if self.imove == (4+i):
+                print >>stderr,"doing p%d" % i
+                pi = pars[4+i]
+                jtmp = Fi/pi
+                jacob.append(jtmp)
+
+
+        # T
+        for i,Fi in enumerate(flist):
+            if self.imove == (4+ngauss+i):
+                print >>stderr,"doing T%d" % i
+                T = pars[4+ngauss+i]
+                fac1 = -1./T
+                ch = (x2*(1.-e1) - xy2*e2 + y2*(1.+e1))/T/(1.-ellip**2)
+                fac2 = ch/T
+                jtmp = Fi*(fac1+fac2)
+                jacob.append(jtmp)
+
+
+        for i in xrange(len(jacob)):
+            #print >>stderr,i
+            #print >>stderr,jacob[i]
+            jacob[i] = jacob[i].reshape(self.image.size)
+            """
+            w,=where(isfinite(jacob[i]) == False)
+            if w.size != 0:
+                print i
+                print jacob[i]
+                stop
+            """
+
+        return jacob
+
+    def scale_leastsq_cov(self, popt, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        dof = (self.image.size-len(popt))
+        s_sq = (self.ydiff(popt)**2).sum()/dof
+        return pcov * s_sq 
+
+
+
+def pars2gmix_coellip(pars, ptype='cov'):
+    """
+    Convert a parameter array as used for the LM code into a gaussian mixture
+    model.  This is for the case of co-elliptical gaussians.
+    """
+    if ptype=='cov':
+        return pars2gmix_coellip_cov(pars)
+    elif ptype=='eta':
+        return pars2gmix_coellip_eta(pars)
+    else:
+        raise ValueError("ptype should be in ['cov','eta']")
+
+def pars2gmix_coellip_cov(pars):
     """
     Convert a parameter array as used for the LM code into a gaussian mixture
     model.  This is for the case of co-elliptical gaussians.
@@ -579,38 +1197,50 @@ def pars2gmix_coellip(pars):
 
     return gmix
 
-def gmix2pars_coellip(gmix):
-    ngauss=len(gmix)
-    if ngauss > 2:
-        raise ValueError("ngauss <= 2")
-    pars=zeros(2*ngauss+4)
+def eta2ellip(eta):
+    """
+    This is not eta from BJ02
+    """
+    return (1.+tanh(eta))/2.
+def ellip2eta(ellip):
+    """
+    This is not eta from BJ02
+    """
+    return arctanh( 2*ellip-1 )
 
-    imin=-1
-    Tmin=9999
-    for i,g in enumerate(gmix):
-        T = g['irr']+g['icc']
-        if T < Tmin:
-            Tmin=T
-            imin=i
+def pars2gmix_coellip_eta(pars):
+    """
+    Convert a parameter array as used for the LM code into a gaussian mixture
+    model.  This is for the case of co-elliptical gaussians.
+    """
+    #print 'making gmix by eta'
+    ngauss = (len(pars)-4)/2
+    gmix=[]
 
-    pars[0] = gmix[0]['row']
-    pars[1] = gmix[0]['col']
-    pars[2] = gmix[imin]['irr']
-    pars[3] = gmix[imin]['irc']
-    pars[4] = gmix[imin]['icc']
-    pars[5] = gmix[imin]['p']
+    eta = pars[2]
+    ellip = eta2ellip(eta)
+    theta=pars[3]
+    e1 = ellip*cos(2*theta)
+    e2 = ellip*sin(2*theta)
+    
+    for i in xrange(ngauss):
+        d={}
+        p = pars[4+i]
+        T = pars[4+ngauss+i]
+        d['p'] = p
+        d['row'] = pars[0]
+        d['col'] = pars[1]
+        #d['irr'] = (T/2.)*(1+e1)
+        d['irr'] = (T/2.)*(1-e1)
+        d['irc'] = (T/2.)*e2
+        #d['icc'] = (T/2.)*(1-e1)
+        d['icc'] = (T/2.)*(1+e1)
+        gmix.append(d)
 
-    if ngauss > 1:
-        for i in xrange(ngauss):
-            if i != imin:
-                pars[6] = gmix[i]['p']
-                T = gmix[i]['irr']+gmix[i]['icc']
-                pars[7] = T/Tmin
-                break
-    return pars
+    return gmix
 
 
-def print_pars(stream, pars, front=None):
+def print_pars(pars, stream=stderr, front=None):
     fmt = ' '.join( ['%10.6g ']*len(pars) )
     if front is not None:
         stream.write(front)
