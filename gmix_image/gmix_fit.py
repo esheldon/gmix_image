@@ -1087,7 +1087,7 @@ class GMixFitCoellipFix:
 
         if self.imove == 2:
             print >>stderr,"doing psf eta"
-            jtmp = zeros(self.image.shape)
+            jeta = zeros(self.image.shape)
 
             for i,plist in enumerate(flist):
                 T = pars[4+ngauss+i]
@@ -1118,7 +1118,8 @@ class GMixFitCoellipFix:
                         sin2thetao = 0.0
 
                     fac1 = ellipo/(1-ellipo_2)
-                    fac2 = 2.*ellipo*(x2+y2) - (1+ellipo_2)*(x2my2*cos2thetao + xy2*sin2thetao)
+                    fac2 = 2.*ellipo*(x2+y2) \
+                            - (1+ellipo_2)*(x2my2*cos2thetao + xy2*sin2thetao)
                     fac2 *= -1./To/(1.-ellipo_2)**2
 
                     # derivitive of observed ellipticity with respect to 
@@ -1126,10 +1127,43 @@ class GMixFitCoellipFix:
                     deo_de = R*(cos2thetao*cos2theta + sin2thetao*sin2theta)
 
                     # now multiply by F * deo/de * de/deta
-                    jtmp += pim*(fac1+fac2)*deo_de*de_deta
+                    jeta += pim*(fac1+fac2)*deo_de*de_deta
 
-            jacob.append(jtmp)
+            jacob.append(jeta)
 
+        if self.imove == 3:
+            print >>stderr,"doing psf theta"
+            jtheta = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+                    ellipo = sqrt(ellipo_2)
+
+                    fac1 = \
+                        -2*R*e2*(e1o/(1-ellipo_2) \
+                        + x2my2/To/(1-ellipo_2)**2*(1-ellipo_2+2*e1o**2) )
+                    fac2 = \
+                         2*R*e1*(e2o/(1-ellipo_2) \
+                        +   xy2/To/(1-ellipo_2)**2*(1-ellipo_2+2*e2o**2) )
+
+                    jtheta += pim*(fac1+fac2)
+            jacob.append(jtheta)
 
         for i in xrange(len(jacob)):
             jacob[i] = jacob[i].reshape(self.image.size)

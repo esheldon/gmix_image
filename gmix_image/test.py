@@ -476,12 +476,18 @@ def test_fit_1gauss_fix(imove, use_jacob=True):
     print gf.pcov
 
 def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
-
+    from fimage import ellip2mom
     import images
     numpy.random.seed(seed)
 
     Tpsf = 2.0
-    psf=[{'p':1.0, 'irr':sqrt(Tpsf/2), 'irc':0.0, 'icc':sqrt(Tpsf/2)}]
+    epsf = 0.2
+    theta_psf = 80.0
+    cov_psf = ellip2mom(Tpsf, e=epsf, theta=theta_psf)
+    psf=[{'p':1.0, 
+          'irr':cov_psf[0], 
+          'irc':cov_psf[1], 
+          'icc':cov_psf[2]}]
 
     T=3.0
 
