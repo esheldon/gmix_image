@@ -475,6 +475,64 @@ def test_fit_1gauss_fix(imove, use_jacob=True):
     print gf.popt
     print gf.pcov
 
+def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
+
+    import images
+    numpy.random.seed(seed)
+
+    Tpsf = 2.0
+    psf=[{'p':1.0, 'irr':sqrt(Tpsf/2), 'irc':0.0, 'icc':sqrt(Tpsf/2)}]
+
+    T=3.0
+
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    print >>stderr,'ellip:',ellip
+    print >>stderr,'e1:',ellip*cos(2*theta)
+    print >>stderr,'e2:',ellip*sin(2*theta)
+
+    pars=array([cen[0],cen[1],eta,theta,1.,T])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    im=gmix2image(gmix,dims,psf=psf)
+    #images.multiview(im)
+    
+    p0=pars.copy()
+    if imove == 0:
+        p0[0] += 1*(randu()-0.5)  # cen0
+    elif imove == 1:
+        p0[1] += 1*(randu()-0.5)  # cen1
+    elif imove == 2:
+        p0[2] += 1*(randu()-0.5)  # eta
+    elif imove == 3:
+        p0[3] += 1*(randu()-0.5)   # theta radians
+    elif imove == 4:
+        p0[4] += 0.2*(randu()-0.5)  # p
+    elif imove == 5:
+        p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, 
+                                  psf=psf,
+                                  ptype='eta',
+                                  use_jacob=use_jacob,
+                                  verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+    print gf.pcov
+
+
 
 def test_fit_1gauss():
     import images

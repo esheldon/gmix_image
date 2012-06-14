@@ -325,7 +325,6 @@ class GMixFitCoellip:
                           self.image.shape, 
                           psf=self.psf,
                           aslist=aslist, 
-                          order='f',  # should this be 'c'?
                           nsub=self.nsub,
                           renorm=False)
 
@@ -337,7 +336,6 @@ class GMixFitCoellip:
         if self.psf is not None:
             return self.jacob_eta_psf(pars)
 
-        #print_pars(pars,front='\niter pars: ')
         ngauss=self.ngauss
         y = self.row-pars[0]
         x = self.col-pars[1]
@@ -997,9 +995,145 @@ class GMixFitCoellipFix:
                           self.image.shape, 
                           psf=self.psf,
                           aslist=aslist, 
-                          order='f',  # should this be 'c'?
                           nsub=self.nsub,
                           renorm=False)
+
+
+    def jacob_eta_psf(self, pars1):
+
+        flist = self.make_model(pars1, aslist=True)
+        pars=self.get_full_pars(pars1)
+
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        eta   = pars[2]
+        de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
+
+        ellip = eta2ellip(eta)
+        theta = pars[3]
+        cos2theta = cos(2*theta)
+        sin2theta = sin(2*theta)
+        e1    = ellip*cos2theta
+        e2    = ellip*sin2theta
+
+        jacob = []
+        if self.imove == 0:
+            print >>stderr,"doing psf y0"
+            jy0 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    yfac = y*(1.+e1o) - x*e2o
+                    yfac *= 2./To/(1-ellipo_2)
+
+                    jy0 += pim*yfac
+
+            jacob.append(jy0)
+
+
+        if self.imove == 1:
+            print >>stderr,"doing psf x0"
+            jx0 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    xfac = x*(1.-e1o) - y*e2o
+                    xfac *= 2./To/(1-ellipo_2)
+
+                    jx0 += pim*xfac
+
+            jacob.append(jx0)
+
+        if self.imove == 2:
+            print >>stderr,"doing psf eta"
+            jtmp = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+                    ellipo = sqrt(ellipo_2)
+                    # if ellipticity is zero, we don't care
+                    # about the angle!
+                    if ellipo_2 > 0:
+                        cos2thetao = e1o/ellipo
+                        sin2thetao = e2o/ellipo
+                    else:
+                        cos2thetao = 1.0
+                        sin2thetao = 0.0
+
+                    fac1 = ellipo/(1-ellipo_2)
+                    fac2 = 2.*ellipo*(x2+y2) - (1+ellipo_2)*(x2my2*cos2thetao + xy2*sin2thetao)
+                    fac2 *= -1./To/(1.-ellipo_2)**2
+
+                    # derivitive of observed ellipticity with respect to 
+                    # object e
+                    deo_de = R*(cos2thetao*cos2theta + sin2thetao*sin2theta)
+
+                    # now multiply by F * deo/de * de/deta
+                    jtmp += pim*(fac1+fac2)*deo_de*de_deta
+
+            jacob.append(jtmp)
+
+
+        for i in xrange(len(jacob)):
+            jacob[i] = jacob[i].reshape(self.image.size)
+        return jacob
 
 
     def jacob_eta(self, pars1):
@@ -1009,7 +1143,7 @@ class GMixFitCoellipFix:
         """
         import images
         if self.psf is not None:
-            return self.jacob_eta_psf(pars)
+            return self.jacob_eta_psf(pars1)
 
         pars=self.get_full_pars(pars1)
         #print >>stderr,"pars:",pars
@@ -1017,7 +1151,7 @@ class GMixFitCoellipFix:
         y = self.row-pars[0]
         x = self.col-pars[1]
 
-        flist = self.make_model(pars, aslist=True)
+        flist = self.make_model(pars1, aslist=True)
 
         eta   = pars[2]
         de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
@@ -1066,7 +1200,6 @@ class GMixFitCoellipFix:
                 T = pars[4+ngauss+i]
 
                 xfac = x*(1.-e1) - y*e2
-                #xfac = x*(1.+e1) - y*e2
                 xfac *= 2./T/(1-ellip**2)
 
                 jx0 += Fi*xfac
@@ -1241,6 +1374,9 @@ def pars2gmix_coellip_eta(pars):
 
 
 def print_pars(pars, stream=stderr, front=None):
+    """
+    print the parameters with a uniform width
+    """
     fmt = ' '.join( ['%10.6g ']*len(pars) )
     if front is not None:
         stream.write(front)
