@@ -240,24 +240,6 @@ class GMixEM(_gmix_image.GMix):
                 p['col'] = -1
         return psf
 
-def flagname(flag):
-    if flag == GMIXEM_ERROR_NEGATIVE_DET:
-        return 'GMIXEM_ERROR_NEGATIVE_DET'
-    elif flag == GMIXEM_ERROR_MAXIT:
-        return 'GMIXEM_ERROR_MAXIT'
-    elif flag == GMIXEM_ERROR_NEGATIVE_DET_COCENTER:
-        return 'GMIXEM_ERROR_NEGATIVE_DET_cocenter'
-    else:
-        raise ValueError("unknown flag value: %s" % flag)
-def flagval(flag):
-    if flag == 'GMIXEM_ERROR_NEGATIVE_DET':
-        return GMIXEM_ERROR_NEGATIVE_DET
-    elif flag == 'GMIXEM_ERROR_MAXIT':
-        return GMIXEM_ERROR_MAXIT
-    elif flag == 'GMIXEM_ERROR_NEGATIVE_DET_COCENTER':
-        return GMIXEM_ERROR_NEGATIVE_DET_COCENTER
-    else:
-        raise ValueError("unknown flag name: '%s'" % flag)
 
 def gmix_print(gmix):
     hfmt = ['%10s']*6

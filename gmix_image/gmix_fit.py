@@ -80,7 +80,7 @@ class GMixFitCoellip:
         # we keep the gmix version since we use gmix2image to
         # make models
         if isinstance(psf,numpy.ndarray):
-            self.psf = pars2gmix_coellip(psf)
+            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
         else:
             self.psf = psf
 
@@ -96,20 +96,17 @@ class GMixFitCoellip:
         Run the fit using LM
         """
         from scipy.optimize import leastsq
-        if self.ptype == 'eta':
-            if self.use_jacob:
-                res = leastsq(self.ydiff,self.guess,
-                              full_output=1,
-                              Dfun=self.jacob_eta,
-                              col_deriv=1)
-            else:
-                res = leastsq(self.ydiff,self.guess,
-                              full_output=1)
-        elif self.ptype=='cov':
-            res = leastsq(self.ydiff,self.guess,
+
+        if self.use_jacob:
+            res = leastsq(self.ydiff,
+                          self.guess,
                           full_output=1,
-                          Dfun=self.jacob_cov,
+                          Dfun=self.jacob,
                           col_deriv=1)
+        else:
+            res = leastsq(self.ydiff,
+                          self.guess,
+                          full_output=1)
 
         self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
         if self.ier == 0:
@@ -125,7 +122,7 @@ class GMixFitCoellip:
             self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
 
             d=diag(self.pcov)
-            w,=where(d <= 0)
+            w,=where(d < 0)
 
             if w.size == 0:
                 # only do if non negative
@@ -161,7 +158,9 @@ class GMixFitCoellip:
                 if self.verbose:
                     import images
                     print >>stderr,'negative covariance eigenvalues'
-                    #images.imprint(self.pcov,stream=stderr)
+                    print_pars(self.popt, front='popt: ')
+                    print_pars(e,         front='eig:  ')
+                    images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_EIG 
 
             wneg,=where(diag(self.pcov) <= 0)
@@ -224,7 +223,7 @@ class GMixFitCoellip:
         self.flags = flags
 
     def get_gmix(self):
-        return pars2gmix_coellip(self.popt)
+        return pars2gmix_coellip(self.popt, ptype=self.ptype)
     gmix = property(get_gmix)
 
     def ydiff(self, pars):
@@ -287,6 +286,17 @@ class GMixFitCoellip:
                 return False
 
             vals=pars[4:]
+        elif self.ptype == 'e1e2':
+            e1=pars[2]
+            e2=pars[3]
+            e = sqrt(e1**2 + e2**2)
+            if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
+                print >>stderr,'ellip >= 1'
+                return False
+
+            vals=pars[4:]
+        else:
+            raise ValueError("bad ptype: %s" % self.ptype)
 
         w,=where(vals <= 0)
         if w.size > 0:
@@ -333,6 +343,117 @@ class GMixFitCoellip:
                           aslist=aslist, 
                           nsub=self.nsub,
                           renorm=False)
+
+    def jacob(self, pars):
+        if self.ptype == 'eta':
+            return self.jacob_eta(pars)
+        elif self.ptype == 'cov':
+            return self.jacob_cov(pars)
+        elif self.ptype == 'e1e2':
+            return self.jacob_e1e2(pars)
+        else:
+            raise ValueError("ptype must be 'e1e2','cov','eta'")
+
+    def jacob_e1e2(self, pars):
+        """
+        Calculate the jacobian of the function for each parameter
+        using the eta parametrization
+        """
+        if self.psf is not None:
+            return self.jacob_e1e2_psf(pars)
+
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+        flist = self.make_model(pars, aslist=True)
+
+        e1    = pars[2]
+        e2    = pars[3]
+        ellip = sqrt(e1**2 + e2**2)
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        jacob = []
+
+        jy0 = zeros(self.image.shape)
+        jx0 = zeros(self.image.shape)
+        je1 = zeros(self.image.shape)
+        je2 = zeros(self.image.shape)
+
+        jp_list = []
+        jT_list = []
+
+        # 
+        # for cen we sum up contributions from each gauss
+        # 
+
+        # y0,x0
+        for i,Fi in enumerate(flist):
+            gp = pars[4+i]
+            T = pars[4+ngauss+i]
+
+            # centroid
+            y0fac = y*(1.+e1) - x*e2
+            x0fac = x*(1.-e1) - y*e2
+
+            y0fac *= 2./T/(1-ellip**2)
+            x0fac *= 2./T/(1-ellip**2)
+
+            jy0 += Fi*y0fac
+            jx0 += Fi*x0fac
+
+            #
+            # e1
+            #
+            e1fac1 = e1/(1-ellip**2)
+            e1fac2 = x2my2*(1-ellip**2 + 2*e1**2)
+            e1fac2 *= 1./T/(1.-ellip**2)**2
+
+            je1 += Fi*(e1fac1+e1fac2)
+
+            #
+            # e2
+            #
+
+            e2fac1 = e2/(1-ellip**2)
+            e2fac2 = xy2*(1-ellip**2 + 2*e2**2)
+            e2fac2 *= 1./T/(1.-ellip**2)**2
+
+            je2 += Fi*(e2fac1+e2fac2)
+
+            #
+            # p
+            #
+            jp = Fi/gp
+            jp_list.append(jp)
+
+            #
+            # T
+            #
+            Tfac1 = -1./T
+            arg = (x2*(1.-e1) - xy2*e2 + y2*(1.+e1))/T/(1.-ellip**2)
+            Tfac2 = arg/T
+            jT = Fi*(Tfac1+Tfac2)
+            jT_list.append(jT)
+
+        jacob.append(jy0)
+        jacob.append(jx0)
+        jacob.append(je1)
+        jacob.append(je2)
+        jacob += jp_list
+        jacob += jT_list
+
+
+        for i in xrange(len(jacob)):
+            #print >>stderr,i
+            #print >>stderr,jacob[i]
+            jacob[i] = jacob[i].reshape(self.image.size)
+
+        return jacob
+
 
     def jacob_eta(self, pars):
         """
@@ -836,7 +957,7 @@ class GMixFitCoellipFix:
             [cen0,cen1,cov00,cov01,cov11,pi,fi]
 
     ptype: string
-        Either 'ellip' or 'cov'
+        Either 'e1e2' or 'cov' or 'eta'
     error: float
         The error per pixel.  Note currently used.
     psf: list of dictionaries
@@ -877,7 +998,7 @@ class GMixFitCoellipFix:
         # we keep the gmix version since we use gmix2image to
         # make models
         if isinstance(psf,numpy.ndarray):
-            self.psf = pars2gmix_coellip(psf)
+            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
         else:
             self.psf = psf
 
@@ -899,14 +1020,16 @@ class GMixFitCoellipFix:
         """
         from scipy.optimize import leastsq
         guess = array([self.guess[self.imove]])
+
         if self.use_jacob:
-            res = leastsq(self.ydiff,guess,
+            res = leastsq(self.ydiff,
+                          guess,
                           full_output=1,
-                          Dfun=self.jacob_eta,
+                          Dfun=self.jacob,
                           col_deriv=1)
         else:
-            print >>stderr,'not using jacobian'
-            res = leastsq(self.ydiff,guess,
+            res = leastsq(self.ydiff,
+                          guess,
                           full_output=1)
 
         self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
@@ -923,20 +1046,13 @@ class GMixFitCoellipFix:
             self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
 
             d=diag(self.pcov)
-            w,=where(d <= 0)
+            w,=where(d < 0)
 
             if w.size == 0:
                 # only do if non negative
                 self.perr = sqrt(d)
 
         self.set_lm_flags()
-
-        """
-        if self.flags == 0:
-            cov_inv = numpy.linalg.inv(self.pcov)
-            mcov_inv = cov_inv[2:2+3, 2:2+3]
-            self.mcov_fix = numpy.linalg.inv(mcov_inv)
-        """
 
        
     def set_lm_flags(self):
@@ -1023,7 +1139,7 @@ class GMixFitCoellipFix:
         self.flags = flags
 
     def get_gmix(self):
-        return pars2gmix_coellip(self.popt)
+        return pars2gmix_coellip(self.popt, ptype=self.ptype)
     gmix = property(get_gmix)
 
     def ydiff(self, pars1):
@@ -1031,6 +1147,10 @@ class GMixFitCoellipFix:
         Also apply hard priors on centroid range and determinant(s)
         """
         import images
+
+        if self.ptype == 'e1e2':
+            if not self.check_hard_priors_e1e2(pars1):
+                return zeros(self.image.size) + numpy.inf
 
         model = self.make_model(pars1)
         #images.multiview(model)
@@ -1074,13 +1194,9 @@ class GMixFitCoellipFix:
         ydiff = self.ydiff(pars)
         return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
 
-    def check_hard_priors(self, pars):
-        if self.ptype == 'cov':
-            # make sure p and f values are > 0
-            vals = pars[5:]
-        elif self.ptype=='eta':
-            vals=pars[4:]
-
+    def check_hard_priors_e1e2(self, pars1):
+        pars = self.get_full_pars(pars1)
+        vals=pars[4:]
         w,=where(vals <= 0)
         if w.size > 0:
             print >>stderr,'bad p/T'
@@ -1129,6 +1245,15 @@ class GMixFitCoellipFix:
                           nsub=self.nsub,
                           renorm=False)
 
+    def jacob(self, pars):
+        if self.ptype == 'eta':
+            return self.jacob_eta(pars)
+        elif self.ptype == 'cov':
+            return self.jacob_cov(pars)
+        elif self.ptype == 'e1e2':
+            return self.jacob_e1e2(pars)
+        else:
+            raise ValueError("ptype must be 'e1e2','cov','eta'")
 
     def jacob_eta_psf(self, pars1):
 
@@ -1494,6 +1619,124 @@ class GMixFitCoellipFix:
 
         return jacob
 
+    def jacob_e1e2(self, pars1):
+        """
+        Calculate the jacobian of the function for each parameter
+        using the eta parametrization
+        """
+        import images
+        if self.psf is not None:
+            return self.jacob_e1e2_psf(pars1)
+
+        pars=self.get_full_pars(pars1)
+        #print >>stderr,"pars:",pars
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        flist = self.make_model(pars1, aslist=True)
+
+        e1    = pars[2]
+        e2    = pars[3]
+        ellip = sqrt(e1**2 + e2**2)
+        overe2 = 1./(1.-ellip**2)
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        jacob = []
+
+        # 
+        # for cen we sum up contributions from each gauss
+        # 
+
+        # y0,x0
+        if self.imove == 0:
+            print >>stderr,"doing y0"
+            jy0 = zeros(self.image.shape)
+            #jx0 = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                yfac = y*(1.+e1) - x*e2
+                yfac *= 2./T/(1-ellip**2)
+
+                jy0 += Fi*yfac
+
+            jacob.append(jy0)
+
+        if self.imove == 1:
+            print >>stderr,"doing x0"
+            jx0 = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                xfac = x*(1.-e1) - y*e2
+                xfac *= 2./T/(1-ellip**2)
+
+                jx0 += Fi*xfac
+
+            jacob.append(jx0)
+
+
+        if self.imove == 2:
+            print >>stderr,"doing e1"
+            jtmp = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                fac1 = e1/(1-ellip**2)
+                fac2 = x2my2*(1-ellip**2 + 2*e1**2)
+                fac2 *= 1./T/(1.-ellip**2)**2
+                # now multiply by de/deta and F
+                jtmp += Fi*(fac1+fac2)
+            jacob.append(jtmp)
+
+        if self.imove == 3:
+            print >>stderr,"doing e2"
+            jtmp = zeros(self.image.shape)
+            for i,Fi in enumerate(flist):
+                T = pars[4+ngauss+i]
+
+                fac1 = e2/(1-ellip**2)
+                fac2 = xy2*(1-ellip**2 + 2*e2**2)
+                fac2 *= 1./T/(1.-ellip**2)**2
+                # now multiply by de/deta and F
+                jtmp += Fi*(fac1+fac2)
+            jacob.append(jtmp)
+
+
+
+        # p
+        # have an entry for *each* gauss rather than summed
+        for i,Fi in enumerate(flist):
+            if self.imove == (4+i):
+                print >>stderr,"doing p%d" % i
+                pi = pars[4+i]
+                jtmp = Fi/pi
+                jacob.append(jtmp)
+
+
+        # T
+        for i,Fi in enumerate(flist):
+            if self.imove == (4+ngauss+i):
+                print >>stderr,"doing T%d" % i
+                T = pars[4+ngauss+i]
+                fac1 = -1./T
+                ch = (x2*(1.-e1) - xy2*e2 + y2*(1.+e1))/T/(1.-ellip**2)
+                fac2 = ch/T
+                jtmp = Fi*(fac1+fac2)
+                jacob.append(jtmp)
+
+
+        for i in xrange(len(jacob)):
+            jacob[i] = jacob[i].reshape(self.image.size)
+
+        return jacob
+
+
     def scale_leastsq_cov(self, popt, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
@@ -1512,6 +1755,8 @@ def pars2gmix_coellip(pars, ptype='cov'):
     """
     if ptype=='cov':
         return pars2gmix_coellip_cov(pars)
+    elif ptype=='e1e2':
+        return pars2gmix_coellip_e1e2(pars)
     elif ptype=='eta':
         return pars2gmix_coellip_eta(pars)
     else:
@@ -1582,6 +1827,34 @@ def pars2gmix_coellip_eta(pars):
         d['irr'] = (T/2.)*(1-e1)
         d['irc'] = (T/2.)*e2
         #d['icc'] = (T/2.)*(1-e1)
+        d['icc'] = (T/2.)*(1+e1)
+        gmix.append(d)
+
+    return gmix
+
+def pars2gmix_coellip_e1e2(pars):
+    """
+    Convert a parameter array as used for the LM code into a gaussian mixture
+    model.  This is for the case of co-elliptical gaussians.
+    """
+    #print 'making gmix by eta'
+    ngauss = (len(pars)-4)/2
+    gmix=[]
+
+    e1 = pars[2]
+    e2 = pars[3]
+    
+    for i in xrange(ngauss):
+        d={}
+
+        p = pars[4+i]
+        T = pars[4+ngauss+i]
+
+        d['p'] = p
+        d['row'] = pars[0]
+        d['col'] = pars[1]
+        d['irr'] = (T/2.)*(1-e1)
+        d['irc'] = (T/2.)*e2
         d['icc'] = (T/2.)*(1+e1)
         gmix.append(d)
 

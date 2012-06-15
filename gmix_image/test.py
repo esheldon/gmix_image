@@ -453,7 +453,7 @@ def test_fit_dev_eta_bysigma():
         data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
         #sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
         #sigvals = numpy.linspace(3.,5.0,nsigma_vals)
-        sigvals=array([2.0])
+        sigvals=array([7.0])
         for isigma,sigma in enumerate(sigvals):
             print '-'*70
             print 'sigma:',sigma
@@ -468,13 +468,16 @@ def test_fit_dev_eta_bysigma():
             im = model_image('dev',dims,cen,cov,nsub=16)
             #images.multiview(im)
 
-            ares = admom.admom(im,cen[0],cen[1],guess=T/2)
+            ares = admom.admom(im,cen[0],cen[1],guess=T/2,nsub=16)
             if ares['whyflag'] != 0:
                 raise ValueError("admom failed")
             Tadmom = ares['Irr']+ares['Icc']
             print >>stderr,'admom sigma:',sqrt(Tadmom/2)
             print >>stderr,'admom T:',Tadmom
             print >>stderr,'admom e:',sqrt(ares['e1']**2 + ares['e2']**2)
+            print >>stderr,'T input:',T
+            #Tuse = Tadmom
+            Tuse = T
             p0 = array([cen[0],
                         cen[1],
                         eta,
@@ -483,10 +486,10 @@ def test_fit_dev_eta_bysigma():
                         0.35,
                         0.25,
                         0.15,
-                        Tadmom*0.2,
-                        Tadmom*2.0,
-                        Tadmom*10.0,
-                        Tadmom*60.0])
+                        Tuse*0.15,
+                        Tuse*0.5,
+                        Tuse*2.0,
+                        Tuse*5.0])
             #0.18450384   2.09205287  10.31125635  67.13233512
 
             print_pars(p0,  front='guess: ')
@@ -501,7 +504,8 @@ def test_fit_dev_eta_bysigma():
             if gf.flags != 0:
                 raise RuntimeError("failed")
 
-            print >>stderr,'T ratio relative to admom:',gf.popt[4+ngauss:]/Tadmom
+            print >>stderr,'T relative to T uw:',gf.popt[4+ngauss:]/T
+            print >>stderr,'T relative to T admom:',gf.popt[4+ngauss:]/Tadmom
             data['sigma'][isigma] = sigma
             data['pars'][isigma,:] = gf.popt
 
@@ -643,30 +647,79 @@ def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
     print gf.popt
     print gf.pcov
 
-
-
-def test_fit_1gauss():
+def test_fit_1gauss_noisy(ellip=0.2, s2n=10000):
     import images
+    import fimage
     numpy.random.seed(35)
 
-    T1=3.0
+    sigma = 1.4
+    T=2*sigma**2
     nsig=5
-    dim = int(nsig*T1)
+    dim = int(nsig*T)
     if (dim % 2) == 0:
         dim += 1
     dims=array([dim,dim])
     cen=(dims-1.)/2.
 
     theta=23.7*numpy.pi/180.
-    eta=-0.7
-    ellip=(1+tanh(eta))/2
+    #eta=-0.7
+    #ellip=(1+tanh(eta))/2
+    eta = ellip2eta(ellip+1.e-8)
     print >>stderr,'ellip:',ellip
-    pars=array([cen[0],cen[1],eta,theta,1.,T1])
+    pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
-    im=gmix2image(gmix,dims)
-    #images.multiview(im)
+    nsub=1
+    im0=gmix2image(gmix,dims,nsub=nsub)
+
+    im,skysig = fimage.add_noise(im0, s2n,check=True)
+
+    images.multiview(im,title='nsub: %d' % nsub)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 0.2*(randu()-0.5)  # eta
+    p0[3] += 0.5*(randu()-0.5)   # theta radians
+    p0[4] += 0.1*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+
+    print 'numiter:',gf.numiter
+    print_pars(gf.popt, front='popt: ')
+    print_pars(gf.perr, front='perr: ')
+    images.imprint(gf.pcov)
+
+
+def test_fit_1gauss(ellip=0.2):
+    import images
+    numpy.random.seed(35)
+
+    sigma = 1.4
+    T=2*sigma**2
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    theta=23.7*numpy.pi/180.
+    #eta=-0.7
+    #ellip=(1+tanh(eta))/2
+    eta = ellip2eta(ellip+1.e-8)
+    print >>stderr,'ellip:',ellip
+    pars=array([cen[0],cen[1],eta,theta,1.,T])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    nsub=1
+    im=gmix2image(gmix,dims,nsub=nsub)
+    images.multiview(im,title='nsub: %d' % nsub)
     
     p0=pars.copy()
     p0[0] += 1*(randu()-0.5)  # cen0
@@ -682,6 +735,8 @@ def test_fit_1gauss():
 
     print 'numiter:',gf.numiter
     print gf.popt
+    print gf.perr
+    images.imprint(gf.pcov)
 
 def test_fit_1gauss_psf(use_jacob=True, seed=45):
     from fimage import ellip2mom
@@ -1089,6 +1144,112 @@ def get_exp_guess(cen,cov,ngauss):
             'icc':cov[2] + 0.5*(randu()-0.5)}
         guess.append(g)
     return guess
+
+def test_fit_1gauss_e1e2(ellip=0.2, seed=35, s2n=-9999):
+    import images
+    from fimage import etheta2e1e2, add_noise
+
+    ptype='e1e2'
+    numpy.random.seed(seed)
+
+    theta=23.7*numpy.pi/180.
+    e1,e2 = etheta2e1e2(ellip, theta)
+
+    sigma = 1.4
+    T=2*sigma**2
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    pars=array([cen[0],cen[1],e1,e2,1.,T])
+
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+
+    nsub=1
+    im0=gmix2image(gmix,dims,nsub=nsub)
+    if s2n > 0:
+        im,skysig = add_noise(im0, s2n,check=True)
+    else:
+        im=im0
+
+    #images.multiview(im,title='nsub: %d' % nsub)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 0.2*(randu()-0.5)  # e1
+    p0[3] += 0.2*(randu()-0.5)  # e2
+    p0[4] += 0.1*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellip(im, p0, ptype=ptype,verbose=True)
+
+    print >>stderr,'numiter:',gf.numiter
+    print_pars(gf.popt,front='popt:  ')
+    print_pars(gf.perr,front='perr:  ')
+    images.imprint(gf.pcov)
+
+def test_fit_1gauss_e1e2_fix(imove, use_jacob=True):
+
+    import images
+    from fimage import etheta2e1e2
+
+    numpy.random.seed(45)
+
+    ptype='e1e2'
+    numpy.random.seed(35)
+
+    theta=23.7*numpy.pi/180.
+    ellip=0.2
+    e1,e2 = etheta2e1e2(ellip, theta)
+
+    sigma = 1.4
+    T=2*sigma**2
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    pars=array([cen[0],cen[1],e1,e2,1.,T])
+
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+
+    nsub=1
+    im=gmix2image(gmix,dims,nsub=nsub)
+    
+    p0=pars.copy()
+    if imove == 0:
+        p0[0] += 1*(randu()-0.5)  # cen0
+    elif imove == 1:
+        p0[1] += 1*(randu()-0.5)  # cen1
+    elif imove == 2:
+        p0[2] += 0.2*(randu()-0.5)  # e1
+    elif imove == 3:
+        p0[3] += 0.2*(randu()-0.5)  # e2
+    elif imove == 4:
+        p0[4] += 0.2*(randu()-0.5)  # p
+    elif imove == 5:
+        p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, ptype=ptype,
+                                  use_jacob=use_jacob,
+                                  verbose=True)
+
+    print >>stderr,'numiter:',gf.numiter
+    print_pars(gf.popt,front='popt:  ')
+    print_pars(gf.perr,front='perr:  ')
+
 
 
 
