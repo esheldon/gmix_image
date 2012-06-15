@@ -1195,21 +1195,34 @@ def test_fit_1gauss_e1e2(ellip=0.2, seed=35, s2n=-9999):
     print_pars(gf.perr,front='perr:  ')
     images.imprint(gf.pcov)
 
-def test_fit_1gauss_e1e2_fix(imove, use_jacob=True):
+def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
 
     import images
-    from fimage import etheta2e1e2
+    from fimage import etheta2e1e2, ellip2mom
 
     numpy.random.seed(45)
 
     ptype='e1e2'
     numpy.random.seed(35)
 
+    if dopsf:
+        print >>stderr,"DOING PSF"
+        Tpsf = 2.0
+        epsf = 0.2
+        theta_psf = 80.0
+        cov_psf = ellip2mom(Tpsf, e=epsf, theta=theta_psf)
+        psf=[{'p':1.0, 
+              'irr':cov_psf[0], 
+              'irc':cov_psf[1], 
+              'icc':cov_psf[2]}]
+    else:
+        psf=None
+
     theta=23.7*numpy.pi/180.
     ellip=0.2
     e1,e2 = etheta2e1e2(ellip, theta)
 
-    sigma = 1.4
+    sigma = 3.
     T=2*sigma**2
     nsig=5
     dim = int(nsig*T)
@@ -1224,7 +1237,7 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True):
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
 
     nsub=1
-    im=gmix2image(gmix,dims,nsub=nsub)
+    im=gmix2image(gmix,dims,nsub=nsub, psf=psf)
     
     p0=pars.copy()
     if imove == 0:
@@ -1243,6 +1256,7 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True):
     print_pars(p0,  front='guess: ')
 
     gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, ptype=ptype,
+                                  psf=psf,
                                   use_jacob=use_jacob,
                                   verbose=True)
 

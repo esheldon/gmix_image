@@ -390,7 +390,6 @@ class GMixFitCoellip:
         # for cen we sum up contributions from each gauss
         # 
 
-        # y0,x0
         for i,Fi in enumerate(flist):
             gp = pars[4+i]
             T = pars[4+ngauss+i]
@@ -453,6 +452,138 @@ class GMixFitCoellip:
             jacob[i] = jacob[i].reshape(self.image.size)
 
         return jacob
+
+    def jacob_e1e2_psf(self, pars):
+
+        flist = self.make_model(pars, aslist=True)
+
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        e1    = pars[2]
+        e2    = pars[3]
+
+        x2=x**2
+        y2=y**2
+
+        x2my2 = x2 - y2
+        r2 = x2 + y2
+        xy2 = 2*x*y
+
+        jacob = []
+
+        jy0 = zeros(self.image.shape)
+        jx0 = zeros(self.image.shape)
+        je1 = zeros(self.image.shape)
+        je2 = zeros(self.image.shape)
+
+        jp_list = []
+        jT_list = []
+        for i,plist in enumerate(flist):
+            T = pars[4+ngauss+i]
+            gp = pars[4+i]
+
+            # we have one of these for each gaussian
+            jp = zeros(self.image.shape)
+            jT = zeros(self.image.shape)
+            for j in xrange(len(plist)):
+                p = self.psf[j]
+                pim = plist[j] # convolved image
+
+                Tpsf = p['irr']+p['icc']
+                To = T + Tpsf
+
+                e1psf = (p['icc']-p['irr'])/Tpsf
+                e2psf = 2*p['irc']/Tpsf
+
+                R = T/To
+                s2 = Tpsf/T
+
+                e1o = R*(e1 + e1psf*s2)
+                e2o = R*(e2 + e2psf*s2)
+                ellipo_2 = e1o**2 + e2o**2
+
+                ellipo = sqrt(ellipo_2)
+                # if ellipticity is zero, we don't care
+                # about the angle!
+                if ellipo_2 > 0:
+                    cos2thetao = e1o/ellipo
+                    sin2thetao = e2o/ellipo
+                else:
+                    cos2thetao = 1.0
+                    sin2thetao = 0.0
+
+
+                #
+                # centroid
+                #
+                y0fac = y*(1.+e1o) - x*e2o
+                y0fac *= 2./To/(1-ellipo_2)
+
+                x0fac = x*(1.-e1o) - y*e2o
+                x0fac *= 2./To/(1-ellipo_2)
+
+                jy0 += pim*y0fac
+                jx0 += pim*x0fac
+
+                #
+                # e1
+                #
+
+                e1fac1 = e1o/(1-ellipo_2)
+                e1fac2 = x2my2*(1-ellipo_2 + 2*e1o**2)
+                e1fac2 *= 1./To/(1.-ellipo_2)**2
+
+                de1o_de1 = R
+
+                e1fac = de1o_de1*(e1fac1 + e1fac2)
+                je1 += pim*e1fac
+
+                #
+                # e2
+                #
+
+                e2fac1 = e2o/(1-ellipo_2)
+                e2fac2 = xy2*(1-ellipo_2 + 2*e2o**2)
+                e2fac2 *= 1./T/(1.-ellipo_2)**2
+                
+                de2o_de2 = R
+
+                e2fac = de2o_de2*(e2fac1 + e2fac2)
+                je2 += pim*e2fac
+
+
+                #
+                # counts
+                #
+                jp += pim
+
+                #
+                # T
+                #
+                Tfac1 = -1./To
+                arg = (x2*(1.-e1o) - xy2*e2o + y2*(1.+e1o))/To/(1.-ellipo_2)
+                Tfac2 = arg/To
+                jT += pim*(Tfac1+Tfac2)
+
+
+            jp /= gp
+            jp_list.append(jp)
+            jT_list.append(jT)
+
+
+        jacob.append(jy0)
+        jacob.append(jx0)
+        jacob.append(je1)
+        jacob.append(je2)
+        jacob += jp_list
+        jacob += jT_list
+
+        for i in xrange(len(jacob)):
+            jacob[i] = jacob[i].reshape(self.image.size)
+        return jacob
+
 
 
     def jacob_eta(self, pars):
@@ -1618,6 +1749,208 @@ class GMixFitCoellipFix:
             """
 
         return jacob
+
+    def jacob_e1e2_psf(self, pars1):
+
+        flist = self.make_model(pars1, aslist=True)
+        pars=self.get_full_pars(pars1)
+
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        x2my2 = x**2 - y**2
+        xy2 = 2*x*y
+        x2=x**2
+        y2=y**2
+
+        e1    = pars[2]
+        e2    = pars[3]
+
+        jacob = []
+        if self.imove == 0:
+            print >>stderr,"doing psf y0"
+            jy0 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    yfac = y*(1.+e1o) - x*e2o
+                    yfac *= 2./To/(1-ellipo_2)
+
+                    jy0 += pim*yfac
+
+            jacob.append(jy0)
+
+
+        if self.imove == 1:
+            print >>stderr,"doing psf x0"
+            jx0 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    xfac = x*(1.-e1o) - y*e2o
+                    xfac *= 2./To/(1-ellipo_2)
+
+                    jx0 += pim*xfac
+
+            jacob.append(jx0)
+
+        if self.imove == 2:
+            print >>stderr,"doing psf e1"
+            je1 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    e1fac1 = e1o/(1-ellipo_2)
+
+                    e1fac2 = x2my2
+                    e1fac2 *= (1-ellipo_2+2*e1o**2)/To/(1.-ellipo_2)**2
+
+                    de1o_de1 = R
+
+                    e1fac = de1o_de1*(e1fac1 + e1fac2)
+                    je1 += pim*e1fac
+
+            jacob.append(je1)
+
+        if self.imove == 3:
+            print >>stderr,"doing psf e2"
+            je2 = zeros(self.image.shape)
+
+            for i,plist in enumerate(flist):
+                T = pars[4+ngauss+i]
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    e2fac1 = e2o/(1-ellipo_2)
+                    e2fac2 = xy2*(1-ellipo_2 + 2*e2o**2)
+                    e2fac2 *= 1./T/(1.-ellipo_2)**2
+                    
+                    de2o_de2 = R
+
+                    e2fac = de2o_de2*(e2fac1 + e2fac2)
+                    je2 += pim*e2fac
+
+
+            jacob.append(je2)
+
+
+
+
+        # p
+        # have an entry for *each* gauss rather than summed
+        for i,plist in enumerate(flist):
+            if self.imove == (4+i):
+                print >>stderr,"doing psf p%d" % i
+                gp = pars[4+i]
+                jp = zeros(self.image.shape)
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    jp += pim
+                jp /= gp
+                jacob.append(jp)
+
+        for i,plist in enumerate(flist):
+            if self.imove == (4+ngauss+i):
+                print >>stderr,"doing psf T%d" % i
+                T = pars[4+ngauss+i]
+                jT = zeros(self.image.shape)
+                for j in xrange(len(plist)):
+                    p = self.psf[j]
+                    pim = plist[j] # convolved image
+
+                    Tpsf = p['irr']+p['icc']
+                    To = T + Tpsf
+
+                    e1psf = (p['icc']-p['irr'])/Tpsf
+                    e2psf = 2*p['irc']/Tpsf
+
+                    R = T/To
+                    s2 = Tpsf/T
+
+                    e1o = R*(e1 + e1psf*s2)
+                    e2o = R*(e2 + e2psf*s2)
+                    ellipo_2 = e1o**2 + e2o**2
+
+                    fac1 = -1./To
+                    ch = (x2*(1.-e1o) - xy2*e2o + y2*(1.+e1o))/To/(1.-ellipo_2)
+                    fac2 = ch/To
+                    jT += pim*(fac1+fac2)
+
+                jacob.append(jT)
+
+
+        for i in xrange(len(jacob)):
+            jacob[i] = jacob[i].reshape(self.image.size)
+        return jacob
+
 
     def jacob_e1e2(self, pars1):
         """
