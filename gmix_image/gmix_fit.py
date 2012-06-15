@@ -546,7 +546,7 @@ class GMixFitCoellip:
 
                 e2fac1 = e2o/(1-ellipo_2)
                 e2fac2 = xy2*(1-ellipo_2 + 2*e2o**2)
-                e2fac2 *= 1./T/(1.-ellipo_2)**2
+                e2fac2 *= 1./To/(1.-ellipo_2)**2
                 
                 de2o_de2 = R
 
