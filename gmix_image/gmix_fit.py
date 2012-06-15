@@ -97,14 +97,14 @@ class GMixFitCoellip:
         """
         from scipy.optimize import leastsq
         if self.ptype == 'eta':
-            res = leastsq(self.ydiff,self.guess,
-                          full_output=1,
-                          Dfun=self.jacob_eta,
-                          col_deriv=1)
-            """
-            res = leastsq(self.ydiff,self.guess,
-                          full_output=1)
-            """
+            if self.use_jacob:
+                res = leastsq(self.ydiff,self.guess,
+                              full_output=1,
+                              Dfun=self.jacob_eta,
+                              col_deriv=1)
+            else:
+                res = leastsq(self.ydiff,self.guess,
+                              full_output=1)
         elif self.ptype=='cov':
             res = leastsq(self.ydiff,self.guess,
                           full_output=1,
@@ -280,6 +280,12 @@ class GMixFitCoellip:
             # make sure p and f values are > 0
             vals = pars[5:]
         elif self.ptype=='eta':
+
+            eta = pars[2]
+            ellip = eta2ellip(eta)
+            if ellip == 0 or ellip > 1:
+                return False
+
             vals=pars[4:]
 
         w,=where(vals <= 0)
@@ -380,18 +386,6 @@ class GMixFitCoellip:
         jacob.append(jy0)
         jacob.append(jx0)
 
-        """
-        # y0
-        jtmp = zeros(self.image.shape)
-        for i,Fi in enumerate(flist):
-            T = pars[4+ngauss+i]
-            fac = y*(1.+e1) - x*e2
-            fac *= 2./T/(1-ellip**2)
-            jtmp += Fi*fac
-        jacob.append(jtmp)
-        """
-
-
         # eta
         
         # just the chain rule
@@ -443,14 +437,151 @@ class GMixFitCoellip:
             #print >>stderr,i
             #print >>stderr,jacob[i]
             jacob[i] = jacob[i].reshape(self.image.size)
-            """
-            w,=where(isfinite(jacob[i]) == False)
-            if w.size != 0:
-                print i
-                print jacob[i]
-                stop
-            """
 
+        return jacob
+
+    def jacob_eta_psf(self, pars):
+
+        flist = self.make_model(pars, aslist=True)
+
+        ngauss=self.ngauss
+        y = self.row-pars[0]
+        x = self.col-pars[1]
+
+        x2=x**2
+        y2=y**2
+
+        x2my2 = x2 - y2
+        r2 = x2 + y2
+        xy2 = 2*x*y
+
+        eta   = pars[2]
+        de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
+
+        ellip = eta2ellip(eta)
+        theta = pars[3]
+        cos2theta = cos(2*theta)
+        sin2theta = sin(2*theta)
+        e1    = ellip*cos2theta
+        e2    = ellip*sin2theta
+
+        jacob = []
+
+        jy0 = zeros(self.image.shape)
+        jx0 = zeros(self.image.shape)
+        jeta = zeros(self.image.shape)
+        jtheta = zeros(self.image.shape)
+
+        jp_list = []
+        jT_list = []
+        for i,plist in enumerate(flist):
+            T = pars[4+ngauss+i]
+            gp = pars[4+i]
+
+            # we have one of these for each gaussian
+            jp = zeros(self.image.shape)
+            jT = zeros(self.image.shape)
+            for j in xrange(len(plist)):
+                p = self.psf[j]
+                pim = plist[j] # convolved image
+
+                Tpsf = p['irr']+p['icc']
+                To = T + Tpsf
+
+                e1psf = (p['icc']-p['irr'])/Tpsf
+                e2psf = 2*p['irc']/Tpsf
+
+                R = T/To
+                s2 = Tpsf/T
+
+                e1o = R*(e1 + e1psf*s2)
+                e2o = R*(e2 + e2psf*s2)
+                ellipo_2 = e1o**2 + e2o**2
+
+                ellipo = sqrt(ellipo_2)
+                # if ellipticity is zero, we don't care
+                # about the angle!
+                if ellipo_2 > 0:
+                    cos2thetao = e1o/ellipo
+                    sin2thetao = e2o/ellipo
+                else:
+                    cos2thetao = 1.0
+                    sin2thetao = 0.0
+
+
+                #
+                # centroid
+                #
+                y0fac = y*(1.+e1o) - x*e2o
+                y0fac *= 2./To/(1-ellipo_2)
+
+                x0fac = x*(1.-e1o) - y*e2o
+                x0fac *= 2./To/(1-ellipo_2)
+
+                jy0 += pim*y0fac
+                jx0 += pim*x0fac
+
+                #
+                # eta
+                #
+                eta_fac1 = ellipo/(1-ellipo_2)
+                eta_fac2 = \
+                    2.*ellipo*r2 \
+                    - (1+ellipo_2)*(x2my2*cos2thetao + xy2*sin2thetao)
+                eta_fac2 *= -1./To/(1.-ellipo_2)**2
+
+                # derivitive of observed ellipticity with respect to 
+                # object e
+                deo_de = R*(cos2thetao*cos2theta + sin2thetao*sin2theta)
+
+                # now multiply by F * deo/de * de/deta
+                jeta += pim*(eta_fac1+eta_fac2)*deo_de*de_deta
+
+                #
+                # theta
+                #
+                om = 1./(1.-ellipo_2)
+                Tom2 = om**2/To
+
+                theta_fac1 = \
+                    -2*R*e2*(e1o*om + x2my2*Tom2*(1-ellipo_2+2*e1o**2) )
+                theta_fac2 = \
+                     2*R*e1*(e2o*om +   xy2*Tom2*(1-ellipo_2+2*e2o**2) )
+
+                # this gives the exact same answer as above
+                #fac1 = -2*R*e2*( ((e1o**2-e2o**2+1)*(x**2-y**2)-To*e1o*(e1o**2+e2o**2-1)))/(To*(-e1o**2-e2o**2+1)**2)
+                #fac2 =  2*R*e1*( (2*x*y*(e2o**2-e1o**2+1)-To*e2o*(e2o**2+e1o**2-1)))/(To*(-e2o**2-e1o**2+1)**2)
+
+                jtheta += pim*(theta_fac1+theta_fac2)
+
+                #
+                # counts
+                #
+                jp += pim
+
+                #
+                # T
+                #
+                Tfac1 = -1./To
+                ch = (x2*(1.-e1o) - xy2*e2o + y2*(1.+e1o))/To/(1.-ellipo_2)
+                Tfac2 = ch/To
+                jT += pim*(Tfac1+Tfac2)
+
+
+            jp /= gp
+            jp_list.append(jp)
+            jT_list.append(jT)
+
+
+        jacob.append(jy0)
+        jacob.append(jx0)
+        jacob.append(jeta)
+        jacob.append(jtheta)
+        jacob += jp_list
+        jacob += jT_list
+
+        for i in xrange(len(jacob)):
+            jacob[i] = jacob[i].reshape(self.image.size)
         return jacob
 
 

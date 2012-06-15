@@ -424,6 +424,111 @@ def test_fit_dev_bysigma(method='lm'):
     tab.show()
     tab.write_img(1024,1024,pngf)
 
+def test_fit_dev_eta_bysigma():
+    """
+    Round object as a function of sigma
+    """
+    import admom
+    import biggles
+    from scipy.optimize import leastsq
+    from fimage import model_image, ellip2mom
+    numpy.random.seed(35)
+
+    ngauss=4
+    nsig=15
+    npars=2*ngauss+4
+    nsigma_vals=20
+
+    e=0.3
+    eta = ellip2eta(e)
+    theta=23.7
+    print >>stderr,'ellip:',e
+    print >>stderr,'eta:',eta
+    print >>stderr,'theta:',theta*pi/180.
+
+
+    f='test-opt-dev-bysigma.rec'
+    pngf=f.replace('.rec','.png')
+    if not os.path.exists(f):
+        data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
+        #sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
+        #sigvals = numpy.linspace(3.,5.0,nsigma_vals)
+        sigvals=array([2.0])
+        for isigma,sigma in enumerate(sigvals):
+            print '-'*70
+            print 'sigma:',sigma
+            T = 2*sigma**2
+
+            dim = int(2*nsig*sigma)
+            if (dim % 2) == 0:
+                dim += 1
+            dims=array([dim,dim])
+            cen=(dims-1)/2.
+            cov=ellip2mom(T, e=e, theta=theta)
+            im = model_image('dev',dims,cen,cov,nsub=16)
+            #images.multiview(im)
+
+            ares = admom.admom(im,cen[0],cen[1],guess=T/2)
+            if ares['whyflag'] != 0:
+                raise ValueError("admom failed")
+            Tadmom = ares['Irr']+ares['Icc']
+            print >>stderr,'admom sigma:',sqrt(Tadmom/2)
+            print >>stderr,'admom T:',Tadmom
+            print >>stderr,'admom e:',sqrt(ares['e1']**2 + ares['e2']**2)
+            p0 = array([cen[0],
+                        cen[1],
+                        eta,
+                        theta*pi/180.,
+                        0.22,
+                        0.35,
+                        0.25,
+                        0.15,
+                        Tadmom*0.2,
+                        Tadmom*2.0,
+                        Tadmom*10.0,
+                        Tadmom*60.0])
+            #0.18450384   2.09205287  10.31125635  67.13233512
+
+            print_pars(p0,  front='guess: ')
+            gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+            flags = gf.flags
+
+            print 'numiter:',gf.numiter
+            print_pars(gf.popt,  front='popt:  ')
+            #for i in xrange(len(gf.popt)):
+            #    print '%.6g' % gf.popt[i]
+
+            if gf.flags != 0:
+                raise RuntimeError("failed")
+
+            print >>stderr,'T ratio relative to admom:',gf.popt[4+ngauss:]/Tadmom
+            data['sigma'][isigma] = sigma
+            data['pars'][isigma,:] = gf.popt
+
+        # plot the last one
+        gmix = gmix_fit.pars2gmix_coellip_eta(gf.popt)
+        model = gmix2image(gmix,im.shape)
+        images.compare_images(im,model)
+    else:
+        data=eu.io.read(f)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.add(biggles.Points(data['sigma'],data['pars'][:,par],
+                               type='filled circle'))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.show()
+    tab.write_img(1024,1024,pngf)
+
 def test_fit_1gauss_fix(imove, use_jacob=True):
 
     import images
@@ -578,6 +683,69 @@ def test_fit_1gauss():
     print 'numiter:',gf.numiter
     print gf.popt
 
+def test_fit_1gauss_psf(use_jacob=True, seed=45):
+    from fimage import ellip2mom
+    import images
+
+    print >>stderr,"seed:",seed
+    numpy.random.seed(seed)
+
+    if not use_jacob:
+        print >>stderr,"NOT using jacobian"
+
+    Tpsf = 2.0
+    epsf = 0.2
+    theta_psf = 80.0
+    cov_psf = ellip2mom(Tpsf, e=epsf, theta=theta_psf)
+    psf=[{'p':1.0, 
+          'irr':cov_psf[0], 
+          'irc':cov_psf[1], 
+          'icc':cov_psf[2]}]
+
+    T=3.0
+
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1.)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    print >>stderr,'ellip:',ellip
+    print >>stderr,'e1:',ellip*cos(2*theta)
+    print >>stderr,'e2:',ellip*sin(2*theta)
+
+    pars=array([cen[0],cen[1],eta,theta,1.,T])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    im=gmix2image(gmix,dims,psf=psf)
+    #images.multiview(im)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 1*(randu()-0.5)  # eta
+    #p0[3] += 1*(randu()-0.5)   # theta radians
+    p0[3] += 0.5*(randu()-0.5)   # theta radians
+    p0[4] += 0.2*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellip(im, p0, 
+                               psf=psf,
+                               ptype='eta',
+                               use_jacob=use_jacob,
+                               verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+    print gf.pcov
+
 
 def test_fit_2gauss():
     import images
@@ -621,7 +789,73 @@ def test_fit_2gauss():
     for i in xrange(len(pars)):
         print '%10.6f %10.6f' % (pars[i],gf.popt[i])
 
-def test_fit_exp_eta():
+def test_fit_2gauss_2psf(use_jacob=True, seed=45):
+    import images
+    from fimage import ellip2mom
+
+    print >>stderr,"seed:",seed
+    numpy.random.seed(seed)
+
+    if not use_jacob:
+        print >>stderr,"NOT using jacobian"
+
+    Tpsf1 = 2.0
+    Tpsf2 = 4.0
+    epsf = 0.2
+    theta_psf = 80.0
+    cov_psf1 = ellip2mom(Tpsf1, e=epsf, theta=theta_psf)
+    cov_psf2 = ellip2mom(Tpsf2, e=epsf, theta=theta_psf)
+    psf=[{'p':0.7, 'irr':cov_psf1[0], 'irc':cov_psf1[1], 'icc':cov_psf1[2]},
+         {'p':0.3, 'irr':cov_psf2[0], 'irc':cov_psf2[1], 'icc':cov_psf2[2]}]
+
+
+    T1=3.0
+    T2=6.0
+    nsig=5
+    dim = int(nsig*T2)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1)/2.
+
+    theta=23.7*numpy.pi/180.
+    eta=-0.7
+    ellip=(1+tanh(eta))/2
+    p1=0.4
+    p2=0.6
+    print >>stderr,'ellip:',ellip
+    pars=array([cen[0],cen[1],eta,theta,p1,p2,T1,T2])
+    print >>stderr,'pars'
+
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    im=gmix2image(gmix,dims, psf=psf)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 1*(randu()-0.5)  # eta
+    p0[3] += 0.5*(randu()-0.5)   # theta radians
+    p0[4] += 0.2*(randu()-0.5)  # p1
+    p0[5] += 0.2*(randu()-0.5)  # p2
+    p0[6] += 1*(randu()-0.5)   # T1
+    p0[7] += 1*(randu()-0.5)   # T2
+
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+    gf=gmix_fit.GMixFitCoellip(im, 
+                               p0, 
+                               psf=psf,
+                               ptype='eta',
+                               use_jacob=use_jacob,
+                               verbose=True)
+
+    print 'numiter:',gf.numiter
+    print gf.popt
+    for i in xrange(len(pars)):
+        print '%10.6f %10.6f' % (pars[i],gf.popt[i])
+
+
+def test_fit_exp_eta(use_jacob=True):
     import biggles
     from scipy.optimize import leastsq
     from fimage import model_image
@@ -668,7 +902,10 @@ def test_fit_exp_eta():
               0.05*T,
               3.8*T]
 
-        gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta', verbose=True)
+        gf=gmix_fit.GMixFitCoellip(im, p0, 
+                                   ptype='eta', 
+                                   use_jacob=use_jacob, 
+                                   verbose=True)
         if gf.flags != 0:
             raise RuntimeError("failed")
         print 'numiter:',gf.numiter
@@ -690,7 +927,10 @@ def test_fit_exp_eta():
     # plot the last one
     gmix = gmix_fit.pars2gmix_coellip_eta(gf.popt)
     model = gmix2image(gmix,im.shape)
-    images.compare_images(im,model)
+    plt=images.compare_images(im,model)
+    epsfile='test-opt-exp.eps'
+    print >>stderr,'epsfile of image compare:',epsfile
+    plt.write_eps(epsfile)
 
     biggles.configure('fontsize_min', 1.0)
     biggles.configure('linewidth',1.0) # frame only
@@ -780,7 +1020,6 @@ def test_fit_exp_cov(method='lm'):
     tab.show()
 
 def test_gmix_exp():
-    import admom
     from fimage import model_image
     
     numpy.random.seed(35)
