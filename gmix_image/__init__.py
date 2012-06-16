@@ -56,6 +56,17 @@ _flagmap_fit=\
      GMIXFIT_LOW_S2N:              'GMIXFIT_LOW_S2N',
      'GMIXFIT_LOW_S2N':             GMIXFIT_LOW_S2N}
 
+def printflags(type, flags):
+    if type == 'em':
+        fmap =_flagmap_em
+    else:
+        fmap =_flagmap_fit
+    for i in xrange(31):
+        flag=2**i
+        if flag in fmap:
+            if (flags & flag) != 0:
+                print i,flagname(type,flag)
+
 def flagname(type, flag):
     if type == 'em':
         name =_flagmap_em.get(flag,None)

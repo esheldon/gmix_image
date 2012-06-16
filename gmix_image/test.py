@@ -18,6 +18,10 @@ try:
 except:
     have_images=False
 
+try:
+    from fimage import model_image, ellip2mom, etheta2e1e2
+except:
+    pass
 #
 # EM tests
 #
@@ -239,7 +243,6 @@ def test_fit_dev_by_ellip(sigma, method='lm'):
     Fixed sigma, different ellip
     """
     import biggles
-    from scipy.optimize import leastsq
     from fimage import model_image
     numpy.random.seed(35)
 
@@ -327,81 +330,109 @@ def test_fit_dev_by_ellip(sigma, method='lm'):
     tab.show()
 
 
-def test_fit_dev_bysigma(method='lm'):
+def test_fit_dev_e1e2(use_jacob=True):
     """
     Round object as a function of sigma
     """
     import biggles
-    from scipy.optimize import leastsq
-    from fimage import model_image
+    import admom
     numpy.random.seed(35)
+
+    ptype='e1e2'
+
+    e = 0.2
+    theta = 23.7
+    e1,e2 = etheta2e1e2(e,theta)
+
+    print >>stderr,"e:",e,"e1:",e1,"e2:",e2
 
     ngauss=4
     nsig=15
+    #nsig=7
     npars=2*ngauss+4
     nsigma_vals=20
 
-    f='test-opt-dev-bysigma.rec'
+    f='test-opt-dev-bysigma'
+    if not use_jacob:
+        f += '-nojacob'
+    f += '.rec'
     pngf=f.replace('.rec','.png')
     if not os.path.exists(f):
         data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
-        sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
+        #sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
+        sigvals = numpy.linspace(3.,5.0,nsigma_vals)
+        #sigvals=array([3.0])
         for isigma,sigma in enumerate(sigvals):
             print '-'*70
             print 'sigma:',sigma
             T = 2*sigma**2
 
-            Irr = sigma**2
-            Irc = 0.0
-            Icc = sigma**2
+            cov = ellip2mom(T, e=e, theta=theta)
             dim = int(2*nsig*sigma)
             if (dim % 2) == 0:
                 dim += 1
             dims=array([dim,dim])
             cen=(dims-1)/2.
-            cov=[Irr,Irc,Icc]
+
+            im = model_image('exp',dims,cen,cov,nsub=16)
+            ares = admom.admom(im,cen[0],cen[1],guess=T/2,nsub=16)
+            Tadmom=ares['Irr'] + ares['Icc']
+
+            dim = int(2*nsig*sigma)
+            if (dim % 2) == 0:
+                dim += 1
+            dims=array([dim,dim])
+            cen=(dims-1)/2.
             im = model_image('dev',dims,cen,cov,nsub=16)
 
-            flags=9999
-            while flags != 0:
-                stderr.write('.')
-                if ngauss == 3:
-                    p0 = [cen[0],cen[1],Irr,Irc,Icc, 0.4,0.07,0.55, 0.2,3.8]
-                elif ngauss==4:
-                    # at sigma==3 pixelization, expect f vals of 
-                    #   0.044, 0.22, 6.0
-                    # but always start on the *inside* of the expected
-                    p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
-                                .22, .35, .25, .15, 
-                                .1, .25, 4.])
-                    p0[5] += 0.1*(randu()-0.5)
-                    p0[6] += 0.1*(randu()-0.5)
-                    p0[7] += 0.1*(randu()-0.5)
-                    p0[8] += 0.1*(randu()-0.5)
+            # at sigma=3
+            # p values: [ 0.14452782  0.22538627  0.26580666  0.34692505]
+            # T vals/Tadmom: [ 4.89320508  0.81496317  0.17761882  0.03691394]
 
-                    p0[9] += 0.1*(randu()-0.5)
-                    p0[10] += 0.1*(randu()-0.5)
-                    p0[11] += 2*(randu()-0.5)
+            # at sigma=5
+            # p values: [ 0.21256148  0.26711671  0.24955146  0.23618073]
+            # T vals/Tadmom: [ 2.6506886   0.38942125  0.07580992  0.01478468]
+            p0 = array([cen[0],
+                        cen[1],
+                        e1,
+                        e2,
+                        0.15,
+                        0.23,#.35, 
+                        0.27,#.25, 
+                        0.35,#.15, 
+                        Tadmom*4.9, 
+                        Tadmom*0.82, 
+                        Tadmom*0.18,
+                        Tadmom*0.04])
 
-                else:
-                    raise ValueError("implement guess ngauss > 4")
-
-                verbose=False
-                gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=verbose)
-                flags = gf.flags
+            print_pars(p0,  front='guess: ')
+            verbose=True
+            gf=gmix_fit.GMixFitCoellip(im, p0, 
+                                       ptype=ptype,
+                                       use_jacob=use_jacob, 
+                                       verbose=verbose)
 
             print 'numiter:',gf.numiter
-            for i in xrange(len(gf.popt)):
-                print '%.6g' % gf.popt[i]
+            print_pars(gf.popt,  front='popt:  ')
+            if gf.perr is not None:
+                print_pars(gf.perr,  front='perr:  ')
 
             if gf.flags != 0:
+                gmix_image.printflags('fit',gf.flags)
                 raise RuntimeError("failed")
 
             data['sigma'][isigma] = sigma
             data['pars'][isigma,:] = gf.popt
 
+            tvals = gf.popt[4+ngauss:]
+            tmax=tvals.max()
+            print 't ratios:',tvals/tmax
+            print 'p values:',gf.popt[4:4+ngauss]
+            print 'T vals/Tadmom:',tvals/Tadmom
+
+
         # plot the last one
-        gmix = gmix_fit.pars2gmix_coellip(gf.popt)
+        gmix = gmix_fit.pars2gmix_coellip(gf.popt,ptype=ptype)
         model = gmix2image(gmix,im.shape)
         images.compare_images(im,model)
     else:
@@ -430,7 +461,6 @@ def test_fit_dev_eta_bysigma():
     """
     import admom
     import biggles
-    from scipy.optimize import leastsq
     from fimage import model_image, ellip2mom
     numpy.random.seed(35)
 
@@ -1041,7 +1071,6 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
 def test_fit_exp_e1e2(use_jacob=True):
     import admom
     import biggles
-    from fimage import model_image, ellip2mom, etheta2e1e2
     numpy.random.seed(35)
     ptype='e1e2'
 
@@ -1074,20 +1103,19 @@ def test_fit_exp_e1e2(use_jacob=True):
         Tadmom=ares['Irr'] + ares['Icc']
 
         ngauss=3
-        # p values: [ 0.61146662  0.03659382  0.33399328]
-        # t ratios: [ 1.          0.03324079  0.22906797]
-        # t/Tadmom: [ 2.69989295  0.08974657  0.618459  ]
+        # p values: [ 0.61145202  0.33400601  0.03659767]
+        # T vals/Tadmom: [ 2.69996659  0.61848985  0.08975346]
 
         p0 = [cen[0],# + 0.1*(randu()-0.5),
               cen[1],# + 0.1*(randu()-0.5),
               e1,# + .2*(randu()-0.5), 
               e2,# + .2*pi/180.*(randu()-0.5),
               0.62,
-              0.04,
               0.34,
-              T,
-              0.05*T,
-              0.23*T]
+              0.04,
+              Tadmom*2.7,
+              Tadmom*0.62,
+              Tadmom*0.09]
 
         print_pars(p0,  front='guess: ')
         gf=gmix_fit.GMixFitCoellip(im, p0, 
@@ -1142,7 +1170,6 @@ def test_fit_exp_e1e2(use_jacob=True):
 
 def test_fit_exp_eta(use_jacob=True):
     import biggles
-    from scipy.optimize import leastsq
     from fimage import model_image
     numpy.random.seed(35)
 
@@ -1235,7 +1262,6 @@ def test_fit_exp_eta(use_jacob=True):
 
 def test_fit_exp_cov(method='lm'):
     import biggles
-    from scipy.optimize import curve_fit, leastsq
     from fimage import model_image
     numpy.random.seed(35)
 
