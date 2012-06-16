@@ -504,17 +504,6 @@ class GMixFitCoellip:
                 e2o = R*(e2 + e2psf*s2)
                 ellipo_2 = e1o**2 + e2o**2
 
-                ellipo = sqrt(ellipo_2)
-                # if ellipticity is zero, we don't care
-                # about the angle!
-                if ellipo_2 > 0:
-                    cos2thetao = e1o/ellipo
-                    sin2thetao = e2o/ellipo
-                else:
-                    cos2thetao = 1.0
-                    sin2thetao = 0.0
-
-
                 #
                 # centroid
                 #
@@ -535,9 +524,7 @@ class GMixFitCoellip:
                 e1fac2 = x2my2*(1-ellipo_2 + 2*e1o**2)
                 e1fac2 *= 1./To/(1.-ellipo_2)**2
 
-                de1o_de1 = R
-
-                e1fac = de1o_de1*(e1fac1 + e1fac2)
+                e1fac = R*(e1fac1 + e1fac2)
                 je1 += pim*e1fac
 
                 #
@@ -548,9 +535,7 @@ class GMixFitCoellip:
                 e2fac2 = xy2*(1-ellipo_2 + 2*e2o**2)
                 e2fac2 *= 1./To/(1.-ellipo_2)**2
                 
-                de2o_de2 = R
-
-                e2fac = de2o_de2*(e2fac1 + e2fac2)
+                e2fac = R*(e2fac1 + e2fac2)
                 je2 += pim*e2fac
 
 

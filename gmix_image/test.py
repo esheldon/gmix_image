@@ -801,9 +801,133 @@ def test_fit_1gauss_psf(use_jacob=True, seed=45):
     print gf.popt
     print gf.pcov
 
+def test_fit_2gauss_e1e2_errors(ntrial, ellip, s2n, 
+                                use_jacob=True, 
+                                dopsf=False):
+    import esutil as eu
+    import biggles
+    numpy.random.seed(35)
 
-def test_fit_2gauss():
+    ngauss=2
+    npars=2*ngauss+4
+
+    title='e: %.2f S/N: %d Ntrial: %d' % (ellip,s2n,ntrial)
+    outfile='test-2gauss-errors-e%.2f-s2n%d-N%d'
+    outfile=outfile % (ellip,s2n,ntrial)
+    if dopsf:
+        title += ' PSF'
+        outfile += '-psf'
+    if not use_jacob:
+        title += ' No Jacob'
+        outfile += '-nojacob'
+
+    outfile += '.rec'
+
+    if os.path.exists(outfile):
+        print >>stderr,'reading:',outfile
+        data=eu.io.read(outfile)
+    else:
+        dt = [('pars','f8',npars),
+              ('popt','f8',npars),
+              ('perr','f8',npars),
+              ('pcov','f8',(npars,npars))]
+        data=zeros(ntrial,dtype=dt)
+        i=0
+        ntry=0
+        while i < ntrial:
+            newseed = int(randu()*10000000)
+            pars, popt, perr, pcov =  \
+                    test_fit_2gauss_e1e2(ellip=ellip, 
+                                         seed=newseed, 
+                                         s2n=s2n, 
+                                         use_jacob=use_jacob, 
+                                         dopsf=dopsf)
+            ntry+= 1
+            if perr is not None:
+                data['pars'][i,:] = pars
+                data['popt'][i,:] = popt
+                data['perr'][i,:] = perr
+                data['pcov'][i,:,:] = pcov
+                i += 1
+
+        print >>stderr,"ntry:",ntry
+        print >>stderr,"good frac:",float(ntrial)/ntry
+        print >>stderr,'writing:',outfile
+        eu.io.write(outfile,data,clobber=True)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+
+    nrows=3
+    ncols=3
+    tab=biggles.Table(nrows,ncols)
+    #for par in [0,1,2,3]:
+    for par in xrange(npars):
+        diff=data['popt'][:,par] - data['pars'][:,par]
+        chi = diff/data['perr'][:,par]
+
+        std=chi.std()
+        binsize=0.2*std
+
+        plt=eu.plotting.bhist(chi, binsize=binsize,show=False)
+        if par==0:
+            xlabel=r'$(x_0-x_0^{true})/\sigma$'
+        elif par == 1:
+            xlabel=r'$(y_0-y_0^{true})/\sigma$'
+        elif par == 2:
+            xlabel=r'$(e_1-e_1^{true})/\sigma$'
+        elif par == 3:
+            xlabel=r'$(e_2-e_2^{true})/\sigma$'
+        elif par == 4:
+            xlabel=r'$(p_1-p_1^{true})/\sigma$'
+        elif par == 5:
+            xlabel=r'$(p_2-p_2^{true})/\sigma$'
+        elif par == 6:
+            xlabel=r'$(T_1-T_1^{true})/\sigma$'
+        elif par == 7:
+            xlabel=r'$(T_2-T_2^{true})/\sigma$'
+
+
+        plt.xlabel = xlabel
+
+        text=r'$\sigma: %.2f' % std
+        lab=biggles.PlotLabel(0.1,0.9,text,halign='left')
+        plt.add(lab)
+        tab[par//ncols,par%ncols] = plt
+
+    tab.title=title
+    tab.show()
+
+
+
+    
+def test_fit_2gauss_e1e2(ellip=0.2, 
+                         seed=35, 
+                         s2n=-9999, 
+                         use_jacob=True, 
+                         dopsf=False):
     import images
+    from fimage import etheta2e1e2, add_noise, ellip2mom
+    numpy.random.seed(seed)
+    ptype='e1e2'
+    nsub=1
+
+    if dopsf:
+        print >>stderr,"DOING PSF"
+        Tpsf = 2.0
+        epsf = 0.2
+        #epsf = 0.2
+        theta_psf = 80.0
+        cov_psf = ellip2mom(Tpsf, e=epsf, theta=theta_psf)
+        psf=[{'p':1.0, 
+              'irr':cov_psf[0], 
+              'irc':cov_psf[1], 
+              'icc':cov_psf[2]}]
+    else:
+        psf=None
+
+    theta=23.7
+    e1,e2 = etheta2e1e2(ellip, theta)
 
     T1=3.0
     T2=6.0
@@ -814,35 +938,40 @@ def test_fit_2gauss():
     dims=array([dim,dim])
     cen=(dims-1)/2.
 
-    theta=23.7*numpy.pi/180.
-    eta=-0.7
-    ellip=(1+tanh(eta))/2
     p1=0.4
     p2=0.6
-    print >>stderr,'ellip:',ellip
-    pars=array([cen[0],cen[1],eta,theta,p1,p2,T1,T2])
-    print >>stderr,'pars'
+    pars=array([cen[0],cen[1],e1,e2,p1,p2,T1,T2])
 
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
-    im=gmix2image(gmix,dims)
-    
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+    im0=gmix2image(gmix,dims,psf=psf,nsub=nsub)
+    if s2n > 0:
+        im,skysig = add_noise(im0, s2n,check=True)
+    else:
+        im=im0
+
     p0=pars.copy()
-    p0[0] += 0.02*(randu()-0.5)  # cen0
-    p0[1] += 0.02*(randu()-0.5)  # cen1
-    p0[2] = -0.5 + 0.02*(randu()-0.5)  # eta
-    p0[3] = 15.0*numpy.pi/180. + 0.2*(randu()-0.5)   # theta radians
-    p0[4] = 0.5  # p
-    p0[5] = 0.5  # p
-    p0[6] = 2.0 + 0.5*(randu()-0.5)   # T
-    p0[7] = 3.0 + 0.5*(randu()-0.5)   # T
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 0.2*(randu()-0.5)  # e1
+    p0[3] += 0.2*(randu()-0.5)  # e2
+    p0[4] += 0.2*(randu()-0.5)  # p1
+    p0[5] += 0.2*(randu()-0.5)  # p2
+    p0[6] += 1*(randu()-0.5)  # p2
+    p0[7] += 1*(randu()-0.5)  # p2
     print_pars(pars,front='pars:  ')
     print_pars(p0,  front='guess: ')
-    gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+    gf=gmix_fit.GMixFitCoellip(im, p0, 
+                               use_jacob=use_jacob,
+                               ptype=ptype,
+                               psf=psf,
+                               verbose=True)
 
-    print 'numiter:',gf.numiter
-    print gf.popt
-    for i in xrange(len(pars)):
-        print '%10.6f %10.6f' % (pars[i],gf.popt[i])
+    print >>stderr,'numiter:',gf.numiter
+    print_pars(gf.popt,front='popt:  ')
+    if gf.perr is not None:
+        print_pars(gf.perr,front='perr:  ')
+
+    return pars, gf.popt, gf.perr, gf.pcov
 
 def test_fit_2gauss_2psf(use_jacob=True, seed=45):
     import images
@@ -908,6 +1037,107 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
     print gf.popt
     for i in xrange(len(pars)):
         print '%10.6f %10.6f' % (pars[i],gf.popt[i])
+
+def test_fit_exp_e1e2(use_jacob=True):
+    import admom
+    import biggles
+    from fimage import model_image, ellip2mom, etheta2e1e2
+    numpy.random.seed(35)
+    ptype='e1e2'
+
+    e = 0.2
+    theta = 23.7
+    e1,e2 = etheta2e1e2(e,theta)
+
+    print >>stderr,"e:",e,"e1:",e1,"e2:",e2
+
+    nsig=7
+    ngauss=3
+    npars=2*ngauss+4
+    nsigma=20
+    data=numpy.zeros(nsigma,dtype=[('sigma','f8'),('pars','f8',npars)])
+    sigvals = numpy.linspace(1.5,5.0,nsigma)
+    #sigvals = array([3.0])
+    for isigma,sigma in enumerate(sigvals):
+        print '-'*70
+        T = 2*sigma**2
+
+        cov = ellip2mom(T, e=e, theta=theta)
+        dim = int(2*nsig*sigma)
+        if (dim % 2) == 0:
+            dim += 1
+        dims=array([dim,dim])
+        cen=(dims-1)/2.
+
+        im = model_image('exp',dims,cen,cov,nsub=16)
+        ares = admom.admom(im,cen[0],cen[1],guess=T/2,nsub=16)
+        Tadmom=ares['Irr'] + ares['Icc']
+
+        ngauss=3
+        # p values: [ 0.61146662  0.03659382  0.33399328]
+        # t ratios: [ 1.          0.03324079  0.22906797]
+        # t/Tadmom: [ 2.69989295  0.08974657  0.618459  ]
+
+        p0 = [cen[0],# + 0.1*(randu()-0.5),
+              cen[1],# + 0.1*(randu()-0.5),
+              e1,# + .2*(randu()-0.5), 
+              e2,# + .2*pi/180.*(randu()-0.5),
+              0.62,
+              0.04,
+              0.34,
+              T,
+              0.05*T,
+              0.23*T]
+
+        print_pars(p0,  front='guess: ')
+        gf=gmix_fit.GMixFitCoellip(im, p0, 
+                                   ptype=ptype, 
+                                   use_jacob=use_jacob, 
+                                   verbose=True)
+
+        print_pars(gf.popt,  front='popt:  ')
+
+        if gf.flags != 0:
+            raise RuntimeError("failed")
+        print 'numiter:',gf.numiter
+
+        data['sigma'][isigma] = sigma
+        data['pars'][isigma,:] = gf.popt
+
+        tvals = gf.popt[4+ngauss:]
+        tmax=tvals.max()
+        print 't ratios:',tvals/tmax
+        print 'p values:',gf.popt[4:4+ngauss]
+        print 'T vals/Tadmom:',tvals/Tadmom
+
+    # plot the last one
+    gmix = gf.gmix
+    model = gmix2image(gmix,im.shape)
+
+    title=None
+    if not use_jacob:
+        title='no jacobian'
+    plt=images.compare_images(im,model,title=title)
+
+    epsfile='test-opt-exp.eps'
+    print >>stderr,'epsfile of image compare:',epsfile
+    plt.write_eps(epsfile)
+
+    biggles.configure('fontsize_min', 1.0)
+    biggles.configure('linewidth',1.0) # frame only
+    nrows=3
+    ncols=4
+    tab=biggles.Table(nrows,ncols)
+    for par in xrange(npars):
+        plt=biggles.FramedPlot()
+        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
+        plt.xlabel = r'$\sigma$'
+        plt.ylabel = 'p%d' % par
+        tab[par//ncols,par%ncols] = plt
+
+    tab.title=title
+    tab.show()
+
 
 
 def test_fit_exp_eta(use_jacob=True):
@@ -1170,7 +1400,7 @@ def test_fit_1gauss_e1e2(ellip=0.2,
         psf=None
 
 
-    theta=23.7*numpy.pi/180.
+    theta=23.7
     e1,e2 = etheta2e1e2(ellip, theta)
 
     sigma = 1.4
@@ -1240,7 +1470,7 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
     else:
         psf=None
 
-    theta=23.7*numpy.pi/180.
+    theta=23.7
     ellip=0.2
     e1,e2 = etheta2e1e2(ellip, theta)
 
