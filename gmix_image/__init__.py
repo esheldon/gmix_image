@@ -20,6 +20,7 @@ from gmix_fit import GMixFitCoellip
 from gmix_fit import pars2gmix_coellip
 from gmix_fit import ellip2eta
 from gmix_fit import eta2ellip
+from gmix_fit import print_pars
 from gmix_fit import GMIXFIT_MAXITER
 from gmix_fit import GMIXFIT_SINGULAR_MATRIX
 from gmix_fit import GMIXFIT_NEG_COV_EIG

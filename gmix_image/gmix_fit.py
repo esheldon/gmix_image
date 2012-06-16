@@ -153,7 +153,7 @@ class GMixFitCoellip:
             #print >>stderr,'pcov:'
             #images.imprint(self.pcov,stream=stderr)
             e,v = eig(self.pcov)
-            weig,=where(e <= 0)
+            weig,=where(e < 0)
             if weig.size > 0:
                 if self.verbose:
                     import images
@@ -163,7 +163,7 @@ class GMixFitCoellip:
                     images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_EIG 
 
-            wneg,=where(diag(self.pcov) <= 0)
+            wneg,=where(diag(self.pcov) < 0)
             if wneg.size > 0:
                 if self.verbose:
                     import images
@@ -175,7 +175,7 @@ class GMixFitCoellip:
             if self.ptype == 'cov':
                 mcov = self.pcov[2:2+3,2:2+3].copy()
                 me,v = eig(mcov)
-                weig,=where(me <= 0)
+                weig,=where(me < 0)
                 if weig.size > 0:
                     if self.verbose:
                         import images
@@ -291,7 +291,8 @@ class GMixFitCoellip:
             e2=pars[3]
             e = sqrt(e1**2 + e2**2)
             if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
-                print >>stderr,'ellip >= 1'
+                if self.verbose:
+                    print >>stderr,'ellip >= 1'
                 return False
 
             vals=pars[4:]
@@ -300,8 +301,9 @@ class GMixFitCoellip:
 
         w,=where(vals <= 0)
         if w.size > 0:
-            print >>stderr,'bad p/T'
-            print vals
+            if self.verbose:
+                print >>stderr,'bad p/T'
+                print vals
             return False
 
         # check determinant for all images we might have
@@ -312,7 +314,8 @@ class GMixFitCoellip:
             moms = total_moms_psf(gmix, self.psf)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
-                print >>stderr,'bad p det'
+                if self.verbose:
+                    print >>stderr,'bad p det'
                 return False
             for g in gmix:
                 for p in self.psf:
@@ -321,7 +324,8 @@ class GMixFitCoellip:
                     icc = g['icc'] + p['icc']
                     det = irr*icc-irc**2
                     if det <= 0:
-                        print >>stderr,'bad p+obj det'
+                        if self.verbose:
+                            print >>stderr,'bad p+obj det'
                         return False
 
         # overall determinant and centroid
@@ -330,7 +334,8 @@ class GMixFitCoellip:
         if (det <= 0 
                 or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
                 or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
-            print >>stderr,'bad det or centroid'
+            if self.verbose:
+                print >>stderr,'bad det or centroid'
             return False
 
         return True
@@ -2183,9 +2188,12 @@ def print_pars(pars, stream=stderr, front=None):
     """
     print the parameters with a uniform width
     """
-    fmt = ' '.join( ['%10.6g ']*len(pars) )
     if front is not None:
         stream.write(front)
         stream.write(' ')
-    stream.write(fmt % tuple(pars))
-    stream.write('\n')
+    if pars is None:
+        stream.write('%s\n' % None)
+    else:
+        fmt = ' '.join( ['%10.6g ']*len(pars) )
+        stream.write(fmt % tuple(pars))
+        stream.write('\n')

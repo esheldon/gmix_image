@@ -1453,12 +1453,23 @@ def test_fit_1gauss_e1e2(ellip=0.2,
     #images.multiview(im,title='nsub: %d' % nsub)
     
     p0=pars.copy()
+    """
     p0[0] += 1*(randu()-0.5)  # cen0
     p0[1] += 1*(randu()-0.5)  # cen1
     p0[2] += 0.2*(randu()-0.5)  # e1
     p0[3] += 0.2*(randu()-0.5)  # e2
     p0[4] += 0.1*(randu()-0.5)  # p
     p0[5] += 1*(randu()-0.5)   # T
+    """
+    '''
+    p0[0] += 0.2*(randu()-0.5)  # cen0
+    p0[1] += 0.2*(randu()-0.5)  # cen1
+    p0[2] += 0.1*(randu()-0.5)  # e1
+    p0[3] += 0.1*(randu()-0.5)  # e2
+    p0[4] += 0.1*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    '''
+
     print_pars(pars,front='pars:  ')
     print_pars(p0,  front='guess: ')
 
