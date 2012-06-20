@@ -724,6 +724,94 @@ def test_fit_1gauss_noisy(ellip=0.2, s2n=10000):
     print_pars(gf.perr, front='perr: ')
     images.imprint(gf.pcov)
 
+def test_fit_1gauss_galsim(ellip=0.2, s2n=10000):
+    import images
+    import galsim
+    import admom
+    numpy.random.seed(35)
+
+    #sigma = 1.4
+    sigma = 1
+    T=2*sigma**2
+    e = 0.2
+    theta=23.7
+    e1,e2 = etheta2e1e2(e,theta)
+
+    fimage_cov = ellip2mom(T, e=e, theta=theta)
+
+    print 'e: ',e
+    print 'e1:',e1
+    print 'e2:',e2
+    pixel_scale = 1.
+
+    nsig=5
+    dim = int(nsig*T)
+    if (dim % 2) == 0:
+        dim += 1
+    dims=array([dim,dim])
+    cen=(dims-1)/2
+
+    pix = galsim.Pixel(xw=pixel_scale, yw=pixel_scale)
+
+    gobj = galsim.Gaussian(sigma=sigma) 
+    gobj.applyDistortion(galsim.Ellipse(e1=e1,e2=e2))
+    gcobj = galsim.Convolve([gobj,pix])
+
+    im0 = galsim.ImageD(int(dims[1]),int(dims[0]))
+
+    gcobj.draw(image=im0, dx=pixel_scale)
+
+    images.multiview(im0.array)
+    galsim_nsub=16
+    ares = admom.admom(im0.array,cen[0],cen[1],guess=T/2,nsub=galsim_nsub)
+    print 'galsim sigma:',sqrt( (ares['Irr']+ares['Icc'])/2 )
+    print 'galsim admom e1:',ares['e1']
+    print 'galsim admom e2:',ares['e2']
+    print 'galsim center:',ares['row'],ares['col']
+
+    fnsub=16
+    fim0 = model_image('gauss',dims,cen,fimage_cov,nsub=fnsub)
+    fares = admom.admom(fim0,cen[0],cen[1],guess=T/2,nsub=fnsub)
+    print 'fimage sigma:',sqrt( (fares['Irr']+fares['Icc'])/2 )
+    print 'fimage admom e1:',fares['e1']
+    print 'fimage admom e2:',fares['e2']
+    print 'fimage center:',fares['row'],fares['col']
+
+
+    return 
+
+
+    theta=23.7*numpy.pi/180.
+    print >>stderr,'ellip:',ellip
+    pars=array([cen[0],cen[1],eta,theta,1.,T])
+    print >>stderr,'pars'
+    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+
+    nsub=1
+    im0=gmix2image(gmix,dims,nsub=nsub)
+
+    im,skysig = fimage.add_noise(im0, s2n,check=True)
+
+    images.multiview(im,title='nsub: %d' % nsub)
+    
+    p0=pars.copy()
+    p0[0] += 1*(randu()-0.5)  # cen0
+    p0[1] += 1*(randu()-0.5)  # cen1
+    p0[2] += 0.2*(randu()-0.5)  # eta
+    p0[3] += 0.5*(randu()-0.5)   # theta radians
+    p0[4] += 0.1*(randu()-0.5)  # p
+    p0[5] += 1*(randu()-0.5)   # T
+    print_pars(pars,front='pars:  ')
+    print_pars(p0,  front='guess: ')
+
+    gf=gmix_fit.GMixFitCoellip(im, p0, ptype='eta',verbose=True)
+
+    print 'numiter:',gf.numiter
+    print_pars(gf.popt, front='popt: ')
+    print_pars(gf.perr, front='perr: ')
+    images.imprint(gf.pcov)
+
+
 
 def test_fit_1gauss(ellip=0.2):
     import images
