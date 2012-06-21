@@ -5,6 +5,8 @@ See docs for
     gmix_image.gmix_fit
         Gaussian mixtures using a levenberg marquardt algorithm.
 """
+from sys import stderr
+
 import gmix_em
 import gmix_fit
 
@@ -66,7 +68,7 @@ def printflags(type, flags):
         flag=2**i
         if flag in fmap:
             if (flags & flag) != 0:
-                print i,flagname(type,flag)
+                stderr.write("%d %s\n" % (i,flagname(type,flag)))
 
 def flagname(type, flag):
     if type == 'em':

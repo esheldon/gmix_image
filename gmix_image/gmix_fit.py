@@ -64,6 +64,7 @@ class GMixFitCoellip:
                  error=None, 
                  psf=None, 
                  method='lm', 
+                 Tmin=0.0,
                  use_jacob=True,
                  verbose=False):
         self.image=image
@@ -73,6 +74,8 @@ class GMixFitCoellip:
         self.ngauss=(len(guess)-4)/2
         self.nsub=1
         self.use_jacob=use_jacob
+
+        self.Tmin=Tmin
         self.verbose=verbose
 
         # can enter the psf model as a mixture model or
@@ -296,6 +299,15 @@ class GMixFitCoellip:
                 return False
 
             vals=pars[4:]
+
+            tvals = pars[4+self.ngauss:]
+            w,=where(tvals < self.Tmin)
+            if w.size > 0:
+                if self.verbose:
+                    print >>stderr,'Found T < Tmin:',tvals[w[0]],self.Tmin
+                    print vals
+                return False
+
         else:
             raise ValueError("bad ptype: %s" % self.ptype)
 

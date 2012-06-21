@@ -330,12 +330,13 @@ def test_fit_dev_by_ellip(sigma, method='lm'):
     tab.show()
 
 
-def test_fit_dev_e1e2(use_jacob=True):
+def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
     """
     Round object as a function of sigma
     """
     import biggles
     import admom
+    import fimage
     numpy.random.seed(35)
 
     ptype='e1e2'
@@ -346,7 +347,6 @@ def test_fit_dev_e1e2(use_jacob=True):
 
     print >>stderr,"e:",e,"e1:",e1,"e2:",e2
 
-    ngauss=4
     nsig=15
     #nsig=7
     npars=2*ngauss+4
@@ -355,6 +355,7 @@ def test_fit_dev_e1e2(use_jacob=True):
     f='test-opt-dev-bysigma'
     if not use_jacob:
         f += '-nojacob'
+    f += '-s2n%d' % s2n
     f += '.rec'
     pngf=f.replace('.rec','.png')
     if not os.path.exists(f):
@@ -374,48 +375,58 @@ def test_fit_dev_e1e2(use_jacob=True):
             dims=array([dim,dim])
             cen=(dims-1)/2.
 
-            im = model_image('exp',dims,cen,cov,nsub=16)
-            ares = admom.admom(im,cen[0],cen[1],guess=T/2,nsub=16)
-            Tadmom=ares['Irr'] + ares['Icc']
+            im0 = model_image('dev',dims,cen,cov,nsub=16)
+            im,skysig = fimage.add_noise(im0, s2n, check=True)
 
             dim = int(2*nsig*sigma)
             if (dim % 2) == 0:
                 dim += 1
             dims=array([dim,dim])
             cen=(dims-1)/2.
-            im = model_image('dev',dims,cen,cov,nsub=16)
 
-            # at sigma=3
-            # p values: [ 0.14452782  0.22538627  0.26580666  0.34692505]
-            # T vals/Tadmom: [ 4.89320508  0.81496317  0.17761882  0.03691394]
+            ares = admom.admom(im0,cen[0],cen[1],guess=T/2,nsub=16)
+            Tadmom=ares['Irr'] + ares['Icc']
 
-            # at sigma=5
-            # p values: [ 0.21256148  0.26711671  0.24955146  0.23618073]
-            # T vals/Tadmom: [ 2.6506886   0.38942125  0.07580992  0.01478468]
-            p0 = array([cen[0],
-                        cen[1],
-                        e1,
-                        e2,
-                        0.15,
-                        0.23,#.35, 
-                        0.27,#.25, 
-                        0.35,#.15, 
-                        Tadmom*4.9, 
-                        Tadmom*0.82, 
-                        Tadmom*0.18,
-                        Tadmom*0.04])
+            if ngauss == 4:
+                Tmax = Tadmom*100
+                # 0.02620127  0.09348825  0.23987656  0.63958437
+                p0 = array([cen[0],
+                            cen[1],
+                            e1,
+                            e2,
+                            0.026,
+                            0.093,
+                            0.24,
+                            0.64,
+                            Tmax, 
+                            Tmax*0.18,
+                            Tmax*0.04,
+                            Tmax*0.0027])
+            else:
+                p0 = array([cen[0],
+                            cen[1],
+                            e1,
+                            e2,
+                            1./ngauss,
+                            1./ngauss,
+                            1./ngauss,
+                            Tadmom*4.9, 
+                            Tadmom*0.82, 
+                            Tadmom*0.18])
 
             print_pars(p0,  front='guess: ')
-            verbose=True
+            verbose=False
             gf=gmix_fit.GMixFitCoellip(im, p0, 
                                        ptype=ptype,
                                        use_jacob=use_jacob, 
                                        verbose=verbose)
 
+            chi2per = gf.chi2per(gf.popt,skysig)
             print 'numiter:',gf.numiter
             print_pars(gf.popt,  front='popt:  ')
             if gf.perr is not None:
                 print_pars(gf.perr,  front='perr:  ')
+            print 'chi2/deg:',chi2per
 
             if gf.flags != 0:
                 gmix_image.printflags('fit',gf.flags)
