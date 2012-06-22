@@ -421,7 +421,7 @@ def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
                                        use_jacob=use_jacob, 
                                        verbose=verbose)
 
-            chi2per = gf.chi2per(gf.popt,skysig)
+            chi2per = gf.get_chi2per(gf.popt,skysig)
             print 'numiter:',gf.numiter
             print_pars(gf.popt,  front='popt:  ')
             if gf.perr is not None:
