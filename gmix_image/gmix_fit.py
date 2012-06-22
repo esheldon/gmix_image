@@ -101,13 +101,13 @@ class GMixFitCoellip:
         from scipy.optimize import leastsq
 
         if self.use_jacob:
-            res = leastsq(self.ydiff,
+            res = leastsq(self.get_ydiff,
                           self.guess,
                           full_output=1,
                           Dfun=self.jacob,
                           col_deriv=1)
         else:
-            res = leastsq(self.ydiff,
+            res = leastsq(self.get_ydiff,
                           self.guess,
                           full_output=1)
 
@@ -227,9 +227,10 @@ class GMixFitCoellip:
 
     def get_gmix(self):
         return pars2gmix_coellip(self.popt, ptype=self.ptype)
+
     gmix = property(get_gmix)
 
-    def ydiff(self, pars):
+    def get_ydiff(self, pars):
         """
         Also apply hard priors on centroid range and determinant(s)
         """
@@ -237,7 +238,7 @@ class GMixFitCoellip:
         if not self.check_hard_priors(pars):
             return zeros(self.image.size) + numpy.inf
 
-        model = self.make_model(pars)
+        model = self.get_model(pars)
         if not isfinite(model[0,0]):
             #raise ValueError("NaN in model")
             if self.verbose:
@@ -245,15 +246,15 @@ class GMixFitCoellip:
             return zeros(self.image.size) + numpy.inf
         return (model-self.image).reshape(self.image.size)
     
-    def ydiff_sq_sum(self, pars):
+    def get_ydiff_sq_sum(self, pars):
         """
         Using conjugate gradient algorithm, we minimize
         (y-data)**2
         """
-        yd=self.ydiff(pars)
+        yd=self.get_ydiff(pars)
         return (yd**2).sum()
 
-    def ydiff_sq_jacob(self, pars):
+    def get_ydiff_sq_jacob(self, pars):
         """
         Using conjugate gradient algorithm, we minimize
             (model-data)**2 = ydiff**2
@@ -263,18 +264,27 @@ class GMixFitCoellip:
         # both jacob and ydiff are reshaped to linear for use in the 
         # LM algorithm, but this doesn't matter
         model_j = self.jacob(pars)
-        ydiff = self.ydiff(pars)
+        ydiff = self.get_ydiff(pars)
 
         j = zeros(len(pars))
         for i in xrange(len(model_j)):
             j[i] = 2*( ydiff*model_j[i] ).sum()
         return j
 
-    def chi2(self, pars):
-        ydiff = self.ydiff(pars)
+    def get_s2n(self, pars, skysig):
+        """
+        This is a raw S/N including all pixels and
+        no weighting
+        """
+        model = self.get_model(pars)
+        s2n = model.sum()/sqrt(model.size)/skysig
+        return s2n
+
+    def get_chi2(self, pars):
+        ydiff = self.get_ydiff(pars)
         return (ydiff**2).sum()
-    def chi2per(self, pars, skysig):
-        ydiff = self.ydiff(pars)
+    def get_chi2per(self, pars, skysig):
+        ydiff = self.get_ydiff(pars)
         return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
 
     def check_hard_priors(self, pars):
@@ -352,7 +362,7 @@ class GMixFitCoellip:
 
         return True
 
-    def make_model(self, pars, aslist=False):
+    def get_model(self, pars, aslist=False):
         gmix = pars2gmix_coellip(pars, ptype=self.ptype)
         return gmix2image(gmix, 
                           self.image.shape, 
@@ -382,7 +392,7 @@ class GMixFitCoellip:
         ngauss=self.ngauss
         y = self.row-pars[0]
         x = self.col-pars[1]
-        flist = self.make_model(pars, aslist=True)
+        flist = self.get_model(pars, aslist=True)
 
         e1    = pars[2]
         e2    = pars[3]
@@ -472,7 +482,7 @@ class GMixFitCoellip:
 
     def jacob_e1e2_psf(self, pars):
 
-        flist = self.make_model(pars, aslist=True)
+        flist = self.get_model(pars, aslist=True)
 
         ngauss=self.ngauss
         y = self.row-pars[0]
@@ -599,7 +609,7 @@ class GMixFitCoellip:
         ngauss=self.ngauss
         y = self.row-pars[0]
         x = self.col-pars[1]
-        flist = self.make_model(pars, aslist=True)
+        flist = self.get_model(pars, aslist=True)
 
         eta   = pars[2]
         de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
@@ -696,7 +706,7 @@ class GMixFitCoellip:
 
     def jacob_eta_psf(self, pars):
 
-        flist = self.make_model(pars, aslist=True)
+        flist = self.get_model(pars, aslist=True)
 
         ngauss=self.ngauss
         y = self.row-pars[0]
@@ -853,8 +863,8 @@ class GMixFitCoellip:
         y = self.row-pars[0]
         x = self.col-pars[1]
 
-        #f = self.make_model(pars)
-        flist = self.make_model(pars, aslist=True)
+        #f = self.get_model(pars)
+        flist = self.get_model(pars, aslist=True)
 
         Myy = pars[2]
         Mxy = pars[3]
@@ -944,8 +954,8 @@ class GMixFitCoellip:
         y = self.row-pars[0]
         x = self.col-pars[1]
 
-        #f = self.make_model(pars)
-        flist = self.make_model(pars, aslist=True)
+        #f = self.get_model(pars)
+        flist = self.get_model(pars, aslist=True)
 
         Myy = pars[2]
         Mxy = pars[3]
@@ -1058,7 +1068,7 @@ class GMixFitCoellip:
         recover the covariance of the parameters in the right units.
         """
         dof = (self.image.size-len(popt))
-        s_sq = (self.ydiff(popt)**2).sum()/dof
+        s_sq = (self.get_ydiff(popt)**2).sum()/dof
         return pcov * s_sq 
 
 
@@ -1155,13 +1165,13 @@ class GMixFitCoellipFix:
         guess = array([self.guess[self.imove]])
 
         if self.use_jacob:
-            res = leastsq(self.ydiff,
+            res = leastsq(self.get_ydiff,
                           guess,
                           full_output=1,
                           Dfun=self.jacob,
                           col_deriv=1)
         else:
-            res = leastsq(self.ydiff,
+            res = leastsq(self.get_ydiff,
                           guess,
                           full_output=1)
 
@@ -1275,7 +1285,7 @@ class GMixFitCoellipFix:
         return pars2gmix_coellip(self.popt, ptype=self.ptype)
     gmix = property(get_gmix)
 
-    def ydiff(self, pars1):
+    def get_ydiff(self, pars1):
         """
         Also apply hard priors on centroid range and determinant(s)
         """
@@ -1285,7 +1295,7 @@ class GMixFitCoellipFix:
             if not self.check_hard_priors_e1e2(pars1):
                 return zeros(self.image.size) + numpy.inf
 
-        model = self.make_model(pars1)
+        model = self.get_model(pars1)
         #images.multiview(model)
         #stop
         if not isfinite(model[0,0]):
@@ -1295,12 +1305,12 @@ class GMixFitCoellipFix:
             return zeros(self.image.size) + numpy.inf
         return (model-self.image).reshape(self.image.size)
     
-    def ydiff_sq_sum(self, pars):
+    def get_ydiff_sq_sum(self, pars):
         """
         Using conjugate gradient algorithm, we minimize
         (y-data)**2
         """
-        yd=self.ydiff(pars)
+        yd=self.get_ydiff(pars)
         return (yd**2).sum()
 
     def ydiff_sq_jacob(self, pars):
@@ -1313,7 +1323,7 @@ class GMixFitCoellipFix:
         # both jacob and ydiff are reshaped to linear for use in the 
         # LM algorithm, but this doesn't matter
         model_j = self.jacob(pars)
-        ydiff = self.ydiff(pars)
+        ydiff = self.get_ydiff(pars)
 
         j = zeros(len(pars))
         for i in xrange(len(model_j)):
@@ -1321,10 +1331,10 @@ class GMixFitCoellipFix:
         return j
 
     def chi2(self, pars):
-        ydiff = self.ydiff(pars)
+        ydiff = self.get_ydiff(pars)
         return (ydiff**2).sum()
     def chi2per(self, pars, skysig):
-        ydiff = self.ydiff(pars)
+        ydiff = self.get_ydiff(pars)
         return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
 
     def check_hard_priors_e1e2(self, pars1):
@@ -1367,7 +1377,7 @@ class GMixFitCoellipFix:
 
         return True
 
-    def make_model(self, pars1, aslist=False):
+    def get_model(self, pars1, aslist=False):
         pars = self.get_full_pars(pars1)
         #print 'full pars:',pars
         gmix = pars2gmix_coellip(pars, ptype=self.ptype)
@@ -1390,7 +1400,7 @@ class GMixFitCoellipFix:
 
     def jacob_eta_psf(self, pars1):
 
-        flist = self.make_model(pars1, aslist=True)
+        flist = self.get_model(pars1, aslist=True)
         pars=self.get_full_pars(pars1)
 
         ngauss=self.ngauss
@@ -1624,7 +1634,7 @@ class GMixFitCoellipFix:
         y = self.row-pars[0]
         x = self.col-pars[1]
 
-        flist = self.make_model(pars1, aslist=True)
+        flist = self.get_model(pars1, aslist=True)
 
         eta   = pars[2]
         de_deta = 0.5*(2./(exp(eta)+exp(-eta)))**2
@@ -1754,7 +1764,7 @@ class GMixFitCoellipFix:
 
     def jacob_e1e2_psf(self, pars1):
 
-        flist = self.make_model(pars1, aslist=True)
+        flist = self.get_model(pars1, aslist=True)
         pars=self.get_full_pars(pars1)
 
         ngauss=self.ngauss
@@ -1969,7 +1979,7 @@ class GMixFitCoellipFix:
         y = self.row-pars[0]
         x = self.col-pars[1]
 
-        flist = self.make_model(pars1, aslist=True)
+        flist = self.get_model(pars1, aslist=True)
 
         e1    = pars[2]
         e2    = pars[3]
@@ -2078,7 +2088,7 @@ class GMixFitCoellipFix:
         recover the covariance of the parameters in the right units.
         """
         dof = (self.image.size-len(popt))
-        s_sq = (self.ydiff(popt)**2).sum()/dof
+        s_sq = (self.get_ydiff(popt)**2).sum()/dof
         return pcov * s_sq 
 
 
