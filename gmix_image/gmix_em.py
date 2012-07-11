@@ -202,7 +202,7 @@ class GMixEM(_gmix_image.GMix):
         do_cocenter = 1 if self._cocenter else 0
         do_coellip = 1 if self._coellip else 0
 
-        super(GMix,self).__init__(self._image,
+        super(GMixEM,self).__init__(self._image,
                                   self._sky,
                                   self._counts,
                                   self._guess,
