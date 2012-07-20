@@ -277,6 +277,8 @@ PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args)
     struct gvec *psf_gvec=NULL;
     npy_intp *dims=NULL;
 
+    int flags=0;
+
     DBG wlog("parse args\n");
     if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &diff_obj, &obj_pars_obj, &psf_pars_obj)) {
         return NULL;
@@ -299,6 +301,8 @@ PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args)
         gvec_print(psf_gvec, stderr);
     }
 
+    flags=fill_diff(image, diff, obj_gvec, psf_gvec);
+
     DBG wlog("free obj gmix\n");
     obj_gvec = gvec_free(obj_gvec);
     DBG wlog("free psf gmix\n");
@@ -309,7 +313,7 @@ PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args)
     DBG wlog("free associated diff\n");
     diff = image_free(diff);
 
-    Py_RETURN_NONE;
+    return PyInt_FromLong(flags);
 }
 
 
