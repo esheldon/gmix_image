@@ -19,8 +19,8 @@ from gmix_em import ogrid_image, total_moms, total_moms_psf
 from gmix_em import gmix_print
 
 from gmix_fit import GMixFitCoellip
+from gmix_fit import GMixFitCoellipTry
 from gmix_fit import GMixFitDev
-from gmix_fit import GMixFitCoellipTfrac
 from gmix_fit import pars2gmix_coellip
 from gmix_fit import ellip2eta
 from gmix_fit import eta2ellip

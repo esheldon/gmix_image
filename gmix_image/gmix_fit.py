@@ -17,10 +17,547 @@ GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
 GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
 
+
+
 class GMixFitCoellip:
     """
     Perform a non-linear fit of the image to a gaussian mixture model.  
+
+    This parametrization is in terms of a Tmax and Tfrac.  This
+    parametrization is easier to let e1,e2,Tmax be free but put priors on the
+    Tfrac values, for example.
     
+    The gaussians are forced to be co-elliptical.  Image is assumed to be
+    sky-subtracted
+
+    parameters
+    ----------
+    image: numpy array, dim=2
+        A background-subtracted image.
+    pixerr: scalar or image
+        The error per pixel or an image with the error
+        for each pixel.
+    prior:
+        The guess and the middle of the prior for each parameter.
+
+            [cen1,cen2,e1,e2,Tmax,Tri,pi]
+            Ti = Tmax*Tri
+
+        There are ngauss-1 fi values
+    width:
+        Width of the prior on each of the above.
+
+    psf: list of dictionaries
+        A gaussian mixture model specified as a list of
+        dictionaries.  Each dict has these entries
+            p: A normalization
+            row: center of the gaussian in the first dimension
+            col: center of the gaussian in the second dimension
+            irr: Covariance matrix element for row*row
+            irc: Covariance matrix element for row*col
+            icc: Covariance matrix element for col*col
+
+    verbose: bool
+    """
+    def __init__(self, image, pixerr, prior, width,
+                 psf=None, 
+                 verbose=False):
+        self.image=image
+        self.pixerr=pixerr
+        self.prior=prior
+        self.width=width
+        self.psf = psf
+        self.verbose=verbose
+
+        self.check_prior(prior, width)
+        self.check_psf(self.psf)
+
+        self.ngauss=(len(prior)-4)/2
+        self.nsub=1
+
+        self.dofit()
+
+    def check_prior(self, prior, width):
+        if len(prior) != len(width):
+            raise ValueError("prior and width must be same len")
+    def check_psf(self, psf):
+        if psf is not None:
+            if (not isinstance(psf,list) 
+                    or len(psf) < 1 
+                    or not isinstance(psf[0],dict)):
+                raise ValueError("psf should be a gaussian mixture model")
+
+    def dofit(self):
+        """
+        Run the fit using LM
+        """
+        from scipy.optimize import leastsq
+
+        res = leastsq(self.get_ydiff,
+                      self.prior,
+                      full_output=1)
+
+        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+        if self.ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(self.errmsg)
+
+        self.numiter = self.infodict['nfev']
+
+        self.pcov=None
+        self.perr=None
+
+        if self.pcov0 is not None:
+            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
+
+            d=diag(self.pcov)
+            w,=where(d < 0)
+
+            if w.size == 0:
+                # only do if non negative
+                self.perr = sqrt(d)
+
+        self.set_flags()
+       
+    def set_flags(self):
+        flags = 0
+        if self.ier > 4:
+            flags = 2**(self.ier-5)
+            if self.verbose:
+                print >>stderr,self.errmsg 
+
+        if self.pcov is None:
+            if self.verbose:
+                print >>stderr,'singular matrix'
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(self.pcov)
+            weig,=where(e < 0)
+            if weig.size > 0:
+                if self.verbose:
+                    import images
+                    print >>stderr,'negative covariance eigenvalues'
+                    print_pars(self.popt, front='popt: ')
+                    print_pars(e,         front='eig:  ')
+                    images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(self.pcov) < 0)
+            if wneg.size > 0:
+                if self.verbose:
+                    import images
+                    # only print if we didn't see negative eigenvalue
+                    print >>stderr,'negative covariance diagonals'
+                    #images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+
+        self.flags = flags
+
+
+    def get_ydiff(self, pars):
+        """
+        Get 
+            (model-data)/pixerr 
+        Also the last len(pars) elements apply the priors
+            (pars-prior)/width
+
+        First we apply hard priors on centroid range and determinant(s)
+        and demand T,p > 0
+        """
+
+        if False:
+            print_pars(pars, front="pars: ")
+
+        if not self.check_hard_priors(pars):
+            return zeros(self.image.size) + numpy.inf
+
+        model = self.get_model(pars)
+        if not isfinite(model[0,0]):
+            if self.verbose:
+                print >>stderr,'found NaN in model'
+            return zeros(self.image.size) + numpy.inf
+
+        ydiff_tot = zeros(self.image.size + len(pars))
+
+        ydiff=( (model-self.image)/self.pixerr ).reshape(self.image.size)
+        prior_diff = (self.prior-pars)/self.width
+
+        #return ydiff
+        #print >>stderr,"ydiff:",ydiff
+        #print >>stderr,"prior diff:",prior_diff
+        #stop
+
+        ydiff_tot[0:self.image.size] = ydiff
+        ydiff_tot[self.image.size:] = prior_diff
+        return ydiff_tot
+
+
+    def check_hard_priors(self, pars):
+        wbad,=where(isfinite(pars) == False)
+        if wbad.size > 0:
+            if self.verbose:
+                print >>stderr,'NaN in pars'
+            return False
+
+        e1=pars[2]
+        e2=pars[3]
+        e = sqrt(e1**2 + e2**2)
+        if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
+            if self.verbose:
+                print >>stderr,'ellip >= 1'
+            return False
+
+        # Tmax and Tfrac
+        Tfvals=pars[4:4+self.ngauss]
+        w,=where(Tfvals <= 0)
+        if w.size > 0:
+            if self.verbose:
+                print_pars(Tfvals,front='bad T or Tfrac: ')
+            return False
+
+        pvals=pars[4+self.ngauss:]
+        w,=where(pvals <= 0)
+        if w.size > 0:
+            if self.verbose:
+                print_pars(pvals,front='bad p: ')
+            return False
+
+        # check determinant for all images we might have
+        # to create with psf convolutions
+
+        gmix=self.pars2gmix(pars)
+        if self.psf is not None:
+            moms = total_moms_psf(gmix, self.psf)
+            pdet = moms['irr']*moms['icc']-moms['irc']**2
+            if pdet <= 0:
+                if self.verbose:
+                    print >>stderr,'bad p det'
+                return False
+            for g in gmix:
+                for p in self.psf:
+                    irr = g['irr'] + p['irr']
+                    irc = g['irc'] + p['irc']
+                    icc = g['icc'] + p['icc']
+                    det = irr*icc-irc**2
+                    if det <= 0:
+                        if self.verbose:
+                            print >>stderr,'bad p+obj det'
+                        return False
+
+        # overall determinant and centroid
+        g0 = gmix[0]
+        det = g0['irr']*g0['icc'] - g0['irc']**2
+        if (det <= 0 
+                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
+                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+            if self.verbose:
+                print >>stderr,'bad det or centroid'
+            return False
+
+        return True
+
+    def get_model(self, pars, aslist=False):
+        gmix=self.pars2gmix(pars)
+        return gmix2image(gmix, 
+                          self.image.shape, 
+                          psf=self.psf,
+                          aslist=aslist, 
+                          nsub=self.nsub,
+                          renorm=False)
+
+    def pars2gmix(self, pars):
+        return pars2gmix_coellip_Tfrac(pars)
+
+    def scale_leastsq_cov(self, popt, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        dof = (self.image.size-len(popt))
+        s_sq = (self.get_ydiff(popt)**2).sum()/dof
+        return pcov * s_sq 
+
+
+    def get_s2n(self, pars):
+        """
+        This is a raw S/N including all pixels and
+        no weighting
+        """
+        if isinstance(self.pixerr, numpy.ndarray):
+            raise ValueError("Implement S/N for error image")
+        model = self.get_model(pars)
+        s2n = model.sum()/sqrt(model.size)/self.pixerr
+        return s2n
+
+    def get_chi2(self, pars):
+        ydiff = self.get_ydiff(pars)
+        return (ydiff**2).sum()
+
+    def get_chi2per(self, pars):
+        ydiff = self.get_ydiff(pars)
+        chi2=self.get_chi2(pars)
+        return chi2/(self.image.size-len(pars))
+
+    def get_gmix(self):
+        return self.pars2gmix(self.popt)
+
+    gmix = property(get_gmix)
+
+
+
+
+
+class GMixFitDev:
+    """
+    Perform a non-linear fit of the image to a gaussian mixture model.  
+
+    Assume the T ratio is roughly that expected for a dev.  For now
+    this is approximate to study the problem.
+    
+    The gaussians are forced to be co-elliptical.  Image is assumed to be
+    sky-subtracted
+
+    parameters
+    ----------
+    image: numpy array, dim=2
+        A background-subtracted image.
+    guess:
+        [cen1,cen2,e1,e2,p1,p2,p3,p4,Tmax]
+
+    psf: list of dictionaries
+        A gaussian mixture model specified as a list of
+        dictionaries.  Each dict has these entries
+            p: A normalization
+            row: center of the gaussian in the first dimension
+            col: center of the gaussian in the second dimension
+            irr: Covariance matrix element for row*row
+            irc: Covariance matrix element for row*col
+            icc: Covariance matrix element for col*col
+
+    verbose: bool
+    """
+    def __init__(self, image, guess, 
+                 psf=None, 
+                 verbose=False):
+        self.image=image
+        self.guess=guess
+        self.nsub=1
+        self.verbose=verbose
+
+        if len(self.guess) != 9:
+            raise ValueError("guess should be len==9")
+
+        # can enter the psf model as a mixture model or
+        # a coelliptical psf model; gmix is more flexible..
+        # we keep the gmix version since we use gmix2image to
+        # make models
+        if isinstance(psf,numpy.ndarray):
+            # note we assume psf is a more generic coelliptical fit
+            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
+        else:
+            self.psf = psf
+
+        self.dofit()
+
+    def dofit(self):
+        """
+        Run the fit using LM
+        """
+        from scipy.optimize import leastsq
+
+        res = leastsq(self.get_ydiff,
+                      self.guess,
+                      full_output=1)
+
+        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+        if self.ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(self.errmsg)
+
+        self.numiter = self.infodict['nfev']
+
+        self.pcov=None
+        self.perr=None
+
+        if self.pcov0 is not None:
+            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
+
+            d=diag(self.pcov)
+            w,=where(d < 0)
+
+            if w.size == 0:
+                # only do if non negative
+                self.perr = sqrt(d)
+
+        self.set_flags()
+       
+    def set_flags(self):
+        flags = 0
+        if self.ier > 4:
+            flags = 2**(self.ier-5)
+            if self.verbose:
+                print >>stderr,self.errmsg 
+
+        if self.pcov is None:
+            if self.verbose:
+                print >>stderr,'singular matrix'
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(self.pcov)
+            weig,=where(e < 0)
+            if weig.size > 0:
+                if self.verbose:
+                    import images
+                    print >>stderr,'negative covariance eigenvalues'
+                    print_pars(self.popt, front='popt: ')
+                    print_pars(e,         front='eig:  ')
+                    images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(self.pcov) < 0)
+            if wneg.size > 0:
+                if self.verbose:
+                    import images
+                    # only print if we didn't see negative eigenvalue
+                    print >>stderr,'negative covariance diagonals'
+                    #images.imprint(self.pcov,stream=stderr)
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+
+        self.flags = flags
+
+    def get_s2n(self, pars, skysig):
+        """
+        This is a raw S/N including all pixels and
+        no weighting
+        """
+        model = self.get_model(pars)
+        s2n = model.sum()/sqrt(model.size)/skysig
+        return s2n
+
+    def get_chi2(self, pars):
+        ydiff = self.get_ydiff(pars)
+        return (ydiff**2).sum()
+    def get_chi2per(self, pars, skysig):
+        ydiff = self.get_ydiff(pars)
+        return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
+
+    def get_gmix(self):
+        return self.pars2gmix(self.popt)
+
+    gmix = property(get_gmix)
+
+    def get_ydiff(self, pars):
+        """
+        Also apply hard priors on centroid range and determinant(s)
+        """
+
+        if False:
+            print_pars(pars, front="pars: ")
+
+        if not self.check_hard_priors(pars):
+            return zeros(self.image.size) + numpy.inf
+
+        model = self.get_model(pars)
+        if not isfinite(model[0,0]):
+            if self.verbose:
+                print >>stderr,'found NaN in model'
+            return zeros(self.image.size) + numpy.inf
+
+        yd=(model-self.image).reshape(self.image.size)
+        return yd
+
+    def pars2gmix(self, pars):
+        return pars2gmix_dev(pars)
+
+    def check_hard_priors(self, pars):
+        wbad,=where(isfinite(pars) == False)
+        if wbad.size > 0:
+            if self.verbose:
+                print >>stderr,'NaN in pars'
+            return False
+
+        e1=pars[2]
+        e2=pars[3]
+        e = sqrt(e1**2 + e2**2)
+        if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
+            if self.verbose:
+                print >>stderr,'ellip >= 1'
+            return False
+
+        pvals=pars[4:4+4]
+
+        w,=where(pvals <= 0)
+        if w.size > 0:
+            if self.verbose:
+                print_pars(pvals,front='bad p: ')
+            return False
+
+        # check determinant for all images we might have
+        # to create with psf convolutions
+
+        gmix=self.pars2gmix(pars)
+        if self.psf is not None:
+            moms = total_moms_psf(gmix, self.psf)
+            pdet = moms['irr']*moms['icc']-moms['irc']**2
+            if pdet <= 0:
+                if self.verbose:
+                    print >>stderr,'bad p det'
+                return False
+            for g in gmix:
+                for p in self.psf:
+                    irr = g['irr'] + p['irr']
+                    irc = g['irc'] + p['irc']
+                    icc = g['icc'] + p['icc']
+                    det = irr*icc-irc**2
+                    if det <= 0:
+                        if self.verbose:
+                            print >>stderr,'bad p+obj det'
+                        return False
+
+        # overall determinant and centroid
+        g0 = gmix[0]
+        det = g0['irr']*g0['icc'] - g0['irc']**2
+        if (det <= 0 
+                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
+                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
+            if self.verbose:
+                print >>stderr,'bad det or centroid'
+            return False
+
+        return True
+
+    def get_model(self, pars, aslist=False):
+        gmix=self.pars2gmix(pars)
+        return gmix2image(gmix, 
+                          self.image.shape, 
+                          psf=self.psf,
+                          aslist=aslist, 
+                          nsub=self.nsub,
+                          renorm=False)
+
+    def scale_leastsq_cov(self, popt, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        dof = (self.image.size-len(popt))
+        s_sq = (self.get_ydiff(popt)**2).sum()/dof
+        return pcov * s_sq 
+
+
+
+
+
+
+
+
+class GMixFitCoellipTry:
+    """
+    Perform a non-linear fit of the image to a gaussian mixture model.  
+    
+    In this one we have lots of different options.  
     The gaussians are forced to be co-elliptical.  Image is assumed to be
     sky-subtracted
 
@@ -42,7 +579,7 @@ class GMixFitCoellip:
             [cen0,cen1,cov00,cov01,cov11,pi,fi]
 
     ptype: string
-        Either 'ellip' or 'cov'
+        'ellip' or 'cov' or 'e1e2'
     error: float
         The error per pixel.  Note currently used.
     psf: list of dictionaries
@@ -1083,542 +1620,6 @@ class GMixFitCoellip:
         dof = (self.image.size-len(popt))
         s_sq = (self.get_ydiff(popt)**2).sum()/dof
         return pcov * s_sq 
-
-
-
-
-
-class GMixFitCoellipTfrac:
-    """
-    Perform a non-linear fit of the image to a gaussian mixture model.  
-
-    This parametrization is in terms of a Tmax and Tfrac.  This
-    parametrization is easier to let e1,e2,Tmax be free but put priors on the
-    Tfrac values, for example.
-    
-    The gaussians are forced to be co-elliptical.  Image is assumed to be
-    sky-subtracted
-
-    parameters
-    ----------
-    image: numpy array, dim=2
-        A background-subtracted image.
-    pixerr: scalar or image
-        The error per pixel or an image with the error
-        for each pixel.
-    prior:
-        The guess and the middle of the prior for each parameter.
-
-            [cen1,cen2,e1,e2,Tmax,Tri,pi]
-            Ti = Tmax*Tri
-
-        There are ngauss-1 fi values
-    width:
-        Width of the prior on each of the above.
-
-    psf: list of dictionaries
-        A gaussian mixture model specified as a list of
-        dictionaries.  Each dict has these entries
-            p: A normalization
-            row: center of the gaussian in the first dimension
-            col: center of the gaussian in the second dimension
-            irr: Covariance matrix element for row*row
-            irc: Covariance matrix element for row*col
-            icc: Covariance matrix element for col*col
-
-    verbose: bool
-    """
-    def __init__(self, image, pixerr, prior, width,
-                 psf=None, 
-                 verbose=False):
-        self.image=image
-        self.pixerr=pixerr
-        self.prior=prior
-        self.width=width
-        self.psf = psf
-        self.verbose=verbose
-
-        self.check_prior(prior, width)
-        self.check_psf(self.psf)
-
-        self.ngauss=(len(prior)-4)/2
-        self.nsub=1
-
-        self.dofit()
-
-    def check_prior(self, prior, width):
-        if len(prior) != len(width):
-            raise ValueError("prior and width must be same len")
-    def check_psf(self, psf):
-        if psf is not None:
-            if (not isinstance(psf,list) 
-                    or len(psf) < 1 
-                    or not isinstance(psf[0],dict)):
-                raise ValueError("psf should be a gaussian mixture model")
-
-    def dofit(self):
-        """
-        Run the fit using LM
-        """
-        from scipy.optimize import leastsq
-
-        res = leastsq(self.get_ydiff,
-                      self.prior,
-                      full_output=1)
-
-        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
-        if self.ier == 0:
-            # wrong args, this is a bug
-            raise ValueError(self.errmsg)
-
-        self.numiter = self.infodict['nfev']
-
-        self.pcov=None
-        self.perr=None
-
-        if self.pcov0 is not None:
-            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
-
-            d=diag(self.pcov)
-            w,=where(d < 0)
-
-            if w.size == 0:
-                # only do if non negative
-                self.perr = sqrt(d)
-
-        self.set_flags()
-       
-    def set_flags(self):
-        flags = 0
-        if self.ier > 4:
-            flags = 2**(self.ier-5)
-            if self.verbose:
-                print >>stderr,self.errmsg 
-
-        if self.pcov is None:
-            if self.verbose:
-                print >>stderr,'singular matrix'
-            flags += GMIXFIT_SINGULAR_MATRIX 
-        else:
-            e,v = eig(self.pcov)
-            weig,=where(e < 0)
-            if weig.size > 0:
-                if self.verbose:
-                    import images
-                    print >>stderr,'negative covariance eigenvalues'
-                    print_pars(self.popt, front='popt: ')
-                    print_pars(e,         front='eig:  ')
-                    images.imprint(self.pcov,stream=stderr)
-                flags += GMIXFIT_NEG_COV_EIG 
-
-            wneg,=where(diag(self.pcov) < 0)
-            if wneg.size > 0:
-                if self.verbose:
-                    import images
-                    # only print if we didn't see negative eigenvalue
-                    print >>stderr,'negative covariance diagonals'
-                    #images.imprint(self.pcov,stream=stderr)
-                flags += GMIXFIT_NEG_COV_DIAG 
-
-
-        self.flags = flags
-
-
-    def get_ydiff(self, pars):
-        """
-        Get 
-            (model-data)/pixerr 
-        Also the last len(pars) elements apply the priors
-            (pars-prior)/width
-
-        First we apply hard priors on centroid range and determinant(s)
-        and demand T,p > 0
-        """
-
-        if False:
-            print_pars(pars, front="pars: ")
-
-        if not self.check_hard_priors(pars):
-            return zeros(self.image.size) + numpy.inf
-
-        model = self.get_model(pars)
-        if not isfinite(model[0,0]):
-            if self.verbose:
-                print >>stderr,'found NaN in model'
-            return zeros(self.image.size) + numpy.inf
-
-        ydiff_tot = zeros(self.image.size + len(pars))
-
-        ydiff=( (model-self.image)/self.pixerr ).reshape(self.image.size)
-        prior_diff = (self.prior-pars)/self.width
-
-        #return ydiff
-        #print >>stderr,"ydiff:",ydiff
-        #print >>stderr,"prior diff:",prior_diff
-        #stop
-
-        ydiff_tot[0:self.image.size] = ydiff
-        ydiff_tot[self.image.size:] = prior_diff
-        return ydiff_tot
-
-
-    def check_hard_priors(self, pars):
-        wbad,=where(isfinite(pars) == False)
-        if wbad.size > 0:
-            if self.verbose:
-                print >>stderr,'NaN in pars'
-            return False
-
-        e1=pars[2]
-        e2=pars[3]
-        e = sqrt(e1**2 + e2**2)
-        if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
-            if self.verbose:
-                print >>stderr,'ellip >= 1'
-            return False
-
-        # Tmax and Tfrac
-        Tfvals=pars[4:4+self.ngauss]
-        w,=where(Tfvals <= 0)
-        if w.size > 0:
-            if self.verbose:
-                print_pars(Tfvals,front='bad T or Tfrac: ')
-            return False
-
-        pvals=pars[4+self.ngauss:]
-        w,=where(pvals <= 0)
-        if w.size > 0:
-            if self.verbose:
-                print_pars(pvals,front='bad p: ')
-            return False
-
-        # check determinant for all images we might have
-        # to create with psf convolutions
-
-        gmix=self.pars2gmix(pars)
-        if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
-            pdet = moms['irr']*moms['icc']-moms['irc']**2
-            if pdet <= 0:
-                if self.verbose:
-                    print >>stderr,'bad p det'
-                return False
-            for g in gmix:
-                for p in self.psf:
-                    irr = g['irr'] + p['irr']
-                    irc = g['irc'] + p['irc']
-                    icc = g['icc'] + p['icc']
-                    det = irr*icc-irc**2
-                    if det <= 0:
-                        if self.verbose:
-                            print >>stderr,'bad p+obj det'
-                        return False
-
-        # overall determinant and centroid
-        g0 = gmix[0]
-        det = g0['irr']*g0['icc'] - g0['irc']**2
-        if (det <= 0 
-                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
-                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
-            if self.verbose:
-                print >>stderr,'bad det or centroid'
-            return False
-
-        return True
-
-    def get_model(self, pars, aslist=False):
-        gmix=self.pars2gmix(pars)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
-
-    def pars2gmix(self, pars):
-        return pars2gmix_coellip_Tfrac(pars)
-
-    def scale_leastsq_cov(self, popt, pcov):
-        """
-        Scale the covariance matrix returned from leastsq; this will
-        recover the covariance of the parameters in the right units.
-        """
-        dof = (self.image.size-len(popt))
-        s_sq = (self.get_ydiff(popt)**2).sum()/dof
-        return pcov * s_sq 
-
-
-    def get_s2n(self, pars):
-        """
-        This is a raw S/N including all pixels and
-        no weighting
-        """
-        if isinstance(self.pixerr, numpy.ndarray):
-            raise ValueError("Implement S/N for error image")
-        model = self.get_model(pars)
-        s2n = model.sum()/sqrt(model.size)/self.pixerr
-        return s2n
-
-    def get_chi2(self, pars):
-        ydiff = self.get_ydiff(pars)
-        return (ydiff**2).sum()
-
-    def get_chi2per(self, pars):
-        ydiff = self.get_ydiff(pars)
-        chi2=self.get_chi2(pars)
-        return chi2/(self.image.size-len(pars))
-
-    def get_gmix(self):
-        return self.pars2gmix(self.popt)
-
-    gmix = property(get_gmix)
-
-
-
-
-
-class GMixFitDev:
-    """
-    Perform a non-linear fit of the image to a gaussian mixture model.  
-
-    Assume the T ratio is roughly that expected for a dev.  For now
-    this is approximate to study the problem.
-    
-    The gaussians are forced to be co-elliptical.  Image is assumed to be
-    sky-subtracted
-
-    parameters
-    ----------
-    image: numpy array, dim=2
-        A background-subtracted image.
-    guess:
-        [cen1,cen2,e1,e2,p1,p2,p3,p4,Tmax]
-
-    psf: list of dictionaries
-        A gaussian mixture model specified as a list of
-        dictionaries.  Each dict has these entries
-            p: A normalization
-            row: center of the gaussian in the first dimension
-            col: center of the gaussian in the second dimension
-            irr: Covariance matrix element for row*row
-            irc: Covariance matrix element for row*col
-            icc: Covariance matrix element for col*col
-
-    verbose: bool
-    """
-    def __init__(self, image, guess, 
-                 psf=None, 
-                 verbose=False):
-        self.image=image
-        self.guess=guess
-        self.nsub=1
-        self.verbose=verbose
-
-        if len(self.guess) != 9:
-            raise ValueError("guess should be len==9")
-
-        # can enter the psf model as a mixture model or
-        # a coelliptical psf model; gmix is more flexible..
-        # we keep the gmix version since we use gmix2image to
-        # make models
-        if isinstance(psf,numpy.ndarray):
-            # note we assume psf is a more generic coelliptical fit
-            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
-        else:
-            self.psf = psf
-
-        self.dofit()
-
-    def dofit(self):
-        """
-        Run the fit using LM
-        """
-        from scipy.optimize import leastsq
-
-        res = leastsq(self.get_ydiff,
-                      self.guess,
-                      full_output=1)
-
-        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
-        if self.ier == 0:
-            # wrong args, this is a bug
-            raise ValueError(self.errmsg)
-
-        self.numiter = self.infodict['nfev']
-
-        self.pcov=None
-        self.perr=None
-
-        if self.pcov0 is not None:
-            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
-
-            d=diag(self.pcov)
-            w,=where(d < 0)
-
-            if w.size == 0:
-                # only do if non negative
-                self.perr = sqrt(d)
-
-        self.set_flags()
-       
-    def set_flags(self):
-        flags = 0
-        if self.ier > 4:
-            flags = 2**(self.ier-5)
-            if self.verbose:
-                print >>stderr,self.errmsg 
-
-        if self.pcov is None:
-            if self.verbose:
-                print >>stderr,'singular matrix'
-            flags += GMIXFIT_SINGULAR_MATRIX 
-        else:
-            e,v = eig(self.pcov)
-            weig,=where(e < 0)
-            if weig.size > 0:
-                if self.verbose:
-                    import images
-                    print >>stderr,'negative covariance eigenvalues'
-                    print_pars(self.popt, front='popt: ')
-                    print_pars(e,         front='eig:  ')
-                    images.imprint(self.pcov,stream=stderr)
-                flags += GMIXFIT_NEG_COV_EIG 
-
-            wneg,=where(diag(self.pcov) < 0)
-            if wneg.size > 0:
-                if self.verbose:
-                    import images
-                    # only print if we didn't see negative eigenvalue
-                    print >>stderr,'negative covariance diagonals'
-                    #images.imprint(self.pcov,stream=stderr)
-                flags += GMIXFIT_NEG_COV_DIAG 
-
-
-        self.flags = flags
-
-    def get_s2n(self, pars, skysig):
-        """
-        This is a raw S/N including all pixels and
-        no weighting
-        """
-        model = self.get_model(pars)
-        s2n = model.sum()/sqrt(model.size)/skysig
-        return s2n
-
-    def get_chi2(self, pars):
-        ydiff = self.get_ydiff(pars)
-        return (ydiff**2).sum()
-    def get_chi2per(self, pars, skysig):
-        ydiff = self.get_ydiff(pars)
-        return (ydiff**2).sum()/(self.image.size-len(pars))/skysig**2
-
-    def get_gmix(self):
-        return self.pars2gmix(self.popt)
-
-    gmix = property(get_gmix)
-
-    def get_ydiff(self, pars):
-        """
-        Also apply hard priors on centroid range and determinant(s)
-        """
-
-        if False:
-            print_pars(pars, front="pars: ")
-
-        if not self.check_hard_priors(pars):
-            return zeros(self.image.size) + numpy.inf
-
-        model = self.get_model(pars)
-        if not isfinite(model[0,0]):
-            if self.verbose:
-                print >>stderr,'found NaN in model'
-            return zeros(self.image.size) + numpy.inf
-
-        yd=(model-self.image).reshape(self.image.size)
-        return yd
-
-    def pars2gmix(self, pars):
-        return pars2gmix_dev(pars)
-
-    def check_hard_priors(self, pars):
-        wbad,=where(isfinite(pars) == False)
-        if wbad.size > 0:
-            if self.verbose:
-                print >>stderr,'NaN in pars'
-            return False
-
-        e1=pars[2]
-        e2=pars[3]
-        e = sqrt(e1**2 + e2**2)
-        if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
-            if self.verbose:
-                print >>stderr,'ellip >= 1'
-            return False
-
-        pvals=pars[4:4+4]
-
-        w,=where(pvals <= 0)
-        if w.size > 0:
-            if self.verbose:
-                print_pars(pvals,front='bad p: ')
-            return False
-
-        # check determinant for all images we might have
-        # to create with psf convolutions
-
-        gmix=self.pars2gmix(pars)
-        if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
-            pdet = moms['irr']*moms['icc']-moms['irc']**2
-            if pdet <= 0:
-                if self.verbose:
-                    print >>stderr,'bad p det'
-                return False
-            for g in gmix:
-                for p in self.psf:
-                    irr = g['irr'] + p['irr']
-                    irc = g['irc'] + p['irc']
-                    icc = g['icc'] + p['icc']
-                    det = irr*icc-irc**2
-                    if det <= 0:
-                        if self.verbose:
-                            print >>stderr,'bad p+obj det'
-                        return False
-
-        # overall determinant and centroid
-        g0 = gmix[0]
-        det = g0['irr']*g0['icc'] - g0['irc']**2
-        if (det <= 0 
-                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
-                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
-            if self.verbose:
-                print >>stderr,'bad det or centroid'
-            return False
-
-        return True
-
-    def get_model(self, pars, aslist=False):
-        gmix=self.pars2gmix(pars)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
-
-    def scale_leastsq_cov(self, popt, pcov):
-        """
-        Scale the covariance matrix returned from leastsq; this will
-        recover the covariance of the parameters in the right units.
-        """
-        dof = (self.image.size-len(popt))
-        s_sq = (self.get_ydiff(popt)**2).sum()/dof
-        return pcov * s_sq 
-
-
-
-
-
 
 
 
@@ -2719,7 +2720,7 @@ def pars2gmix_coellip_Tfrac(pars):
 
 
 
-def pars2gmix_coellip(pars, ptype='e1e2'):
+def pars2gmix_coellip(pars, ptype='Tfrac'):
     """
     Convert a parameter array as used for the LM code into a gaussian mixture
     model.  This is for the case of co-elliptical gaussians.
