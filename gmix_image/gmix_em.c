@@ -37,12 +37,12 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-#include "gmix_image.h"
+#include "gmix_em.h"
 #include "image.h"
 #include "gvec.h"
 #include "defs.h"
 
-int gmix_image(struct gmix* self,
+int gmix_em(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
                struct gvec *gvec_psf,
@@ -70,7 +70,7 @@ int gmix_image(struct gmix* self,
 
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_bail;
+            goto _gmix_em_bail;
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
 
@@ -91,7 +91,7 @@ int gmix_image(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_bail:
+_gmix_em_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
@@ -114,7 +114,7 @@ static void set_means(struct gvec *gvec, struct vec2 *cen)
 /*
  * this could be cleaned up, some repeated code
  */
-int gmix_image_cocenter(struct gmix* self,
+int gmix_em_cocenter(struct gmix* self,
                         struct image *image, 
                         struct gvec *gvec,
                         struct gvec *gvec_psf,
@@ -146,7 +146,7 @@ int gmix_image_cocenter(struct gmix* self,
         // first pass to get centers
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_cocenter_bail;
+            goto _gmix_em_cocenter_bail;
 
         // copy for getting centers only
         gvec_copy(gvec, gcopy);
@@ -154,14 +154,14 @@ int gmix_image_cocenter(struct gmix* self,
 
         if (!gvec_wmean_center(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
-            goto _gmix_image_cocenter_bail;
+            goto _gmix_em_cocenter_bail;
         }
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_cocenter_bail;
+            goto _gmix_em_cocenter_bail;
  
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
@@ -186,7 +186,7 @@ int gmix_image_cocenter(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_cocenter_bail:
+_gmix_em_cocenter_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }
@@ -218,7 +218,7 @@ static void force_coellip(struct gvec *gvec, struct mtx2 *cov)
         gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
     }
 }
-int gmix_image_coellip(struct gmix* self,
+int gmix_em_coellip(struct gmix* self,
                        struct image *image, 
                        struct gvec *gvec,
                        struct gvec *gvec_psf,
@@ -251,7 +251,7 @@ int gmix_image_coellip(struct gmix* self,
         // first pass to get centers
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_coellip_bail;
+            goto _gmix_em_coellip_bail;
 
         // copy for getting centers only
         gvec_copy(gvec, gcopy);
@@ -259,14 +259,14 @@ int gmix_image_coellip(struct gmix* self,
 
         if (!gvec_wmean_center(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
-            goto _gmix_image_coellip_bail;
+            goto _gmix_em_coellip_bail;
         }
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
         flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
         if (flags!=0)
-            goto _gmix_image_coellip_bail;
+            goto _gmix_em_coellip_bail;
  
 
         gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
@@ -295,7 +295,7 @@ int gmix_image_coellip(struct gmix* self,
         (*iter)++;
     }
 
-_gmix_image_coellip_bail:
+_gmix_em_coellip_bail:
     if (self->maxiter == (*iter)) {
         flags += GMIX_ERROR_MAXIT;
     }

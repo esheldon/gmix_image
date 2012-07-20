@@ -1,13 +1,13 @@
 """
-gmix_image
-    Fit gaussian mixture models to images.
+gmix_em
+    Fit gaussian mixture models to images using Expectation Maximization
 
 Classes
 -------
 
-GMix: 
+GMixEM: 
     A class to fit a gaussian mixture model to an image using Expectation
-    Maximization.  See docs for gmix_image.GMix for more details.
+    Maximization.  See docs for gmix_image.GMixEM for more details.
 
 functions
 ---------
@@ -34,14 +34,14 @@ total_moms_psf:
 import copy
 import numpy
 from numpy import array, median, zeros, ogrid, exp, sqrt
-import _gmix_image
+import _gmix_em
 
 GMIXEM_ERROR_NEGATIVE_DET         = 0x1
 GMIXEM_ERROR_MAXIT                = 0x2
 GMIXEM_ERROR_NEGATIVE_DET_COCENTER = 0x4
 
 
-class GMixEM(_gmix_image.GMix):
+class GMixEM(_gmix_em.GMixEM):
     """
     Fit a gaussian mixture model to an image using Expectation Maximization.
 
@@ -143,7 +143,7 @@ class GMixEM(_gmix_image.GMix):
              {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
 
     # create the gaussian mixture
-    gm = gmix_image.GMix(image, guess, sky=100, maxiter=2000, tol=1.e-6)
+    gm = gmix_image.GMixEM(image, guess, sky=100, maxiter=2000, tol=1.e-6)
 
     # Work with the results
     if gm.flags != 0:
@@ -161,13 +161,13 @@ class GMixEM(_gmix_image.GMix):
 
     psf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
            {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
-    gm = gmix_image.GMix(image, guess, psf=psf, sky=100)
+    gm = gmix_image.GMixEM(image, guess, psf=psf, sky=100)
 
     # run some unit tests
-    gmix_image.test()
-    gmix_image.test(add_noise=True)
-    gmix_image.test_psf(add_noise=False)
-    gmix_image.test_psf_colocate(add_noise=True)
+    gmix_image.test.test_em()
+    gmix_image.test.test_em(add_noise=True)
+    gmix_image.test.test_psf_em(add_noise=False)
+    gmix_image.test.test_psf_colocate_em(add_noise=True)
 
     """
     def __init__(self, im, guess, 
@@ -215,10 +215,10 @@ class GMixEM(_gmix_image.GMix):
                                   verbose=verbosity)
 
     # just to make access nicer.
-    pars=property(_gmix_image.GMix.get_pars)
-    flags=property(_gmix_image.GMix.get_flags)
-    numiter=property(_gmix_image.GMix.get_numiter)
-    fdiff=property(_gmix_image.GMix.get_fdiff)
+    pars=property(_gmix_em.GMixEM.get_pars)
+    flags=property(_gmix_em.GMixEM.get_flags)
+    numiter=property(_gmix_em.GMixEM.get_numiter)
+    fdiff=property(_gmix_em.GMixEM.get_fdiff)
 
     def _fixup_psf(self, psf):
         """

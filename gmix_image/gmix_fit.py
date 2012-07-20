@@ -7,6 +7,8 @@ from sys import stderr
 
 from .gmix_em import gmix2image, total_moms_psf
 
+from . import _gmix_fit
+
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
 GMIXFIT_NEG_COV_EIG     = 2**5
@@ -21,14 +23,15 @@ GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
 class GMixFitCoellip:
     """
-    Perform a non-linear fit of the image to a gaussian mixture model.  
+    Fit a guassian mixture model to an image.
 
-    This parametrization is in terms of a Tmax and Tfrac.  This
-    parametrization is easier to let e1,e2,Tmax be free but put priors on the
-    Tfrac values, for example.
+    The gaussians are co-elliptical.  This parametrization is in terms of a
+    Tmax and Tfrac_i.  This parametrization makes it easier to let e1,e2,Tmax
+    be free but put priors on the Tfrac values, for example.
     
-    The gaussians are forced to be co-elliptical.  Image is assumed to be
-    sky-subtracted
+    Image is assumed to be background-subtracted
+
+    This version does not have an analytical jacobian defined.
 
     parameters
     ----------

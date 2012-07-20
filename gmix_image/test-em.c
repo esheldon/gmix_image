@@ -4,7 +4,7 @@
 
 #include "image.h"
 #include "gvec.h"
-#include "gmix_image.h"
+#include "gmix_em.h"
 #include "defs.h"
 
 int main(int argc, char** argv)
@@ -67,7 +67,7 @@ int main(int argc, char** argv)
 
     clock_gettime(CLOCK_MONOTONIC, &ts_start);
     double fdiff=0;
-    int flags = gmix_image(&gmix, image, gvec, NULL, &niter, &fdiff);
+    int flags = gmix_em(&gmix, image, gvec, NULL, &niter, &fdiff);
     clock_gettime(CLOCK_MONOTONIC, &ts_end);
     double sec = 
         ((double)ts_end.tv_sec-ts_start.tv_sec)

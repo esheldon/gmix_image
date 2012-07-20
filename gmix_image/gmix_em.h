@@ -1,5 +1,5 @@
-#ifndef _GMIX_IMAGE_HEADER_GUARD
-#define _GMIX_IMAGE_HEADER_GUARD
+#ifndef _GMIX_EM_HEADER_GUARD
+#define _GMIX_EM_HEADER_GUARD
 
 #include "image.h"
 #include "gvec.h"
@@ -48,25 +48,25 @@ struct iter {
     struct sums *sums;
 };
 
-int gmix_image(struct gmix* self,
-               struct image *image, 
-               struct gvec *gvec,
-               struct gvec *gvec_psf, // can be NULL
-               size_t *iter,
-               double *fdiff);
-int gmix_image_cocenter(struct gmix* self,
-                        struct image *image, 
-                        struct gvec *gvec,
-                        struct gvec *gvec_psf, // can be NULL
-                        size_t *iter,
-                        double *fdiff);
+int gmix_em(struct gmix* self,
+        struct image *image, 
+        struct gvec *gvec,
+        struct gvec *gvec_psf, // can be NULL
+        size_t *iter,
+        double *fdiff);
+int gmix_em_cocenter(struct gmix* self,
+        struct image *image, 
+        struct gvec *gvec,
+        struct gvec *gvec_psf, // can be NULL
+        size_t *iter,
+        double *fdiff);
 
-int gmix_image_coellip(struct gmix* self,
-                       struct image *image, 
-                       struct gvec *gvec,
-                       struct gvec *gvec_psf, // can be NULL
-                       size_t *iter,
-                       double *fdiff);
+int gmix_em_coellip(struct gmix* self,
+        struct image *image, 
+        struct gvec *gvec,
+        struct gvec *gvec_psf, // can be NULL
+        size_t *iter,
+        double *fdiff);
 
 int gmix_get_sums(struct gmix* self,
                   struct image *image,

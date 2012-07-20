@@ -4,10 +4,10 @@
 #include "gvec.h"
 #include "image.h"
 #include "bound.h"
-#include "gmix_image.h"
+#include "gmix_em.h"
 
 
-struct PyGMixObject {
+struct PyGMixEMObject {
   PyObject_HEAD
 
   struct image *image;
@@ -252,7 +252,7 @@ PyObject *gauss_to_dict(struct gauss *self)
 
 
 /*
- * PyGMixObject methods
+ * PyGMixEMObject methods
  */
 
 
@@ -285,7 +285,7 @@ struct image *associate_image(PyObject* image_obj, double counts)
     return image;
 }
 
-int add_mask_to_image(struct PyGMixObject* self, PyObject* bound_obj)
+int add_mask_to_image(struct PyGMixEMObject* self, PyObject* bound_obj)
 {
     int status=1;
     struct bound bound = {0};
@@ -319,7 +319,7 @@ int add_mask_to_image(struct PyGMixObject* self, PyObject* bound_obj)
 _bound_copy_from_dict_bail:
     return status;
 }
-void gmix_cleanup(struct PyGMixObject* self)
+void gmix_cleanup(struct PyGMixEMObject* self)
 {
     self->image    = image_free(self->image);
     self->gvec     = gvec_free(self->gvec);
@@ -327,7 +327,7 @@ void gmix_cleanup(struct PyGMixObject* self)
 }
 
 static int
-PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
+PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
 {
     int status=1;
     struct gmix gmix = {0};
@@ -392,7 +392,7 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
     gmix.maxiter = maxiter;
 
     if (gmix.coellip) {
-        self->flags = gmix_image_coellip(&gmix, 
+        self->flags = gmix_em_coellip(&gmix, 
                 self->image, 
                 self->gvec, 
                 self->gvec_psf,
@@ -400,14 +400,14 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args, PyObject *kwds)
                 &self->fdiff);
 
     } else if (gmix.cocenter) {
-        self->flags = gmix_image_cocenter(&gmix, 
+        self->flags = gmix_em_cocenter(&gmix, 
                 self->image, 
                 self->gvec, 
                 self->gvec_psf,
                 &self->numiter,
                 &self->fdiff);
     } else {
-        self->flags = gmix_image(&gmix, 
+        self->flags = gmix_em(&gmix, 
                 self->image, 
                 self->gvec, 
                 self->gvec_psf,
@@ -423,7 +423,7 @@ _gmix_init_bail:
 }
 
 static void
-PyGMixObject_dealloc(struct PyGMixObject* self)
+PyGMixEMObject_dealloc(struct PyGMixEMObject* self)
 {
     gmix_cleanup(self);
 
@@ -437,7 +437,7 @@ PyGMixObject_dealloc(struct PyGMixObject* self)
 }
 
 static PyObject*
-PyGMixObject_write(struct PyGMixObject* self)
+PyGMixEMObject_write(struct PyGMixEMObject* self)
 {
     int npsf=0;
     if (self->gvec_psf) {
@@ -465,7 +465,7 @@ PyGMixObject_write(struct PyGMixObject* self)
 }
 
 static PyObject *
-PyGMixObject_repr(struct PyGMixObject* self) {
+PyGMixEMObject_repr(struct PyGMixEMObject* self) {
     char buff[1024];
     int npsf=0;
     if (self->gvec_psf) {
@@ -490,7 +490,7 @@ PyGMixObject_repr(struct PyGMixObject* self) {
 
 
 static PyObject*
-PyGMixObject_get_pars(struct PyGMixObject* self)
+PyGMixEMObject_get_pars(struct PyGMixEMObject* self)
 {
     PyObject* lod=NULL;
     PyObject* tdict=NULL;
@@ -516,17 +516,17 @@ PyGMixObject_get_pars(struct PyGMixObject* self)
 
 
 static PyObject*
-PyGMixObject_get_flags(struct PyGMixObject* self)
+PyGMixEMObject_get_flags(struct PyGMixEMObject* self)
 {
     return PyInt_FromLong((long) self->flags);
 }
 static PyObject*
-PyGMixObject_get_numiter(struct PyGMixObject* self)
+PyGMixEMObject_get_numiter(struct PyGMixEMObject* self)
 {
     return PyInt_FromLong((long) self->numiter);
 }
 static PyObject*
-PyGMixObject_get_fdiff(struct PyGMixObject* self)
+PyGMixEMObject_get_fdiff(struct PyGMixEMObject* self)
 {
     return PyFloat_FromDouble(self->fdiff);
 }
@@ -538,38 +538,38 @@ PyGMixObject_get_fdiff(struct PyGMixObject* self)
 
 
 
-static PyMethodDef PyGMixObject_methods[] = {
-    {"write", (PyCFunction)PyGMixObject_write, METH_VARARGS, 
+static PyMethodDef PyGMixEMObject_methods[] = {
+    {"write", (PyCFunction)PyGMixEMObject_write, METH_VARARGS, 
         "print a representation\n"},
-    {"get_pars", (PyCFunction)PyGMixObject_get_pars, METH_VARARGS, 
+    {"get_pars", (PyCFunction)PyGMixEMObject_get_pars, METH_VARARGS, 
         "get the gaussian parameters as a list of dicts\n"},
-    {"get_flags", (PyCFunction)PyGMixObject_get_flags, METH_VARARGS, 
+    {"get_flags", (PyCFunction)PyGMixEMObject_get_flags, METH_VARARGS, 
         "get the flags from the processing\n"},
-    {"get_numiter", (PyCFunction)PyGMixObject_get_numiter, METH_VARARGS, 
+    {"get_numiter", (PyCFunction)PyGMixEMObject_get_numiter, METH_VARARGS, 
         "get the number of iterations during processing\n"},
-    {"get_fdiff", (PyCFunction)PyGMixObject_get_fdiff, METH_VARARGS, 
+    {"get_fdiff", (PyCFunction)PyGMixEMObject_get_fdiff, METH_VARARGS, 
         "get the number of iterations during processing\n"},
     {NULL}
 };
 
 
-static PyTypeObject PyGMixObjectType = {
+static PyTypeObject PyGMixEMObjectType = {
 #if PY_MAJOR_VERSION >= 3
     PyVarObject_HEAD_INIT(NULL, 0)
 #else
     PyObject_HEAD_INIT(NULL)
     0,                         /*ob_size*/
 #endif
-    "_gmix_image.GMix",             /*tp_name*/
-    sizeof(struct PyGMixObject), /*tp_basicsize*/
+    "_gmix_em.GMix",             /*tp_name*/
+    sizeof(struct PyGMixEMObject), /*tp_basicsize*/
     0,                         /*tp_itemsize*/
-    (destructor)PyGMixObject_dealloc, /*tp_dealloc*/
+    (destructor)PyGMixEMObject_dealloc, /*tp_dealloc*/
     0,                         /*tp_print*/
     0,                         /*tp_getattr*/
     0,                         /*tp_setattr*/
     0,                         /*tp_compare*/
     //0,                         /*tp_repr*/
-    (reprfunc)PyGMixObject_repr,                         /*tp_repr*/
+    (reprfunc)PyGMixEMObject_repr,                         /*tp_repr*/
     0,                         /*tp_as_number*/
     0,                         /*tp_as_sequence*/
     0,                         /*tp_as_mapping*/
@@ -587,7 +587,7 @@ static PyTypeObject PyGMixObjectType = {
     0,                     /* tp_weaklistoffset */
     0,                     /* tp_iter */
     0,                     /* tp_iternext */
-    PyGMixObject_methods,             /* tp_methods */
+    PyGMixEMObject_methods,             /* tp_methods */
     0,             /* tp_members */
     0,                         /* tp_getset */
     0,                         /* tp_base */
@@ -596,7 +596,7 @@ static PyTypeObject PyGMixObjectType = {
     0,                         /* tp_descr_set */
     0,                         /* tp_dictoffset */
     //0,     /* tp_init */
-    (initproc)PyGMixObject_init,      /* tp_init */
+    (initproc)PyGMixEMObject_init,      /* tp_init */
     0,                         /* tp_alloc */
     PyType_GenericNew,                 /* tp_new */
 };
@@ -609,7 +609,7 @@ static PyMethodDef gmix_module_methods[] = {
 #if PY_MAJOR_VERSION >= 3
     static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
-        "_gmix_image",      /* m_name */
+        "_gmix_em",      /* m_name */
         "Defines the GMix and GVec classes",  /* m_doc */
         -1,                  /* m_size */
         gmix_module_methods,    /* m_methods */
@@ -624,15 +624,15 @@ static PyMethodDef gmix_module_methods[] = {
 #define PyMODINIT_FUNC void
 #endif
 PyMODINIT_FUNC
-init_gmix_image(void) 
+init_gmix_em(void) 
 {
     PyObject* m;
 
 
-    PyGMixObjectType.tp_new = PyType_GenericNew;
+    PyGMixEMObjectType.tp_new = PyType_GenericNew;
 
 #if PY_MAJOR_VERSION >= 3
-    if (PyType_Ready(&PyGMixObjectType) < 0) {
+    if (PyType_Ready(&PyGMixEMObjectType) < 0) {
         return NULL;
     }
     m = PyModule_Create(&moduledef);
@@ -641,18 +641,18 @@ init_gmix_image(void)
     }
 
 #else
-    if (PyType_Ready(&PyGMixObjectType) < 0) {
+    if (PyType_Ready(&PyGMixEMObjectType) < 0) {
         return;
     }
-    m = Py_InitModule3("_gmix_image", gmix_module_methods, 
+    m = Py_InitModule3("_gmix_em", gmix_module_methods, 
             "This module defines a class to fit a Gaussian Mixture to an image.\n");
     if (m==NULL) {
         return;
     }
 #endif
 
-    Py_INCREF(&PyGMixObjectType);
-    PyModule_AddObject(m, "GMix", (PyObject *)&PyGMixObjectType);
+    Py_INCREF(&PyGMixEMObjectType);
+    PyModule_AddObject(m, "GMixEM", (PyObject *)&PyGMixEMObjectType);
 
     import_array();
 }

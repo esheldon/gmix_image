@@ -26,16 +26,16 @@ except:
 # EM tests
 #
 
-def test_all():
-    test(add_noise=False)
-    test(add_noise=True)
-    test_psf()
-    test_psf(add_noise=True)
-    test_psf_colocate(add_noise=False, npsf=1)
-    test_psf_colocate(add_noise=True, npsf=1)
-    test_psf_colocate(add_noise=False, npsf=2)
-    test_psf_colocate(add_noise=True, npsf=2)
-def test(add_noise=False):
+def test_all_em():
+    test_em(add_noise=False)
+    test_em(add_noise=True)
+    test_psf_em()
+    test_psf_em(add_noise=True)
+    test_psf_colocate_em(add_noise=False, npsf=1)
+    test_psf_colocate_em(add_noise=True, npsf=1)
+    test_psf_colocate_em(add_noise=False, npsf=2)
+    test_psf_colocate_em(add_noise=True, npsf=2)
+def test_em(add_noise=False):
     print '\nnoise:',add_noise
     tol=1.e-6
     dims=[31,31]
@@ -78,7 +78,7 @@ def test(add_noise=False):
         print
 
 
-def test_psf_colocate(add_noise=False, npsf=1):
+def test_psf_colocate_em(add_noise=False, npsf=1):
     print '\nnoise:',add_noise
     tol=1.e-6
     maxiter=2000
@@ -168,7 +168,7 @@ def test_psf_colocate(add_noise=False, npsf=1):
         print 'estimated total moms:', \
             fit_mean_moms['irr'],fit_mean_moms['irc'],fit_mean_moms['icc']
 
-def test_psf(add_noise=False, npsf=1):
+def test_psf_em(add_noise=False, npsf=1):
     print '\nnoise:',add_noise
     tol=1.e-8
     maxiter=2000
@@ -1658,4 +1658,4 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
 if __name__ == "__main__":
     test(add_noise=False)
     test(add_noise=True)
-    test_psf()
+    test_psf_em()
