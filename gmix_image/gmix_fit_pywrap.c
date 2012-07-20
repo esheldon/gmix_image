@@ -87,19 +87,29 @@ struct image *associate_image(PyObject* image_obj, size_t nrows, size_t ncols)
 }
 
 
+/*
+ * If diff is NULL, we fill in image.
+ * If diff is not NULL, we fill in diff with model-image
+ */
 int fill_model(struct image *image, 
                struct gvec *obj_gvec, 
-               struct gvec *psf_gvec)
+               struct gvec *psf_gvec,
+               struct image *diff)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    struct gauss *gauss=NULL;
+    struct gauss *gauss=NULL, *pgauss=NULL;
     double u=0, v=0, uv=0, u2=0, v2=0;
     double chi2=0, b=0;
-    size_t i=0, col=0, row=0;
+    size_t i=0, j=0, col=0, row=0;
+    double irr=0, irc=0, icc=0, det=0, psum=0;
 
-    double val=0;
+    double val=0, tval=0;
     int flags=0;
+
+    int do_diff=0;
+    if (diff)
+        do_diff=1;
 
     for (row=0; row<nrows; row++) {
         for (col=0; col<ncols; col++) {
@@ -109,7 +119,7 @@ int fill_model(struct image *image,
                 gauss = &obj_gvec->data[i];
                 if (gauss->det <= 0) {
                     DBG wlog("found det: %.16g\n", gauss->det);
-                    flags+=GMIX_ERROR_NEGATIVE_DET;
+                    flags |= GMIX_ERROR_NEGATIVE_DET;
                     goto _gmix_fit_eval_model_bail;
                 }
 
@@ -118,26 +128,45 @@ int fill_model(struct image *image,
 
                 u2 = u*u; v2 = v*v; uv = u*v;
 
+                tval=0;
                 if (psf_gvec) { 
-                    /*
-                    sums->gi = gmix_evaluate_convolved(self,
-                                                       gauss,
-                                                       psf_gvec,
-                                                       u2,uv,v2,
-                                                       &flags);
-                    if (flags != 0) {
-                        goto _gmix_get_sums_bail;
+                    psum=0;
+                    for (j=0; j<psf_gvec->size; j++) {
+                        pgauss=&psf_gvec->data[j];
+                        irr = gauss->irr + pgauss->irr;
+                        irc = gauss->irc + pgauss->irc;
+                        icc = gauss->icc + pgauss->icc;
+                        det = irr*icc - irc*irc;
+                        if (det <= 0) {
+                            DBG wlog("found convolved det: %.16g\n", det);
+                            flags |= GMIX_ERROR_NEGATIVE_DET;
+                            goto _gmix_fit_eval_model_bail;
+                        }
+                        chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
+                        chi2 /= det;
+
+                        b = M_TWO_PI*sqrt(det);
+                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        psum += pgauss->p;
                     }
-                    */
+                    // psf always normalized to unity
+                    tval *= gauss->p/psum;
                 } else {
                     chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                     chi2 /= gauss->det;
                     b = M_TWO_PI*sqrt(gauss->det);
-                    val += gauss->p*exp( -0.5*chi2 )/b;
+                    tval = gauss->p*exp( -0.5*chi2 )/b;
                 }
+
+                val += tval;
             } // gvec
 
-            IM_SETFAST(image, row, col, val);
+            if (do_diff) {
+                tval = IM_GET(image, row, col);
+                IM_SETFAST(diff, row, col, val-tval);
+            } else {
+                IM_SETFAST(image, row, col, val);
+            }
 
         } // cols
     } // rows
@@ -146,125 +175,13 @@ _gmix_fit_eval_model_bail:
     return flags;
 }
 
-static PyObject *
-PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args) 
-{
-    PyObject* image_obj=NULL;
-    PyObject* obj_pars_obj=NULL;
-    PyObject* psf_pars_obj=NULL; // Can be None
-
-    struct image *image=NULL;
-    struct gvec *obj_gvec=NULL;
-    struct gvec *psf_gvec=NULL;
-    npy_intp *dims=NULL;
-
-    int flags=0;
-
-    DBG wlog("parse args\n");
-    if (!PyArg_ParseTuple(args, (char*)"OOO", &image_obj, &obj_pars_obj, &psf_pars_obj)) {
-        return NULL;
-    }
-
-    DBG wlog("getting dims\n");
-    dims = PyArray_DIMS((PyArrayObject*)image_obj);
-    DBG wlog("associate image\n");
-    image = associate_image(image_obj, dims[0], dims[1]);
-
-    DBG wlog("get obj gmix\n");
-    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
-    gvec_print(obj_gvec, stderr);
-
-    if (psf_pars_obj != Py_None) {
-        DBG wlog("get psf gmix\n");
-        psf_gvec = coellip_pars_to_gvec(psf_pars_obj);
-        gvec_print(psf_gvec, stderr);
-    }
-
-    flags=fill_model(image, obj_gvec, psf_gvec);
-
-    DBG wlog("free obj gmix\n");
-    obj_gvec = gvec_free(obj_gvec);
-    DBG wlog("free psf gmix\n");
-    psf_gvec = gvec_free(psf_gvec);
-    // does not free underlying array
-    DBG wlog("free associated image\n");
-    image = image_free(image);
-
-    return PyInt_FromLong(flags);
-}
-
-
-
-
-
-int fill_diff(struct image *image, 
-              struct image *diff, 
-              struct gvec *obj_gvec, 
-              struct gvec *psf_gvec)
-{
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
-
-    struct gauss *gauss=NULL;
-    double u=0, v=0, uv=0, u2=0, v2=0;
-    double chi2=0, b=0;
-    size_t i=0, col=0, row=0;
-
-    double image_val=0, val=0;
-    int flags=0;
-
-    for (row=0; row<nrows; row++) {
-        for (col=0; col<ncols; col++) {
-
-            val=0;
-            for (i=0; i<obj_gvec->size; i++) {
-                gauss = &obj_gvec->data[i];
-                if (gauss->det <= 0) {
-                    DBG wlog("found det: %.16g\n", gauss->det);
-                    flags+=GMIX_ERROR_NEGATIVE_DET;
-                    goto _gmix_fit_eval_diff_bail;
-                }
-
-                u = row-gauss->row;
-                v = col-gauss->col;
-
-                u2 = u*u; v2 = v*v; uv = u*v;
-
-                if (psf_gvec) { 
-                    /*
-                    sums->gi = gmix_evaluate_convolved(self,
-                                                       gauss,
-                                                       psf_gvec,
-                                                       u2,uv,v2,
-                                                       &flags);
-                    if (flags != 0) {
-                        goto _gmix_get_sums_bail;
-                    }
-                    */
-                } else {
-                    chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                    chi2 /= gauss->det;
-                    b = M_TWO_PI*sqrt(gauss->det);
-                    val += gauss->p*exp( -0.5*chi2 )/b;
-                }
-            } // gvec
-
-            image_val = IM_GET(image, row, col);
-            val = val-image_val;
-            IM_SETFAST(diff, row, col, val);
-
-        } // cols
-    } // rows
-
-_gmix_fit_eval_diff_bail:
-    return flags;
-}
 
 /*
  * Note the diff object can actually have padding at the end
  * that will contain priors, so don't try to grab it's dimensions
  */
 static PyObject *
-PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args) 
+PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* diff_obj=NULL;
@@ -272,45 +189,38 @@ PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args)
     PyObject* psf_pars_obj=NULL; // Can be None
 
     struct image *image=NULL;
-    struct image *diff=NULL;
     struct gvec *obj_gvec=NULL;
     struct gvec *psf_gvec=NULL;
+    struct image *diff=NULL;
     npy_intp *dims=NULL;
 
     int flags=0;
 
-    DBG wlog("parse args\n");
-    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &diff_obj, &obj_pars_obj, &psf_pars_obj)) {
+    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, &psf_pars_obj, &diff_obj)) {
         return NULL;
     }
 
-    DBG wlog("getting dims\n");
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
-    DBG wlog("associate image\n");
     image = associate_image(image_obj, dims[0], dims[1]);
-    DBG wlog("associate diff\n");
-    diff = associate_image(diff_obj, dims[0], dims[1]);
 
-    DBG wlog("get obj gmix\n");
-    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
-    gvec_print(obj_gvec, stderr);
-
-    if (psf_pars_obj != Py_None) {
-        DBG wlog("get psf gmix\n");
-        psf_gvec = coellip_pars_to_gvec(psf_pars_obj);
-        gvec_print(psf_gvec, stderr);
+    if (diff_obj != Py_None) {
+        diff = associate_image(diff_obj, dims[0], dims[1]);
     }
 
-    flags=fill_diff(image, diff, obj_gvec, psf_gvec);
+    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
+    DBG gvec_print(obj_gvec, stderr);
 
-    DBG wlog("free obj gmix\n");
+    if (psf_pars_obj != Py_None) {
+        psf_gvec = coellip_pars_to_gvec(psf_pars_obj);
+        DBG gvec_print(psf_gvec, stderr);
+    }
+
+    flags=fill_model(image, obj_gvec, psf_gvec, diff);
+
     obj_gvec = gvec_free(obj_gvec);
-    DBG wlog("free psf gmix\n");
     psf_gvec = gvec_free(psf_gvec);
     // does not free underlying array
-    DBG wlog("free associated image\n");
     image = image_free(image);
-    DBG wlog("free associated diff\n");
     diff = image_free(diff);
 
     return PyInt_FromLong(flags);
@@ -321,7 +231,6 @@ PyGMixFit_coellip_fill_diff(PyObject *self, PyObject *args)
 static PyMethodDef gmix_fit_module_methods[] = {
     {"hello",      (PyCFunction)PyGMixFit_hello,               METH_NOARGS,  "test hello"},
     {"fill_model", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
-    {"fill_diff",  (PyCFunction)PyGMixFit_coellip_fill_diff,   METH_VARARGS,  "fill the diff image"},
     {NULL}  /* Sentinel */
 };
 
