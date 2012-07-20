@@ -83,6 +83,9 @@ struct image {
 #define IM_GET(im, row, col)                  \
     ( *((im)->rows[(im)->row0 + (row)] + (im)->col0 + col) )
 
+#define IM_SETFAST(im, row, col, val)                  \
+    ( *((im)->rows[(im)->row0 + (row)] + (im)->col0 + col) = (val) )
+
 #define IM_GETP(im, row, col)                 \
     (  ((im)->rows[(im)->row0 + (row)] + (im)->col0 + col) )
 /*

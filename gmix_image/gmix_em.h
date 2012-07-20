@@ -4,10 +4,6 @@
 #include "image.h"
 #include "gvec.h"
 
-#define GMIX_ERROR_NEGATIVE_DET 0x1
-#define GMIX_ERROR_MAXIT 0x2
-#define GMIX_ERROR_NEGATIVE_DET_COCENTER 0x4
-
 struct gmix {
     size_t maxiter;
     double tol;
