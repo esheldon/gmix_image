@@ -64,16 +64,18 @@ class GMixFitCoellip:
     """
     def __init__(self, image, pixerr, prior, width,
                  psf=None, 
+                 purepy=False,
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
         self.prior=prior
         self.width=width
-        self.psf = psf
+
+        self.purepy=purepy
         self.verbose=verbose
 
         self.check_prior(prior, width)
-        self.check_psf(self.psf)
+        self.set_psf(psf)
 
         self.ngauss=(len(prior)-4)/2
         self.nsub=1
@@ -83,12 +85,14 @@ class GMixFitCoellip:
     def check_prior(self, prior, width):
         if len(prior) != len(width):
             raise ValueError("prior and width must be same len")
-    def check_psf(self, psf):
-        if psf is not None:
-            if (not isinstance(psf,list) 
-                    or len(psf) < 1 
-                    or not isinstance(psf[0],dict)):
-                raise ValueError("psf should be a gaussian mixture model")
+
+    def set_psf(self, psf):
+        self.psf_pars=psf
+        self.psf_gmix=None
+        if self.psf_pars is not None:
+            if not isinstance(self.psf_pars,numpy.ndarray):
+                raise ValueError("psf should be an array ")
+            self.psf_gmix = pars2gmix_coellip(self.psf_pars, ptype='Tfrac')
 
     def dofit(self):
         """
@@ -171,27 +175,29 @@ class GMixFitCoellip:
 
         if False:
             print_pars(pars, front="pars: ")
+        
+        ntot = self.image.size + len(pars)
 
         if not self.check_hard_priors(pars):
-            return zeros(self.image.size) + numpy.inf
+            return zeros(ntot) + numpy.inf
 
-        model = self.get_model(pars)
-        if not isfinite(model[0,0]):
-            if self.verbose:
-                print >>stderr,'found NaN in model'
-            return zeros(self.image.size) + numpy.inf
+        ydiff_tot = zeros(ntot)
 
-        ydiff_tot = zeros(self.image.size + len(pars))
-
-        ydiff=( (model-self.image)/self.pixerr ).reshape(self.image.size)
         prior_diff = (self.prior-pars)/self.width
+        if self.purepy:
+            model = self.get_model(pars)
+            if not isfinite(model[0,0]):
+                if self.verbose:
+                    print >>stderr,'found NaN in model'
+                return zeros(ntot) + numpy.inf
 
-        #return ydiff
-        #print >>stderr,"ydiff:",ydiff
-        #print >>stderr,"prior diff:",prior_diff
-        #stop
+            ydiff=( (model-self.image)/self.pixerr ).reshape(self.image.size)
 
-        ydiff_tot[0:self.image.size] = ydiff
+            ydiff_tot[0:self.image.size] = ydiff
+        else:
+            _gmix_fit.fill_model(self.image, pars, self.psf_pars, ydiff_tot)
+            ydiff_tot[0:self.image.size] /= self.pixerr
+
         ydiff_tot[self.image.size:] = prior_diff
         return ydiff_tot
 
@@ -230,15 +236,15 @@ class GMixFitCoellip:
         # to create with psf convolutions
 
         gmix=self.pars2gmix(pars)
-        if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
+        if self.psf_gmix is not None:
+            moms = total_moms_psf(gmix, self.psf_gmix)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
                 if self.verbose:
                     print >>stderr,'bad p det'
                 return False
             for g in gmix:
-                for p in self.psf:
+                for p in self.psf_gmix:
                     irr = g['irr'] + p['irr']
                     irc = g['irc'] + p['irc']
                     icc = g['icc'] + p['icc']
@@ -264,7 +270,7 @@ class GMixFitCoellip:
         gmix=self.pars2gmix(pars)
         return gmix2image(gmix, 
                           self.image.shape, 
-                          psf=self.psf,
+                          psf=self.psf_gmix,
                           aslist=aslist, 
                           nsub=self.nsub,
                           renorm=False)
@@ -2837,6 +2843,8 @@ def pars2gmix_coellip_e1e2(pars):
 
     return gmix
 
+def get_ngauss_coellip(pars):
+    return (len(pars)-4)/2
 
 def print_pars(pars, stream=stderr, front=None):
     """
