@@ -11,7 +11,7 @@ GMixEM:
 
 functions
 ---------
-gmix2image:
+gmix2image_em:
     Create an image from the gaussian input mixture model.  Optionally
     send a PSF, which results in a call to gmix2image_psf.
 
@@ -241,19 +241,8 @@ class GMixEM(_gmix_em.GMixEM):
         return psf
 
 
-def gmix_print(gmix):
-    hfmt = ['%10s']*6
-    hfmt = ' '.join(hfmt)
-    h = hfmt % ('p','row','col','irr','irc','icc')
-    print h
 
-    fmt = ['%10.6g']*6
-    fmt = ' '.join(fmt)
-    for g in gmix:
-        print fmt % tuple([g[k] for k in ['p','row','col','irr','irc','icc']])
-
-
-def gmix2image(gauss_list, dims, 
+def gmix2image_em(gauss_list, dims, 
                psf=None, aslist=False, renorm=True, 
                order='c',
                nsub=1,
@@ -300,7 +289,7 @@ def gmix2image(gauss_list, dims,
         model_image = ogrid_image
 
     if psf is not None:
-        return gmix2image_psf(gauss_list, psf, dims, 
+        return gmix2image_psf_em(gauss_list, psf, dims, 
                               aslist=aslist, renorm=renorm,
                               order=order, nsub=nsub,
                               counts=counts)
@@ -333,7 +322,7 @@ def gmix2image(gauss_list, dims,
         return im
 
 
-def gmix2image_psf(gauss_list, psf_list, dims, 
+def gmix2image_psf_em(gauss_list, psf_list, dims, 
                    aslist=False, renorm=True, 
                    order='c',
                    nsub=1,
@@ -452,52 +441,4 @@ def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
 
 
 
-def total_moms(gauss_list, psf=None):
-    """
-    Only makes sense if the centers are the same
-
-    parameters
-    ----------
-    gauss_list: 
-        A gaussian mixture model as a list of dicts.
-    psf: optional
-        A PSF as a gaussian mixture model.  The result
-        will be convolved with the PSF.
-    """
-    if psf is not None:
-        return total_moms_psf(gauss_list, psf)
-
-    d={'irr':0.0, 'irc':0.0, 'icc':0.0}
-    psum=0.0
-    for g in gauss_list:
-        p=g['p']
-        psum += p
-        d['irr'] += p*g['irr']
-        d['irc'] += p*g['irc']
-        d['icc'] += p*g['icc']
-
-    d['irr'] /= psum
-    d['irc'] /= psum
-    d['icc'] /= psum
-    return d
-
-def total_moms_psf(gauss_list, psf_list):
-    """
-    Only makes sense if the centers are the same
-    """
-    d={'irr':0.0, 'irc':0.0, 'icc':0.0}
-    psf_totmom = total_moms(psf_list)
-
-    psum=0.0
-    for g in gauss_list:
-        p=g['p']
-        psum += p
-        d['irr'] += p*(g['irr'] + psf_totmom['irr'])
-        d['irc'] += p*(g['irc'] + psf_totmom['irc'])
-        d['icc'] += p*(g['icc'] + psf_totmom['icc'])
-
-    d['irr'] /= psum
-    d['irc'] /= psum
-    d['icc'] /= psum
-    return d
 

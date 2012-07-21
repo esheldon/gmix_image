@@ -7,36 +7,39 @@ See docs for
 """
 from sys import stderr
 
-import gmix_em
-import gmix_fit
+from . import gmix_em
+from . import gmix_fit
+from . import util
+from . import render
 
-from gmix_em import GMixEM
-from gmix_em import GMIXEM_ERROR_NEGATIVE_DET
-from gmix_em import GMIXEM_ERROR_MAXIT
-from gmix_em import GMIXEM_ERROR_NEGATIVE_DET_COCENTER
-from gmix_em import gmix2image, gmix2image_psf
-from gmix_em import ogrid_image, total_moms, total_moms_psf
-from gmix_em import gmix_print
+from .util import gmix2pars, total_moms,  gmix_print, pars2gmix_coellip
+from .render import gmix2image
 
-from gmix_fit import GMixFitCoellip
-from gmix_fit import GMixFitCoellipTry
-from gmix_fit import GMixFitDev
+from .gmix_em import GMixEM
+from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET
+from .gmix_em import GMIXEM_ERROR_MAXIT
+from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET_COCENTER
+from .gmix_em import gmix2image_em, gmix2image_psf_em
+from .gmix_em import ogrid_image
 
-from gmix_fit import pars2gmix_coellip
-from gmix_fit import get_ngauss_coellip
+from .gmix_fit import GMixFitCoellip
+from .gmix_fit import GMixFitCoellipTry
+from .gmix_fit import GMixFitDev
 
-from gmix_fit import ellip2eta
-from gmix_fit import eta2ellip
-from gmix_fit import print_pars
-from gmix_fit import GMIXFIT_MAXITER
-from gmix_fit import GMIXFIT_SINGULAR_MATRIX
-from gmix_fit import GMIXFIT_NEG_COV_EIG
-from gmix_fit import GMIXFIT_NEG_COV_DIAG
-from gmix_fit import GMIXFIT_NEG_MCOV_DIAG
-from gmix_fit import GMIXFIT_MCOV_NOTPOSDEF
-from gmix_fit import GMIXFIT_CALLS_NOT_CHANGING
-from gmix_fit import GMIXFIT_LOW_S2N
-import test
+from .gmix_fit import get_ngauss_coellip
+
+from .gmix_fit import ellip2eta
+from .gmix_fit import eta2ellip
+from .gmix_fit import print_pars
+from .gmix_fit import GMIXFIT_MAXITER
+from .gmix_fit import GMIXFIT_SINGULAR_MATRIX
+from .gmix_fit import GMIXFIT_NEG_COV_EIG
+from .gmix_fit import GMIXFIT_NEG_COV_DIAG
+from .gmix_fit import GMIXFIT_NEG_MCOV_DIAG
+from .gmix_fit import GMIXFIT_MCOV_NOTPOSDEF
+from .gmix_fit import GMIXFIT_CALLS_NOT_CHANGING
+from .gmix_fit import GMIXFIT_LOW_S2N
+from . import test
 
 _flagmap_em=\
     {GMIXEM_ERROR_NEGATIVE_DET:            'GMIXEM_ERROR_NEGATIVE_DET',

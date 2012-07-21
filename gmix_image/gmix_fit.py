@@ -5,9 +5,10 @@ from numpy.linalg import eig
 from fimage import model_image
 from sys import stderr
 
-from .gmix_em import gmix2image, total_moms_psf
+from .gmix_em import gmix2image_em
+from .util import total_moms
 
-from . import _gmix_fit
+from . import _render
 
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
@@ -92,7 +93,7 @@ class GMixFitCoellip:
         if self.psf_pars is not None:
             if not isinstance(self.psf_pars,numpy.ndarray):
                 raise ValueError("psf should be an array ")
-            self.psf_gmix = pars2gmix_coellip(self.psf_pars, ptype='Tfrac')
+            self.psf_gmix = pars2gmix_coellip_pick(self.psf_pars, ptype='Tfrac')
 
     def dofit(self):
         """
@@ -185,6 +186,7 @@ class GMixFitCoellip:
 
         prior_diff = (self.prior-pars)/self.width
         if self.purepy:
+
             model = self.get_model(pars)
             if not isfinite(model[0,0]):
                 if self.verbose:
@@ -195,7 +197,7 @@ class GMixFitCoellip:
 
             ydiff_tot[0:self.image.size] = ydiff
         else:
-            _gmix_fit.fill_model(self.image, pars, self.psf_pars, ydiff_tot)
+            _render.fill_model_coellip(self.image, pars, self.psf_pars, ydiff_tot)
             ydiff_tot[0:self.image.size] /= self.pixerr
 
         ydiff_tot[self.image.size:] = prior_diff
@@ -237,7 +239,7 @@ class GMixFitCoellip:
 
         gmix=self.pars2gmix(pars)
         if self.psf_gmix is not None:
-            moms = total_moms_psf(gmix, self.psf_gmix)
+            moms = total_moms(gmix, psf=self.psf_gmix)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
                 if self.verbose:
@@ -266,14 +268,9 @@ class GMixFitCoellip:
 
         return True
 
-    def get_model(self, pars, aslist=False):
+    def get_model(self, pars):
         gmix=self.pars2gmix(pars)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf_gmix,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
+        return gmix2image_em(gmix, self.image.shape, psf=self.psf_gmix)
 
     def pars2gmix(self, pars):
         return pars2gmix_coellip_Tfrac(pars)
@@ -363,7 +360,7 @@ class GMixFitDev:
         # make models
         if isinstance(psf,numpy.ndarray):
             # note we assume psf is a more generic coelliptical fit
-            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
+            self.psf = pars2gmix_coellip_pick(psf,ptype=self.ptype)
         else:
             self.psf = psf
 
@@ -508,7 +505,7 @@ class GMixFitDev:
 
         gmix=self.pars2gmix(pars)
         if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
+            moms = total_moms(gmix, psf=self.psf)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
                 if self.verbose:
@@ -539,12 +536,12 @@ class GMixFitDev:
 
     def get_model(self, pars, aslist=False):
         gmix=self.pars2gmix(pars)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
+        return gmix2image_em(gmix, 
+                             self.image.shape, 
+                             psf=self.psf,
+                             aslist=aslist, 
+                             nsub=self.nsub,
+                             renorm=False)
 
     def scale_leastsq_cov(self, popt, pcov):
         """
@@ -629,7 +626,7 @@ class GMixFitCoellipTry:
         # we keep the gmix version since we use gmix2image to
         # make models
         if isinstance(psf,numpy.ndarray):
-            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
+            self.psf = pars2gmix_coellip_pick(psf,ptype=self.ptype)
         else:
             self.psf = psf
 
@@ -772,7 +769,7 @@ class GMixFitCoellipTry:
         self.flags = flags
 
     def get_gmix(self):
-        return pars2gmix_coellip(self.popt, ptype=self.ptype)
+        return pars2gmix_coellip_pick(self.popt, ptype=self.ptype)
 
     gmix = property(get_gmix)
 
@@ -890,9 +887,9 @@ class GMixFitCoellipTry:
         # check determinant for all images we might have
         # to create with psf convolutions
 
-        gmix=pars2gmix_coellip(pars, ptype=self.ptype)
+        gmix=pars2gmix_coellip_pick(pars, ptype=self.ptype)
         if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
+            moms = total_moms(gmix, psf=self.psf)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
                 if self.verbose:
@@ -922,13 +919,13 @@ class GMixFitCoellipTry:
         return True
 
     def get_model(self, pars, aslist=False):
-        gmix = pars2gmix_coellip(pars, ptype=self.ptype)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
+        gmix = pars2gmix_coellip_pick(pars, ptype=self.ptype)
+        return gmix2image_em(gmix, 
+                             self.image.shape, 
+                             psf=self.psf,
+                             aslist=aslist, 
+                             nsub=self.nsub,
+                             renorm=False)
 
     def jacob(self, pars):
         if self.ptype == 'eta':
@@ -1704,7 +1701,7 @@ class GMixFitCoellipFix:
         # we keep the gmix version since we use gmix2image to
         # make models
         if isinstance(psf,numpy.ndarray):
-            self.psf = pars2gmix_coellip(psf,ptype=self.ptype)
+            self.psf = pars2gmix_coellip_pick(psf,ptype=self.ptype)
         else:
             self.psf = psf
 
@@ -1845,7 +1842,7 @@ class GMixFitCoellipFix:
         self.flags = flags
 
     def get_gmix(self):
-        return pars2gmix_coellip(self.popt, ptype=self.ptype)
+        return pars2gmix_coellip_pick(self.popt, ptype=self.ptype)
     gmix = property(get_gmix)
 
     def get_ydiff(self, pars1):
@@ -1912,9 +1909,9 @@ class GMixFitCoellipFix:
         # check determinant for all images we might have
         # to create with psf convolutions
 
-        gmix=pars2gmix_coellip(pars, ptype=self.ptype)
+        gmix=pars2gmix_coellip_pick(pars, ptype=self.ptype)
         if self.psf is not None:
-            moms = total_moms_psf(gmix, self.psf)
+            moms = total_moms(gmix, psf=self.psf)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
             if pdet <= 0:
                 print >>stderr,'bad p det'
@@ -1943,13 +1940,13 @@ class GMixFitCoellipFix:
     def get_model(self, pars1, aslist=False):
         pars = self.get_full_pars(pars1)
         #print 'full pars:',pars
-        gmix = pars2gmix_coellip(pars, ptype=self.ptype)
-        return gmix2image(gmix, 
-                          self.image.shape, 
-                          psf=self.psf,
-                          aslist=aslist, 
-                          nsub=self.nsub,
-                          renorm=False)
+        gmix = pars2gmix_coellip_pick(pars, ptype=self.ptype)
+        return gmix2image_em(gmix, 
+                             self.image.shape, 
+                             psf=self.psf,
+                             aslist=aslist, 
+                             nsub=self.nsub,
+                             renorm=False)
 
     def jacob(self, pars):
         if self.ptype == 'eta':
@@ -2729,7 +2726,7 @@ def pars2gmix_coellip_Tfrac(pars):
 
 
 
-def pars2gmix_coellip(pars, ptype='Tfrac'):
+def pars2gmix_coellip_pick(pars, ptype='Tfrac'):
     """
     Convert a parameter array as used for the LM code into a gaussian mixture
     model.  This is for the case of co-elliptical gaussians.
@@ -2842,6 +2839,7 @@ def pars2gmix_coellip_e1e2(pars):
         gmix.append(d)
 
     return gmix
+
 
 def get_ngauss_coellip(pars):
     return (len(pars)-4)/2

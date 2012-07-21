@@ -13,6 +13,40 @@ PyGMixFit_hello(void) {
     return PyString_FromString("hello world!");
 }
 
+// pars are full gmix of size 6*ngauss
+struct gvec *pars_to_gvec(PyObject *array)
+{
+    npy_intp sz=0;
+    npy_intp ngauss=0;
+    double *pars=NULL;
+    struct gauss *gauss=NULL;
+
+    int i=0;
+
+    pars = PyArray_DATA(array);
+    sz = PyArray_SIZE(array);
+
+    ngauss = sz/6;
+
+    struct gvec * gvec = gvec_new(ngauss);
+
+
+    for (i=0; i<ngauss; i++) {
+        gauss = &gvec->data[i];
+
+        gauss->p   = pars[i+0];
+        gauss->row = pars[i+1];
+        gauss->col = pars[i+2];
+        gauss->irr = pars[i+3];
+        gauss->irc = pars[i+4];
+        gauss->icc = pars[i+5];
+    }
+
+    gvec_set_dets(gvec);
+    return gvec;
+}
+
+
 
 struct gvec *coellip_pars_to_gvec(PyObject *array)
 {
@@ -120,7 +154,7 @@ int fill_model(struct image *image,
                 if (gauss->det <= 0) {
                     DBG wlog("found det: %.16g\n", gauss->det);
                     flags |= GMIX_ERROR_NEGATIVE_DET;
-                    goto _gmix_fit_eval_model_bail;
+                    goto _eval_model_bail;
                 }
 
                 u = row-gauss->row;
@@ -140,7 +174,7 @@ int fill_model(struct image *image,
                         if (det <= 0) {
                             DBG wlog("found convolved det: %.16g\n", det);
                             flags |= GMIX_ERROR_NEGATIVE_DET;
-                            goto _gmix_fit_eval_model_bail;
+                            goto _eval_model_bail;
                         }
                         chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
                         chi2 /= det;
@@ -171,7 +205,7 @@ int fill_model(struct image *image,
         } // cols
     } // rows
 
-_gmix_fit_eval_model_bail:
+_eval_model_bail:
     return flags;
 }
 
@@ -226,11 +260,65 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
     return PyInt_FromLong(flags);
 }
 
+/*
+ * The pars are full gaussian mixtures.
+ *
+ * Note the diff object can actually have padding at the end
+ * that will contain priors, so don't try to grab it's dimensions
+ */
+static PyObject *
+PyGMixFit_fill_model(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* diff_obj=NULL;
+    PyObject* obj_pars_obj=NULL;
+    PyObject* psf_pars_obj=NULL; // Can be None
+
+    struct image *image=NULL;
+    struct gvec *obj_gvec=NULL;
+    struct gvec *psf_gvec=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, &psf_pars_obj, &diff_obj)) {
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    if (diff_obj != Py_None) {
+        diff = associate_image(diff_obj, dims[0], dims[1]);
+    }
+
+    obj_gvec = pars_to_gvec(obj_pars_obj);
+    DBG gvec_print(obj_gvec, stderr);
+
+    if (psf_pars_obj != Py_None) {
+        psf_gvec = pars_to_gvec(psf_pars_obj);
+        DBG gvec_print(psf_gvec, stderr);
+    }
+
+    flags=fill_model(image, obj_gvec, psf_gvec, diff);
+
+    obj_gvec = gvec_free(obj_gvec);
+    psf_gvec = gvec_free(psf_gvec);
+    // does not free underlying array
+    image = image_free(image);
+    diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
 
 
-static PyMethodDef gmix_fit_module_methods[] = {
+
+
+static PyMethodDef render_module_methods[] = {
     {"hello",      (PyCFunction)PyGMixFit_hello,               METH_NOARGS,  "test hello"},
-    {"fill_model", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
+    {"fill_model_coellip", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
+    {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image"},
     {NULL}  /* Sentinel */
 };
 
@@ -238,10 +326,10 @@ static PyMethodDef gmix_fit_module_methods[] = {
 #if PY_MAJOR_VERSION >= 3
     static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
-        "_gmix_fit",      /* m_name */
+        "_render",      /* m_name */
         "Defines the some gmix fit methods",  /* m_doc */
         -1,                  /* m_size */
-        gmix_fit_module_methods,    /* m_methods */
+        render_module_methods,    /* m_methods */
         NULL,                /* m_reload */
         NULL,                /* m_traverse */
         NULL,                /* m_clear */
@@ -253,7 +341,7 @@ static PyMethodDef gmix_fit_module_methods[] = {
 #define PyMODINIT_FUNC void
 #endif
 PyMODINIT_FUNC
-init_gmix_fit(void) 
+init_render(void) 
 {
     PyObject* m;
 
@@ -277,7 +365,7 @@ init_gmix_fit(void)
         return;
     }
     */
-    m = Py_InitModule3("_gmix_fit", gmix_fit_module_methods, 
+    m = Py_InitModule3("_render", render_module_methods, 
             "This module gmix fit related routines.\n");
     if (m==NULL) {
         return;

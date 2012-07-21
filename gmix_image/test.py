@@ -7,7 +7,7 @@ from numpy.random import random as randu
 import gmix_image
 import gmix_fit
 from .gmix_fit import print_pars, ellip2eta, eta2ellip
-from .gmix_em import gmix2image, gmix2image_psf
+from .gmix_em import gmix2image_em
 import copy
 
 import esutil as eu
@@ -43,7 +43,7 @@ def test_em(add_noise=False):
           {'p':0.4,'row':8,'col':10,'irr':4.0,'irc':0.3,'icc':1.5}]
 
     counts=1000
-    im = gmix2image(gd, dims, counts=counts)
+    im = gmix2image_em(gd, dims, counts=counts)
 
     if add_noise:
         skysig=0.1*im.max()
@@ -100,8 +100,8 @@ def test_psf_colocate_em(add_noise=False, npsf=1):
     else:
         gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
 
-    im_prepsf = gmix2image(gd,dims,counts=counts)
-    im = gmix2image_psf(gd,gpsf,dims,counts=counts)
+    im_prepsf = gmix2image_em(gd,dims,counts=counts)
+    im = gmix2image_em(gd,dims, psf=gpsf,counts=counts)
 
     if add_noise:
         skysig=0.05*im.max()
@@ -149,8 +149,8 @@ def test_psf_colocate_em(add_noise=False, npsf=1):
     if have_images:
         pars = gm.pars
 
-        im_fit = gmix2image(pars,dims,counts=counts)
-        im_fit_conv = gmix2image_psf(pars,gpsf,dims,counts=counts)
+        im_fit = gmix2image_em(pars,dims,counts=counts)
+        im_fit_conv = gmix2image_em(pars,dims,psf=gpsf, counts=counts)
 
         images.compare_images(im_prepsf, im_fit)
 
@@ -178,7 +178,7 @@ def test_psf_em(add_noise=False, npsf=1):
     dims=[31,31]
     gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
           {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
-    im_prepsf = gmix_image.gmix2image(gd,dims)
+    im_prepsf = gmix2image_em(gd,dims)
 
     #gd = [{'p':0.4,'row':15,'col':15,'irr':2.5,'irc':0.1,'icc':3.1}]
 
@@ -234,7 +234,7 @@ def test_psf_em(add_noise=False, npsf=1):
 
     if have_images:
         pars = gm.pars
-        im_fit = gmix_image.gmix2image(pars,dims)
+        im_fit = gmix2image_em(pars,dims)
 
         images.compare_images(im_prepsf, im_fit)
 
@@ -312,7 +312,7 @@ def test_fit_dev_by_ellip(sigma, method='lm'):
 
     # plot the last one
     gmix = gmix_fit.pars2gmix_coellip(gf.popt)
-    model = gmix2image(gmix,im.shape)
+    model = gmix2image_em(gmix,im.shape)
     images.compare_images(im,model)
 
     biggles.configure('fontsize_min', 1.0)
@@ -444,7 +444,7 @@ def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
 
         # plot the last one
         gmix = gmix_fit.pars2gmix_coellip(gf.popt,ptype=ptype)
-        model = gmix2image(gmix,im.shape)
+        model = gmix2image_em(gmix,im.shape)
         images.compare_images(im,model)
     else:
         data=eu.io.read(f)
@@ -552,7 +552,7 @@ def test_fit_dev_eta_bysigma():
 
         # plot the last one
         gmix = gmix_fit.pars2gmix_coellip_eta(gf.popt)
-        model = gmix2image(gmix,im.shape)
+        model = gmix2image_em(gmix,im.shape)
         images.compare_images(im,model)
     else:
         data=eu.io.read(f)
@@ -598,7 +598,7 @@ def test_fit_1gauss_fix(imove, use_jacob=True):
     print >>stderr,'pars'
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
-    im=gmix2image(gmix,dims)
+    im=gmix2image_em(gmix,dims)
     #images.multiview(im)
     
     p0=pars.copy()
@@ -659,7 +659,7 @@ def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
     print >>stderr,'pars'
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
-    im=gmix2image(gmix,dims,psf=psf)
+    im=gmix2image_em(gmix,dims,psf=psf)
     #images.multiview(im)
     
     p0=pars.copy()
@@ -712,7 +712,7 @@ def test_fit_1gauss_noisy(ellip=0.2, s2n=10000):
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
     nsub=1
-    im0=gmix2image(gmix,dims,nsub=nsub)
+    im0=gmix2image_em(gmix,dims,nsub=nsub)
 
     im,skysig = fimage.add_noise(im0, s2n,check=True)
 
@@ -799,7 +799,7 @@ def test_fit_1gauss_galsim(ellip=0.2, s2n=10000):
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
     nsub=1
-    im0=gmix2image(gmix,dims,nsub=nsub)
+    im0=gmix2image_em(gmix,dims,nsub=nsub)
 
     im,skysig = fimage.add_noise(im0, s2n,check=True)
 
@@ -847,7 +847,7 @@ def test_fit_1gauss(ellip=0.2):
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
     nsub=1
-    im=gmix2image(gmix,dims,nsub=nsub)
+    im=gmix2image_em(gmix,dims,nsub=nsub)
     images.multiview(im,title='nsub: %d' % nsub)
     
     p0=pars.copy()
@@ -906,7 +906,7 @@ def test_fit_1gauss_psf(use_jacob=True, seed=45):
     print >>stderr,'pars'
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
 
-    im=gmix2image(gmix,dims,psf=psf)
+    im=gmix2image_em(gmix,dims,psf=psf)
     #images.multiview(im)
     
     p0=pars.copy()
@@ -1072,7 +1072,7 @@ def test_fit_2gauss_e1e2(ellip=0.2,
     pars=array([cen[0],cen[1],e1,e2,p1,p2,T1,T2])
 
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
-    im0=gmix2image(gmix,dims,psf=psf,nsub=nsub)
+    im0=gmix2image_em(gmix,dims,psf=psf,nsub=nsub)
     if s2n > 0:
         im,skysig = add_noise(im0, s2n,check=True)
     else:
@@ -1141,7 +1141,7 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
     print >>stderr,'pars'
 
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
-    im=gmix2image(gmix,dims, psf=psf)
+    im=gmix2image_em(gmix,dims, psf=psf)
     
     p0=pars.copy()
     p0[0] += 1*(randu()-0.5)  # cen0
@@ -1239,7 +1239,7 @@ def test_fit_exp_e1e2(use_jacob=True):
 
     # plot the last one
     gmix = gf.gmix
-    model = gmix2image(gmix,im.shape)
+    model = gmix2image_em(gmix,im.shape)
 
     title=None
     if not use_jacob:
@@ -1337,7 +1337,7 @@ def test_fit_exp_eta(use_jacob=True):
 
     # plot the last one
     gmix = gmix_fit.pars2gmix_coellip_eta(gf.popt)
-    model = gmix2image(gmix,im.shape)
+    model = gmix2image_em(gmix,im.shape)
     plt=images.compare_images(im,model)
     epsfile='test-opt-exp.eps'
     print >>stderr,'epsfile of image compare:',epsfile
@@ -1412,7 +1412,7 @@ def test_fit_exp_cov(method='lm'):
         data['pars'][isigma,:] = gf.popt
     # plot the last one
     gmix = gmix_fit.pars2gmix_coellip(gf.popt)
-    model = gmix2image(gmix,im.shape)
+    model = gmix2image_em(gmix,im.shape)
     images.compare_images(im,model)
 
     biggles.configure('fontsize_min', 1.0)
@@ -1485,7 +1485,7 @@ def test_gmix_exp():
 
     gmix_image.gmix_print(gm.pars)
     stderr.write('\n')
-    model = gmix2image(gm.pars,im.shape)
+    model = gmix2image_em(gm.pars,im.shape)
     images.compare_images(im, model)
 
 def get_exp_guess(cen,cov,ngauss):
@@ -1543,7 +1543,7 @@ def test_fit_1gauss_e1e2(ellip=0.2,
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
 
     nsub=1
-    im0=gmix2image(gmix,dims,nsub=nsub,psf=psf)
+    im0=gmix2image_em(gmix,dims,nsub=nsub,psf=psf)
     if s2n > 0:
         im,skysig = add_noise(im0, s2n,check=True)
     else:
@@ -1625,7 +1625,7 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
     gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
 
     nsub=1
-    im=gmix2image(gmix,dims,nsub=nsub, psf=psf)
+    im=gmix2image_em(gmix,dims,nsub=nsub, psf=psf)
     
     p0=pars.copy()
     if imove == 0:
