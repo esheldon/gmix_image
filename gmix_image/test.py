@@ -238,98 +238,6 @@ def test_psf_em(add_noise=False, npsf=1):
 
         images.compare_images(im_prepsf, im_fit)
 
-def test_fit_dev_by_ellip(sigma, method='lm'):
-    """
-    Fixed sigma, different ellip
-    """
-    import biggles
-    from fimage import model_image
-    numpy.random.seed(35)
-
-    ngauss=4
-    nsig=15
-    npars=2*ngauss+4
-    nsigma_vals=20
-
-
-    data=numpy.zeros(nsigma_vals,dtype=[('sigma','f8'),('pars','f8',npars)])
-    sigvals = numpy.linspace(1.5,5.0,nsigma_vals)
-    for isigma,sigma in enumerate(sigvals):
-        print '-'*70
-        print 'sigma:',sigma
-        T = 2*sigma**2
-
-        Irr = sigma**2
-        Irc = 0.0
-        Icc = sigma**2
-        dim = int(2*nsig*sigma)
-        if (dim % 2) == 0:
-            dim += 1
-        dims=array([dim,dim])
-        cen=(dims-1)/2.
-        cov=[Irr,Irc,Icc]
-        im = model_image('dev',dims,cen,cov,nsub=16)
-
-
-        flags=9999
-        while flags != 0:
-            stderr.write('.')
-            if ngauss == 3:
-                p0 = [cen[0],cen[1],Irr,Irc,Icc, 0.4,0.07,0.55, 0.2,3.8]
-            elif ngauss==4:
-                # at sigma==3 pixelization, expect f vals of 
-                #   0.044, 0.22, 6.0
-                # but always start on the *inside* of the expected
-                p0 = array([cen[0],cen[1],Irr,Irc,Icc, 
-                            .22, .35, .25, .15, 
-                            .1, .25, 4.])
-                p0[5] += 0.1*(randu()-0.5)
-                p0[6] += 0.1*(randu()-0.5)
-                p0[7] += 0.1*(randu()-0.5)
-                p0[8] += 0.1*(randu()-0.5)
-
-                p0[9] += 0.1*(randu()-0.5)
-                p0[10] += 0.1*(randu()-0.5)
-                p0[11] += 2*(randu()-0.5)
-
-            else:
-                raise ValueError("implement guess ngauss > 4")
-
-            verbose=False
-            gf=gmix_fit.GMixFitCoellip(im, p0, method=method,verbose=verbose)
-            flags = gf.flags
-
-        stderr.write('\n')
-        print 'numiter:',gf.numiter
-        for i in xrange(len(gf.popt)):
-            print '%.6g' % gf.popt[i]
-
-        if gf.flags != 0:
-            raise RuntimeError("failed")
-
-        data['sigma'][isigma] = sigma
-        data['pars'][isigma,:] = gf.popt
-
-    # plot the last one
-    gmix = gmix_fit.pars2gmix_coellip(gf.popt)
-    model = gmix2image_em(gmix,im.shape)
-    images.compare_images(im,model)
-
-    biggles.configure('fontsize_min', 1.0)
-    biggles.configure('linewidth',1.0) # frame only
-    nrows=3
-    ncols=4
-    tab=biggles.Table(nrows,ncols)
-    for par in xrange(npars):
-        plt=biggles.FramedPlot()
-        plt.add(biggles.Curve(data['sigma'],data['pars'][:,par]))
-        plt.xlabel = r'$\sigma$'
-        plt.ylabel = 'p%d' % par
-        tab[par//ncols,par%ncols] = plt
-
-    tab.show()
-
-
 def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
     """
     Round object as a function of sigma
@@ -443,7 +351,7 @@ def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
 
 
         # plot the last one
-        gmix = gmix_fit.pars2gmix_coellip(gf.popt,ptype=ptype)
+        gmix = gmix_fit.pars2gmix_coellip_pick(gf.popt,ptype=ptype)
         model = gmix2image_em(gmix,im.shape)
         images.compare_images(im,model)
     else:
@@ -596,7 +504,7 @@ def test_fit_1gauss_fix(imove, use_jacob=True):
 
     pars=array([cen[0],cen[1],eta,theta,1.,T1])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     im=gmix2image_em(gmix,dims)
     #images.multiview(im)
@@ -657,7 +565,7 @@ def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
 
     pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     im=gmix2image_em(gmix,dims,psf=psf)
     #images.multiview(im)
@@ -709,7 +617,7 @@ def test_fit_1gauss_noisy(ellip=0.2, s2n=10000):
     print >>stderr,'ellip:',ellip
     pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     nsub=1
     im0=gmix2image_em(gmix,dims,nsub=nsub)
@@ -796,7 +704,7 @@ def test_fit_1gauss_galsim(ellip=0.2, s2n=10000):
     print >>stderr,'ellip:',ellip
     pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     nsub=1
     im0=gmix2image_em(gmix,dims,nsub=nsub)
@@ -844,7 +752,7 @@ def test_fit_1gauss(ellip=0.2):
     print >>stderr,'ellip:',ellip
     pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     nsub=1
     im=gmix2image_em(gmix,dims,nsub=nsub)
@@ -904,7 +812,7 @@ def test_fit_1gauss_psf(use_jacob=True, seed=45):
 
     pars=array([cen[0],cen[1],eta,theta,1.,T])
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
 
     im=gmix2image_em(gmix,dims,psf=psf)
     #images.multiview(im)
@@ -1071,7 +979,7 @@ def test_fit_2gauss_e1e2(ellip=0.2,
     p2=0.6
     pars=array([cen[0],cen[1],e1,e2,p1,p2,T1,T2])
 
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype=ptype)
     im0=gmix2image_em(gmix,dims,psf=psf,nsub=nsub)
     if s2n > 0:
         im,skysig = add_noise(im0, s2n,check=True)
@@ -1140,7 +1048,7 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
     pars=array([cen[0],cen[1],eta,theta,p1,p2,T1,T2])
     print >>stderr,'pars'
 
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype='eta')
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype='eta')
     im=gmix2image_em(gmix,dims, psf=psf)
     
     p0=pars.copy()
@@ -1411,7 +1319,7 @@ def test_fit_exp_cov(method='lm'):
         data['sigma'][isigma] = sigma
         data['pars'][isigma,:] = gf.popt
     # plot the last one
-    gmix = gmix_fit.pars2gmix_coellip(gf.popt)
+    gmix = gmix_fit.pars2gmix_coellip_pick(gf.popt,ptype='cov')
     model = gmix2image_em(gmix,im.shape)
     images.compare_images(im,model)
 
@@ -1540,7 +1448,7 @@ def test_fit_1gauss_e1e2(ellip=0.2,
     pars=array([cen[0],cen[1],e1,e2,1.,T])
 
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype=ptype)
 
     nsub=1
     im0=gmix2image_em(gmix,dims,nsub=nsub,psf=psf)
@@ -1622,7 +1530,7 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
     pars=array([cen[0],cen[1],e1,e2,1.,T])
 
     print >>stderr,'pars'
-    gmix = gmix_fit.pars2gmix_coellip(pars,ptype=ptype)
+    gmix = gmix_fit.pars2gmix_coellip_pick(pars,ptype=ptype)
 
     nsub=1
     im=gmix2image_em(gmix,dims,nsub=nsub, psf=psf)

@@ -12,7 +12,7 @@ from . import gmix_fit
 from . import util
 from . import render
 
-from .util import gmix2pars, total_moms,  gmix_print, pars2gmix_coellip
+from .util import gmix2pars, pars2gmix, total_moms,  gmix_print
 from .render import gmix2image
 
 from .gmix_em import GMixEM

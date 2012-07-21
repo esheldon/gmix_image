@@ -180,9 +180,9 @@ class GMixFitCoellip:
         ntot = self.image.size + len(pars)
 
         if not self.check_hard_priors(pars):
-            return zeros(ntot) + numpy.inf
+            return zeros(ntot, dtype='f8') + numpy.inf
 
-        ydiff_tot = zeros(ntot)
+        ydiff_tot = zeros(ntot, dtype='f8')
 
         prior_diff = (self.prior-pars)/self.width
         if self.purepy:
@@ -191,7 +191,7 @@ class GMixFitCoellip:
             if not isfinite(model[0,0]):
                 if self.verbose:
                     print >>stderr,'found NaN in model'
-                return zeros(ntot) + numpy.inf
+                return zeros(ntot, dtype='f8') + numpy.inf
 
             ydiff=( (model-self.image)/self.pixerr ).reshape(self.image.size)
 

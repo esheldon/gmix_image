@@ -21,25 +21,27 @@ struct gvec *pars_to_gvec(PyObject *array)
     double *pars=NULL;
     struct gauss *gauss=NULL;
 
-    int i=0;
+    int i=0, beg=0;
 
     pars = PyArray_DATA(array);
     sz = PyArray_SIZE(array);
 
     ngauss = sz/6;
 
-    struct gvec * gvec = gvec_new(ngauss);
+    struct gvec *gvec = gvec_new(ngauss);
 
 
     for (i=0; i<ngauss; i++) {
+        beg = i*6;
+
         gauss = &gvec->data[i];
 
-        gauss->p   = pars[i+0];
-        gauss->row = pars[i+1];
-        gauss->col = pars[i+2];
-        gauss->irr = pars[i+3];
-        gauss->irc = pars[i+4];
-        gauss->icc = pars[i+5];
+        gauss->p   = pars[beg+0];
+        gauss->row = pars[beg+1];
+        gauss->col = pars[beg+2];
+        gauss->irr = pars[beg+3];
+        gauss->irc = pars[beg+4];
+        gauss->icc = pars[beg+5];
     }
 
     gvec_set_dets(gvec);

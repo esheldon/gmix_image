@@ -24,16 +24,15 @@ def gmix2pars(gmix):
                     p2,row2,....]
     """
     ngauss=len(gmix)
-    pars=zeros(ngauss*6)
-    i=0
-    for g in gmix:
-        pars[i+0] = g['p']
-        pars[i+1] = g['row']
-        pars[i+2] = g['col']
-        pars[i+3] = g['irr']
-        pars[i+4] = g['irc']
-        pars[i+5] = g['icc']
-        i+=1
+    pars=zeros(ngauss*6,dtype='f8')
+    for i,g in enumerate(gmix):
+        beg=i*6
+        pars[beg+0] = g['p']
+        pars[beg+1] = g['row']
+        pars[beg+2] = g['col']
+        pars[beg+3] = g['irr']
+        pars[beg+4] = g['irc']
+        pars[beg+5] = g['icc']
 
     return pars
 
@@ -103,9 +102,42 @@ def gmix_print(gmix):
     for g in gmix:
         print fmt % tuple([g[k] for k in ['p','row','col','irr','irc','icc']])
 
+def pars2gmix(pars, coellip=False):
+    """
+    Convert a parameter array.  
+
+    if coellip, the packing is
+        [cen1,cen2,e1,e2,Tmax,Tfrac2,Tfrac3..,p1,p2,p3...]
+    otherwise
+        [p1,row1,col1,irr1,irc1,icc1,
+         p2,row2,col2,irr2,irc2,icc2,
+         ...]
+    """
+
+    if coellip:
+        return _pars2gmix_coellip(pars)
+
+    ngauss = len(pars)/6
+    gmix=[]
+
+    for i in xrange(ngauss):
+        beg=i*6
+        d={}
+
+        d['p']   = pars[beg+0]
+        d['row'] = pars[beg+1]
+        d['col'] = pars[beg+2]
+        d['irr'] = pars[beg+3]
+        d['irc'] = pars[beg+4]
+        d['icc'] = pars[beg+5]
+        gmix.append(d)
+
+    return gmix
 
 
-def pars2gmix_coellip(pars):
+
+
+def _pars2gmix_coellip(pars):
     """
     Convert a parameter array.  
 
