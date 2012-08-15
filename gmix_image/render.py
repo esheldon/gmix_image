@@ -65,6 +65,7 @@ def _gmix2image_pars(pars, dims, psf=None, coellip=False):
 
     obj_pars = numpy.array(pars, dtype='f8')
 
+    psf_pars=None
     if psf is not None:
         psf_pars = numpy.array(psf, dtype='f8')
 
@@ -73,9 +74,10 @@ def _gmix2image_pars(pars, dims, psf=None, coellip=False):
         if ( (len(obj_pars)-4) % 2 ) != 0:
             raise ValueError("object pars must have size 2*ngauss+4 "
                              "for coellip")
-        if ( (len(psf_pars)-4) % 2 ) != 0:
-            raise ValueError("psf pars must have size 2*ngauss+4 "
-                             "for coellip")
+        if psf_pars:
+            if ( (len(psf_pars)-4) % 2 ) != 0:
+                raise ValueError("psf pars must have size 2*ngauss+4 "
+                                 "for coellip")
 
         flags=_render.fill_model_coellip(im, obj_pars, psf_pars, None)
     else:

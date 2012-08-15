@@ -86,12 +86,14 @@ def _total_moms_psf(gauss_list, psf_list):
     d['icc'] /= psum
     return d
 
-def gmix_print(gmix):
+def gmix_print(gmix, title=None):
     """
     Print a gaussian mixture.
 
     The gmix should be in list-of-dicts represenation
     """
+    if title:
+        print title
     hfmt = ['%10s']*6
     hfmt = ' '.join(hfmt)
     h = hfmt % ('p','row','col','irr','irc','icc')
