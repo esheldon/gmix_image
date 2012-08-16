@@ -39,9 +39,13 @@ struct gauss {
 class GMixCoellipSolver : public NLSolver { 
 
     public:
-        GMixCoellipSolver(PyObject* image_obj, PyObject* guess_obj, int maxiter) throw (const char*) {
+        GMixCoellipSolver(PyObject* image_obj, 
+                          PyObject* guess_obj, 
+                          double skysig,
+                          int maxiter) throw (const char*) {
             this->image=NULL;
             this->image_obj=NULL;
+            this->skysig=skysig;
 
             import_array();
             this->associate_image(image_obj);
@@ -55,14 +59,23 @@ class GMixCoellipSolver : public NLSolver {
             tpars = this->guess;
             tydiff.resize(this->image->size);
 
-            this->setMaxIter(maxiter);
             this->useHybrid();
+
+            this->setFTol(1.e-8);
+            this->setGTol(1.e-8);
+            this->setMinStep(1.e-8);
+            this->setMaxIter(maxiter);
+            //this->setTau(1.);
+
+            this->setOutput(std::cout);
             this->success = this->solve(tpars, tydiff);
 
             this->pars.resize(tpars.size());
             this->ydiff.resize(tydiff.size());
             this->pars = tpars;
             this->ydiff = tydiff;
+
+            this->set_chi2per();
 
         }
         ~GMixCoellipSolver(){
@@ -77,6 +90,9 @@ class GMixCoellipSolver : public NLSolver {
 
         bool get_success() const {
             return this->success;
+        }
+        double get_chi2per() const {
+            return this->chi2per;
         }
         PyObject *get_pars() const {
             npy_intp dims[1];
@@ -177,8 +193,8 @@ class GMixCoellipSolver : public NLSolver {
                     } // gvec
 
                     tval = SIMPLE_IM_GET(image, row, col);
-                    ydiff(ii) = val-tval;
-                    //ydiff(ii) = (val-tval)/1.e-5;
+                    //ydiff(ii) = val-tval;
+                    ydiff(ii) = (val-tval)/this->skysig;
                     ii++;
 
                 } // cols
@@ -281,6 +297,14 @@ class GMixCoellipSolver : public NLSolver {
             }
         }
 
+        void set_chi2per() {
+            chi2per=0.;
+            for (ssize_t i=0; i < ydiff.size(); i++) {
+                chi2per += ydiff(i)*ydiff(i);
+            }
+
+            chi2per /= (ydiff.size()-pars.size());
+        }
 
 
         long image_size;
@@ -292,6 +316,10 @@ class GMixCoellipSolver : public NLSolver {
 
         int ngauss;
         PyObject *image_obj;
+
+        double skysig;
+
+        double chi2per;
 
         bool success;
 };

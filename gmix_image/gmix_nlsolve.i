@@ -14,9 +14,13 @@
 class GMixCoellipSolver : public NLSolver { 
 
     public:
-        GMixCoellipSolver(PyObject* image_obj, PyObject* guess_obj, int maxiter) throw (const char*);
+        GMixCoellipSolver(PyObject* image_obj, 
+                          PyObject* guess_obj, 
+                          double skysig,
+                          int maxiter) throw (const char*);
         ~GMixCoellipSolver();
         bool get_success() const;
+        double get_chi2per() const;
         PyObject *get_pars() const;
         PyObject *get_cov() const;
 

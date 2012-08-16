@@ -83,10 +83,10 @@ def _gmix2image_pars(pars, dims, psf=None, coellip=False):
     else:
         if ( len(obj_pars) % 6 ) != 0:
             raise ValueError("object pars must have size 6*ngauss "
-                             "for coellip")
+                             "for not coellip")
         if ( len(psf_pars) % 6 ) != 0:
             raise ValueError("psf pars must have size 6*ngauss "
-                             "for coellip")
+                             "for not coellip")
 
        
         flags=_render.fill_model(im, obj_pars, psf_pars, None)

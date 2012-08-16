@@ -79,6 +79,7 @@ class GMixCoellipSolver(_object):
     __swig_destroy__ = _gmix_nlsolve.delete_GMixCoellipSolver
     __del__ = lambda self : None;
     def get_success(self): return _gmix_nlsolve.GMixCoellipSolver_get_success(self)
+    def get_chi2per(self): return _gmix_nlsolve.GMixCoellipSolver_get_chi2per(self)
     def get_pars(self): return _gmix_nlsolve.GMixCoellipSolver_get_pars(self)
     def get_cov(self): return _gmix_nlsolve.GMixCoellipSolver_get_cov(self)
     def get_nrows(self): return _gmix_nlsolve.GMixCoellipSolver_get_nrows(self)
