@@ -98,6 +98,38 @@ struct gvec *coellip_pars_to_gvec(PyObject *array)
     return gvec;
 }
 
+int check_numpy_image(PyObject *obj)
+{
+    if (!PyArray_Check(obj) 
+            || NPY_DOUBLE != PyArray_TYPE(obj)
+            || 2 != PyArray_NDIM(obj)) {
+        return 0;
+    }
+    return 1;
+}
+int check_numpy_array(PyObject *obj)
+{
+    if (!PyArray_Check(obj) || NPY_DOUBLE != PyArray_TYPE(obj)) {
+        return 0;
+    }
+    return 1;
+}
+
+
+int check_image_and_diff(PyObject *image_obj, PyObject *diff_obj)
+{
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return 0;
+    }
+    // only care that diff is a double array
+    if (diff_obj != Py_None && !check_numpy_array(diff_obj)) {
+        PyErr_SetString(PyExc_IOError, "diff image input must be a 2D double PyArrayObject");
+        return 0;
+    }
+    return 1;
+}
+ 
 /*
  * no copy is made.
  */
@@ -236,6 +268,10 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
         return NULL;
     }
 
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
@@ -285,6 +321,10 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
     int flags=0;
 
     if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, &psf_pars_obj, &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
         return NULL;
     }
 

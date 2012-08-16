@@ -68,7 +68,7 @@ class GMixFitCoellip:
                  psf=None, 
                  purepy=False, # ignored
                  verbose=False):
-        self.image=array(image, dtype='f8', copy=False)
+        self.image=image
         self.pixerr=pixerr
         self.prior=prior
         self.width=width
@@ -336,7 +336,7 @@ class GMixFitDev:
     def __init__(self, image, guess, 
                  psf=None, 
                  verbose=False):
-        self.image=array(image, dtype='f8', copy=False)
+        self.image=image
         self.guess=guess
         self.nsub=1
         self.verbose=verbose
@@ -600,7 +600,7 @@ class GMixFitCoellipTry:
                  Tmin=0.0,
                  use_jacob=True,
                  verbose=False):
-        self.image=array(image, dtype='f8', copy=False)
+        self.image=image
         self.error=error # per pixel
         self.guess=guess
         self.ptype=ptype
@@ -1678,7 +1678,7 @@ class GMixFitCoellipFix:
         self.imove = imove
         self.use_jacob=use_jacob
 
-        self.image=array(image, dtype='f8', copy=False)
+        self.image=image
         self.error=error # per pixel
         self.guess=guess
         self.ptype=ptype
@@ -2896,7 +2896,7 @@ class GMixFitCoellipNoPrior:
                  psf=None, 
                  purepy=False, # ignored
                  verbose=False):
-        self.image=array(image, dtype='f8', copy=False)
+        self.image=image
         self.pixerr=pixerr
         self.guess=guess
 

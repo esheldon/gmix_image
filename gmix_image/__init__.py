@@ -7,11 +7,16 @@ See docs for
 """
 from sys import stderr
 
-from . import gmix_nlsolve
 from . import gmix_em
 from . import gmix_fit
 from . import util
 from . import render
+
+# we might not have built the c++ library
+try:
+    from . import gmix_nlsolve
+except:
+    pass
 
 from .util import gmix2pars, pars2gmix, total_moms,  gmix_print
 from .render import gmix2image
