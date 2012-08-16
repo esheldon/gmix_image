@@ -7,6 +7,7 @@ See docs for
 """
 from sys import stderr
 
+from . import gmix_nlsolve
 from . import gmix_em
 from . import gmix_fit
 from . import util
