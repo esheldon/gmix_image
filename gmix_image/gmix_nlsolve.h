@@ -177,7 +177,8 @@ class GMixCoellipSolver : public NLSolver {
                     } // gvec
 
                     tval = SIMPLE_IM_GET(image, row, col);
-                    ydiff(ii) = (val-tval)/1.e-5;
+                    ydiff(ii) = val-tval;
+                    //ydiff(ii) = (val-tval)/1.e-5;
                     ii++;
 
                 } // cols
