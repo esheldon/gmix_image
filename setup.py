@@ -28,7 +28,7 @@ class WithNLSolver(Command):
         pass
     def run(self):
         nlsolve_ext=Extension("gmix_image._gmix_nlsolve", 
-                              ["gmix_image/NLSolver.cpp",
+                              ["gmix_image/nlsolver.cpp",
                                "gmix_image/gmix_nlsolve_pywrap.cpp"],
                               libraries=['tmv','tmv_symband'],
                               define_macros=[('USE_TMV',None)])

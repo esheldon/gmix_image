@@ -8,7 +8,7 @@
 #include <iostream>
 #include <limits>
 #include <algorithm>
-#include "NLSolver.h"
+#include "nlsolver.h"
 #define dbg if(_nlout) (*_nlout)
 #define xdbg if(_verbose >= 1 && _nlout) (*_nlout)
 #define xxdbg if(_verbose >= 2 && _nlout) (*_nlout)

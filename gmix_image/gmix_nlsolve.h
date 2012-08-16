@@ -5,7 +5,7 @@
 #include <vector>
 #include <sstream>
 #include <math.h>
-#include "NLSolver.h"
+#include "nlsolver.h"
 #include "defs.h"
 
 #include <Python.h>
