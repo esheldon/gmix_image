@@ -2937,10 +2937,17 @@ SWIGINTERNINLINE PyObject*
 }
 
 
-  #define SWIG_From_double   PyFloat_FromDouble 
-
-
   #define SWIG_From_long   PyInt_FromLong 
+
+
+SWIGINTERNINLINE PyObject *
+SWIG_From_int  (int value)
+{    
+  return SWIG_From_long  (value);
+}
+
+
+  #define SWIG_From_double   PyFloat_FromDouble 
 
 
 SWIGINTERNINLINE PyObject* 
@@ -3020,20 +3027,26 @@ SWIGINTERN PyObject *_wrap_new_GMixCoellipSolver(PyObject *SWIGUNUSEDPARM(self),
   PyObject *arg2 = (PyObject *) 0 ;
   double arg3 ;
   int arg4 ;
+  PyObject *arg5 = (PyObject *) 0 ;
+  int arg6 ;
   double val3 ;
   int ecode3 = 0 ;
   int val4 ;
   int ecode4 = 0 ;
+  int val6 ;
+  int ecode6 = 0 ;
   PyObject * obj0 = 0 ;
   PyObject * obj1 = 0 ;
   PyObject * obj2 = 0 ;
   PyObject * obj3 = 0 ;
+  PyObject * obj4 = 0 ;
+  PyObject * obj5 = 0 ;
   char *  kwnames[] = {
-    (char *) "image_obj",(char *) "guess_obj",(char *) "skysig",(char *) "maxiter", NULL 
+    (char *) "image_obj",(char *) "guess_obj",(char *) "skysig",(char *) "maxiter",(char *) "psf_obj",(char *) "verbose", NULL 
   };
   GMixCoellipSolver *result = 0 ;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:new_GMixCoellipSolver",kwnames,&obj0,&obj1,&obj2,&obj3)) SWIG_fail;
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOO:new_GMixCoellipSolver",kwnames,&obj0,&obj1,&obj2,&obj3,&obj4,&obj5)) SWIG_fail;
   arg1 = obj0;
   arg2 = obj1;
   ecode3 = SWIG_AsVal_double(obj2, &val3);
@@ -3046,8 +3059,14 @@ SWIGINTERN PyObject *_wrap_new_GMixCoellipSolver(PyObject *SWIGUNUSEDPARM(self),
     SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "new_GMixCoellipSolver" "', argument " "4"" of type '" "int""'");
   } 
   arg4 = static_cast< int >(val4);
+  arg5 = obj4;
+  ecode6 = SWIG_AsVal_int(obj5, &val6);
+  if (!SWIG_IsOK(ecode6)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode6), "in method '" "new_GMixCoellipSolver" "', argument " "6"" of type '" "int""'");
+  } 
+  arg6 = static_cast< int >(val6);
   try {
-    result = (GMixCoellipSolver *)new GMixCoellipSolver(arg1,arg2,arg3,arg4);
+    result = (GMixCoellipSolver *)new GMixCoellipSolver(arg1,arg2,arg3,arg4,arg5,arg6);
   }
   catch(char const *_e) {
     PyErr_SetString(PyExc_RuntimeError, _e);
@@ -3105,6 +3124,28 @@ fail:
 }
 
 
+SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_flags(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0;
+  GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj0 = 0 ;
+  int result;
+  
+  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_flags",&obj0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_GMixCoellipSolver, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_flags" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
+  }
+  arg1 = reinterpret_cast< GMixCoellipSolver * >(argp1);
+  result = (int)((GMixCoellipSolver const *)arg1)->get_flags();
+  resultobj = SWIG_From_int(static_cast< int >(result));
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
 SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_chi2per(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
   PyObject *resultobj = 0;
   GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
@@ -3149,7 +3190,7 @@ fail:
 }
 
 
-SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_cov(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_pcov(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
   PyObject *resultobj = 0;
   GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
   void *argp1 = 0 ;
@@ -3157,14 +3198,80 @@ SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_cov(PyObject *SWIGUNUSEDPARM(se
   PyObject * obj0 = 0 ;
   PyObject *result = 0 ;
   
-  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_cov",&obj0)) SWIG_fail;
+  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_pcov",&obj0)) SWIG_fail;
   res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_GMixCoellipSolver, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_cov" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_pcov" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
   }
   arg1 = reinterpret_cast< GMixCoellipSolver * >(argp1);
-  result = (PyObject *)((GMixCoellipSolver const *)arg1)->get_cov();
+  result = (PyObject *)((GMixCoellipSolver const *)arg1)->get_pcov();
   resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_perr(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0;
+  GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject *result = 0 ;
+  
+  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_perr",&obj0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_GMixCoellipSolver, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_perr" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
+  }
+  arg1 = reinterpret_cast< GMixCoellipSolver * >(argp1);
+  result = (PyObject *)((GMixCoellipSolver const *)arg1)->get_perr();
+  resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_model(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0;
+  GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject *result = 0 ;
+  
+  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_model",&obj0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_GMixCoellipSolver, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_model" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
+  }
+  arg1 = reinterpret_cast< GMixCoellipSolver * >(argp1);
+  result = (PyObject *)((GMixCoellipSolver const *)arg1)->get_model();
+  resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_GMixCoellipSolver_get_s2n(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0;
+  GMixCoellipSolver *arg1 = (GMixCoellipSolver *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj0 = 0 ;
+  double result;
+  
+  if (!PyArg_ParseTuple(args,(char *)"O:GMixCoellipSolver_get_s2n",&obj0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_GMixCoellipSolver, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "GMixCoellipSolver_get_s2n" "', argument " "1"" of type '" "GMixCoellipSolver const *""'"); 
+  }
+  arg1 = reinterpret_cast< GMixCoellipSolver * >(argp1);
+  result = (double)((GMixCoellipSolver const *)arg1)->get_s2n();
+  resultobj = SWIG_From_double(static_cast< double >(result));
   return resultobj;
 fail:
   return NULL;
@@ -3278,9 +3385,13 @@ static PyMethodDef SwigMethods[] = {
 	 { (char *)"new_GMixCoellipSolver", (PyCFunction) _wrap_new_GMixCoellipSolver, METH_VARARGS | METH_KEYWORDS, NULL},
 	 { (char *)"delete_GMixCoellipSolver", _wrap_delete_GMixCoellipSolver, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_success", _wrap_GMixCoellipSolver_get_success, METH_VARARGS, NULL},
+	 { (char *)"GMixCoellipSolver_get_flags", _wrap_GMixCoellipSolver_get_flags, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_chi2per", _wrap_GMixCoellipSolver_get_chi2per, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_pars", _wrap_GMixCoellipSolver_get_pars, METH_VARARGS, NULL},
-	 { (char *)"GMixCoellipSolver_get_cov", _wrap_GMixCoellipSolver_get_cov, METH_VARARGS, NULL},
+	 { (char *)"GMixCoellipSolver_get_pcov", _wrap_GMixCoellipSolver_get_pcov, METH_VARARGS, NULL},
+	 { (char *)"GMixCoellipSolver_get_perr", _wrap_GMixCoellipSolver_get_perr, METH_VARARGS, NULL},
+	 { (char *)"GMixCoellipSolver_get_model", _wrap_GMixCoellipSolver_get_model, METH_VARARGS, NULL},
+	 { (char *)"GMixCoellipSolver_get_s2n", _wrap_GMixCoellipSolver_get_s2n, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_nrows", _wrap_GMixCoellipSolver_get_nrows, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_ncols", _wrap_GMixCoellipSolver_get_ncols, METH_VARARGS, NULL},
 	 { (char *)"GMixCoellipSolver_get_val", (PyCFunction) _wrap_GMixCoellipSolver_get_val, METH_VARARGS | METH_KEYWORDS, NULL},

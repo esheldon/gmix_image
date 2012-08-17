@@ -42,7 +42,9 @@ class GMixCoellipSolver : public NLSolver {
         GMixCoellipSolver(PyObject* image_obj, 
                           PyObject* guess_obj, 
                           double skysig,
-                          int maxiter) throw (const char*) {
+                          int maxiter, 
+                          PyObject* psf_obj, 
+                          int verbose) throw (const char*) {
             this->image=NULL;
             this->image_obj=NULL;
             this->skysig=skysig;
@@ -51,6 +53,9 @@ class GMixCoellipSolver : public NLSolver {
             this->associate_image(image_obj);
             this->copy_guess(guess_obj);
 
+            if (psf_obj != Py_None) {
+                this->copy_psf(psf_obj);
+            }
 
             tmv::Vector<double> tpars;
             tmv::Vector<double> tydiff;
@@ -67,7 +72,9 @@ class GMixCoellipSolver : public NLSolver {
             this->setMaxIter(maxiter);
             //this->setTau(1.);
 
-            this->setOutput(std::cout);
+            if (verbose) {
+                this->setOutput(std::cerr);
+            }
             this->success = this->solve(tpars, tydiff);
 
             this->pars.resize(tpars.size());
@@ -91,6 +98,13 @@ class GMixCoellipSolver : public NLSolver {
         bool get_success() const {
             return this->success;
         }
+        int get_flags() const {
+            int flags=0;
+            if (!this->success) {
+                flags=1;
+            }
+            return flags;
+        }
         double get_chi2per() const {
             return this->chi2per;
         }
@@ -106,7 +120,35 @@ class GMixCoellipSolver : public NLSolver {
 
             return apars;
         }
-        PyObject *get_cov() const {
+        PyObject *get_perr() const {
+            npy_intp dims[1];
+            int fortran=0;
+
+            int npars=this->pars.size();
+            dims[0] = npars;
+
+            PyObject* perr_obj = PyArray_ZEROS(1, dims, NPY_DOUBLE, fortran);
+
+            if (this->success) {
+
+                tmv::Matrix<double> cov(npars,npars);
+                this->getCovariance(cov);
+
+                for (int i=0; i<dims[0]; i++) {
+                    double *ptr = (double*) PyArray_GETPTR1(perr_obj, i);
+                    *ptr = sqrt(cov(i,i));
+                }
+            } else {
+                for (int i=0; i<dims[0]; i++) {
+                    double *ptr = (double*) PyArray_GETPTR1(perr_obj, i);
+                    *ptr = .9999e10;
+                }
+            }
+
+            return perr_obj;
+
+        }
+        PyObject *get_pcov() const {
             npy_intp dims[2];
             int fortran=0;
 
@@ -116,18 +158,56 @@ class GMixCoellipSolver : public NLSolver {
 
             PyObject* acov = PyArray_ZEROS(2, dims, NPY_DOUBLE, fortran);
 
-            tmv::Matrix<double> cov(npars,npars);
-            this->getCovariance(cov);
-
             double *ptr = NULL;
-            for (int i=0; i<dims[0]; i++) {
-                for (int j=0; j<dims[0]; j++) {
-                    ptr = (double*) PyArray_GETPTR2(acov, i, j);
-                    *ptr = cov(i,j);
+            if (this->success) {
+                tmv::Matrix<double> cov(npars,npars);
+                this->getCovariance(cov);
+                for (int i=0; i<dims[0]; i++) {
+                    for (int j=0; j<dims[0]; j++) {
+                        ptr = (double*) PyArray_GETPTR2(acov, i, j);
+                        *ptr = cov(i,j);
+                    }
+                }
+            } else {
+                for (int i=0; i<dims[0]; i++) {
+                    for (int j=0; j<dims[0]; j++) {
+                        ptr = (double*) PyArray_GETPTR2(acov, i, j);
+                        *ptr = .999e10;
+                    }
                 }
             }
 
             return acov;
+        }
+
+        PyObject *get_model() const {
+            npy_intp dims[2];
+            int fortran=0;
+
+            dims[0] = this->image->nrows;
+            dims[1] = this->image->nrows;
+            PyObject* model = PyArray_ZEROS(2, dims, NPY_DOUBLE, fortran);
+
+            double *data=(double*) PyArray_DATA(model);
+            this->_render_model(this->pars, data);
+
+            return model;
+        }
+        double get_s2n() const {
+            tmv::Vector<double> model;
+            npy_intp nel=this->image->nrows*this->image->ncols;
+            model.resize(nel);
+            this->_render_model(this->pars, &model(0));
+
+            double sum=0., s2n=0.;
+
+            for (npy_intp i=0; i<model.size(); i++) {
+                sum += model(i);
+            }
+
+            s2n = sum/(this->skysig*sqrt(model.size()));
+
+            return s2n;
         }
 
 
@@ -145,20 +225,125 @@ class GMixCoellipSolver : public NLSolver {
             return SIMPLE_IM_GET(image, row, col);
         }
     private:
-        /* calculate model-image, no psf yet */
-        void calculateF(const tmv::Vector<double>& pars, 
+
+        void calculateF_old(const tmv::Vector<double>& pars, 
                         tmv::Vector<double>& ydiff) const {
 
             size_t nrows=this->image->nrows;
             size_t ncols=this->image->ncols;
 
             struct gauss *gauss=NULL;
-            //struct gauss *pgauss=NULL;
+            const struct gauss *pgauss=NULL;
             double u=0, v=0, uv=0, u2=0, v2=0;
             double chi2=0, b=0;
             size_t col=0, row=0;
-            //size_t j=0;
-            //double irr=0, irc=0, icc=0, det=0, psum=0;
+            double irr=0, irc=0, icc=0, det=0, psum=0;
+
+            double val=0, tval=0, image_val=0;
+
+            int ngauss = (pars.size()-4)/2;
+            std::vector<struct gauss> gvec(ngauss);
+            this->set_gvec(pars, gvec);
+
+
+            size_t ii=0;
+            for (row=0; row<nrows; row++) {
+                for (col=0; col<ncols; col++) {
+
+                    val=0;
+                    for (int i=0; i<ngauss; i++) {
+                        gauss = &gvec[i];
+
+                        if (gauss->det <= 0) {
+                            DBG wlog("found det: %.16g\n",gauss->det);
+                            tval = 1.e20;
+                        } else {
+                            u = row-gauss->row;
+                            v = col-gauss->col;
+
+                            u2 = u*u; v2 = v*v; uv = u*v;
+
+                            tval=0.;
+                            if (this->psf.size() > 0) {
+                                psum=0;
+                                for (size_t j=0; j<this->psf.size(); j++) {
+                                    pgauss=&this->psf[j];
+                                    irr = gauss->irr + pgauss->irr;
+                                    irc = gauss->irc + pgauss->irc;
+                                    icc = gauss->icc + pgauss->icc;
+                                    det = irr*icc - irc*irc;
+                                    if (det <= 0) {
+                                        DBG wlog("found convolved det: %.16g\n", det);
+                                        tval = 1.e20;
+                                        psum=1.;
+                                        break;
+                                    } else {
+                                        chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
+                                        chi2 /= det;
+
+                                        b = M_TWO_PI*sqrt(det);
+                                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                                        psum += pgauss->p;
+                                    }
+                                }
+                                // psf always normalized to unity
+                                tval *= gauss->p/psum;
+
+                            } else {
+                                chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                                chi2 /= gauss->det;
+                                b = M_TWO_PI*sqrt(gauss->det);
+                                tval = gauss->p*exp( -0.5*chi2 )/b;
+                            }
+                        }
+                        val += tval;
+                    } // gvec
+
+                    image_val = SIMPLE_IM_GET(image, row, col);
+                    //ydiff(ii) = val-tval;
+                    ydiff(ii) = (val-image_val)/this->skysig;
+                    ii++;
+
+                } // cols
+            } // rows
+
+        }
+
+
+        void calculateF(const tmv::Vector<double>& pars, 
+                        tmv::Vector<double>& ydiff) const {
+
+            size_t nrows=this->image->nrows;
+            size_t ncols=this->image->ncols;
+
+            this->_render_model(pars, &ydiff(0));
+
+            double *ptr=&ydiff(0);
+            for (size_t row=0; row<nrows; row++) {
+                for (size_t col=0; col<ncols; col++) {
+
+                    double image_val = SIMPLE_IM_GET(image, row, col);
+                    double model_val = *ptr;
+
+                    *ptr = (model_val-image_val)/this->skysig;
+                    ptr++;
+                }
+            }
+        }
+
+
+        void _render_model(const tmv::Vector<double>& pars, 
+                           double *model) const {
+
+            size_t nrows=this->image->nrows;
+            size_t ncols=this->image->ncols;
+
+            struct gauss *gauss=NULL;
+            const struct gauss *pgauss=NULL;
+            double u=0, v=0, uv=0, u2=0, v2=0;
+            double chi2=0, b=0;
+            size_t col=0, row=0;
+            double irr=0, irc=0, icc=0, det=0, psum=0;
 
             double val=0, tval=0;
 
@@ -184,17 +369,43 @@ class GMixCoellipSolver : public NLSolver {
 
                             u2 = u*u; v2 = v*v; uv = u*v;
 
-                            chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                            chi2 /= gauss->det;
-                            b = M_TWO_PI*sqrt(gauss->det);
-                            tval = gauss->p*exp( -0.5*chi2 )/b;
+                            tval=0.;
+                            if (this->psf.size() > 0) {
+                                psum=0;
+                                for (size_t j=0; j<this->psf.size(); j++) {
+                                    pgauss=&this->psf[j];
+                                    irr = gauss->irr + pgauss->irr;
+                                    irc = gauss->irc + pgauss->irc;
+                                    icc = gauss->icc + pgauss->icc;
+                                    det = irr*icc - irc*irc;
+                                    if (det <= 0) {
+                                        DBG wlog("found convolved det: %.16g\n", det);
+                                        tval = 1.e20;
+                                        psum=1.;
+                                        break;
+                                    } else {
+                                        chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
+                                        chi2 /= det;
+
+                                        b = M_TWO_PI*sqrt(det);
+                                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                                        psum += pgauss->p;
+                                    }
+                                }
+                                // psf always normalized to unity
+                                tval *= gauss->p/psum;
+
+                            } else {
+                                chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                                chi2 /= gauss->det;
+                                b = M_TWO_PI*sqrt(gauss->det);
+                                tval = gauss->p*exp( -0.5*chi2 )/b;
+                            }
                         }
                         val += tval;
                     } // gvec
 
-                    tval = SIMPLE_IM_GET(image, row, col);
-                    //ydiff(ii) = val-tval;
-                    ydiff(ii) = (val-tval)/this->skysig;
+                    model[ii] = val;
                     ii++;
 
                 } // cols
@@ -250,6 +461,43 @@ class GMixCoellipSolver : public NLSolver {
             double *data = (double*) PyArray_DATA(guess_obj);
             for (npy_intp i=0; i<npars; i++) {
                 this->guess(i) = data[i];
+            }
+        }
+
+        // using full because we might want to allow psf
+        // to be co-centric but not co-elliptical
+        void copy_psf(PyObject* psf_obj) throw (const char*) {
+            npy_intp sz=0;
+            npy_intp ngauss=0;
+            double *pars=NULL;
+            struct gauss *gauss=NULL;
+            int i=0, beg=0;
+
+
+            check_numpy_arr(psf_obj);
+
+            pars = (double*) PyArray_DATA(psf_obj);
+            sz = PyArray_SIZE(psf_obj);
+            if ((sz % 6) != 0) {
+                throw "psf must be a full gaussian mixture";
+            }
+            ngauss = sz/6;
+
+            this->psf.resize(ngauss);
+
+            for (i=0; i<ngauss; i++) {
+                beg = i*6;
+
+                gauss = &this->psf[i];
+
+                gauss->p   = pars[beg+0];
+                gauss->row = pars[beg+1];
+                gauss->col = pars[beg+2];
+                gauss->irr = pars[beg+3];
+                gauss->irc = pars[beg+4];
+                gauss->icc = pars[beg+5];
+
+                gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
             }
         }
 
@@ -311,8 +559,13 @@ class GMixCoellipSolver : public NLSolver {
         struct simple_image *image;
         tmv::Vector<double> guess;
         tmv::Vector<double> pars;
+
         tmv::Vector<double> ydiff;
         std::vector<gauss> gvec;
+
+        // we always represent the psf with a full
+        // gaussian mixture
+        std::vector<gauss> psf;
 
         int ngauss;
         PyObject *image_obj;

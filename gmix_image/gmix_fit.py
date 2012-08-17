@@ -7,7 +7,7 @@ from sys import stderr
 
 from .gmix_em import gmix2image_em
 from .render import gmix2image
-from .util import total_moms
+from .util import total_moms, gmix2pars
 
 from . import _render
 
@@ -88,12 +88,13 @@ class GMixFitCoellip:
             raise ValueError("prior and width must be same len")
 
     def set_psf(self, psf):
-        self.psf_pars=psf
-        self.psf_gmix=None
-        if self.psf_pars is not None:
-            if not isinstance(self.psf_pars,numpy.ndarray):
-                raise ValueError("psf should be an array ")
-            self.psf_gmix = pars2gmix_coellip_pick(self.psf_pars, ptype='Tfrac')
+        self.psf_gmix = psf
+        self.psf_pars = None
+
+        if psf is not None:
+            if not isinstance(psf[0],dict):
+                raise ValueError("psf must be list of dicts")
+            self.psf_pars = gmix2pars(psf)
 
     def dofit(self):
         """
@@ -105,7 +106,7 @@ class GMixFitCoellip:
                       self.prior,
                       full_output=1)
 
-        self.popt, self.pcov0, self.infodict, self.errmsg, self.ier = res
+        self.pars, self.pcov0, self.infodict, self.errmsg, self.ier = res
         if self.ier == 0:
             # wrong args, this is a bug
             raise ValueError(self.errmsg)
@@ -116,7 +117,7 @@ class GMixFitCoellip:
         self.perr=None
 
         if self.pcov0 is not None:
-            self.pcov = self.scale_leastsq_cov(self.popt, self.pcov0)
+            self.pcov = self.scale_leastsq_cov(self.pars, self.pcov0)
 
             d=diag(self.pcov)
             w,=where(d < 0)
@@ -145,7 +146,7 @@ class GMixFitCoellip:
                 if self.verbose:
                     import images
                     print >>stderr,'negative covariance eigenvalues'
-                    print_pars(self.popt, front='popt: ')
+                    print_pars(self.pars, front='pars: ')
                     print_pars(e,         front='eig:  ')
                     images.imprint(self.pcov,stream=stderr)
                 flags += GMIXFIT_NEG_COV_EIG 
@@ -256,48 +257,55 @@ class GMixFitCoellip:
 
         return True
 
-    def get_model(self, pars):
-        gmix=self.pars2gmix(pars)
-        return gmix2image(gmix, self.image.shape, psf=self.psf_pars)
-        #gmix=self.pars2gmix(pars)
-        #return gmix2image_em(gmix, self.image.shape, psf=self.psf_gmix)
+    def get_model(self):
+        gmix=self.pars2gmix(self.pars)
+        return gmix2image(gmix, self.image.shape, psf=self.psf_gmix)
 
     def pars2gmix(self, pars):
         return pars2gmix_coellip_Tfrac(pars)
 
-    def scale_leastsq_cov(self, popt, pcov):
+    def scale_leastsq_cov(self, pars, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
         """
-        dof = (self.image.size-len(popt))
-        s_sq = (self.get_ydiff(popt)**2).sum()/dof
+        dof = (self.image.size-len(pars))
+        s_sq = (self.get_ydiff(pars)**2).sum()/dof
         return pcov * s_sq 
 
 
-    def get_s2n(self, pars):
+    def get_flags(self):
+        return self.flags
+    def get_s2n(self):
         """
         This is a raw S/N including all pixels and
         no weighting
         """
         if isinstance(self.pixerr, numpy.ndarray):
             raise ValueError("Implement S/N for error image")
-        model = self.get_model(pars)
-        s2n = model.sum()/sqrt(model.size)/self.pixerr
+        model = self.get_model()
+        msum = model.sum()
+        print 'msum:',msum
+        s2n = msum/sqrt(model.size)/self.pixerr
         return s2n
 
-    def get_chi2(self, pars):
-        ydiff = self.get_ydiff(pars)
+    def get_chi2(self):
+        ydiff = self.get_ydiff(self.pars)
         return (ydiff**2).sum()
 
-    def get_chi2per(self, pars):
-        #ydiff = self.get_ydiff(pars)
-        chi2=self.get_chi2(pars)
-        return chi2/(self.image.size-len(pars))
+    def get_chi2per(self):
+        chi2=self.get_chi2()
+        return chi2/(self.image.size-len(self.pars))
 
     def get_gmix(self):
-        return self.pars2gmix(self.popt)
+        return self.pars2gmix(self.pars)
 
+    def get_pars(self):
+        return self.pars
+    def get_perr(self):
+        return self.perr
+    def get_pcov(self):
+        return self.pcov
     gmix = property(get_gmix)
 
 

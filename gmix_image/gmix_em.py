@@ -220,6 +220,12 @@ class GMixEM(_gmix_em.GMixEM):
     numiter=property(_gmix_em.GMixEM.get_numiter)
     fdiff=property(_gmix_em.GMixEM.get_fdiff)
 
+    def get_model(self):
+        pars=self.get_pars()
+        return gmix2image_em(pars, self._image.shape,
+                             psf=self._psf,
+                             counts=self._counts)
+
     def _fixup_psf(self, psf):
         """
         Add center info if not there, just to make it a full gvec definition
@@ -243,10 +249,10 @@ class GMixEM(_gmix_em.GMixEM):
 
 
 def gmix2image_em(gauss_list, dims, 
-               psf=None, aslist=False, renorm=True, 
-               order='c',
-               nsub=1,
-               counts=1.0):
+                  psf=None, aslist=False, renorm=True, 
+                  order='c',
+                  nsub=1,
+                  counts=1.0):
     """
     Create an image from the gaussian input mixture model.
 

@@ -283,7 +283,8 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
     DBG gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
-        psf_gvec = coellip_pars_to_gvec(psf_pars_obj);
+        // always use full gmix for psf
+        psf_gvec = pars_to_gvec(psf_pars_obj);
         DBG gvec_print(psf_gvec, stderr);
     }
 

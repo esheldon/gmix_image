@@ -27,8 +27,8 @@ def gmix2image(gmix, dims, psf=None, coellip=False, getflags=False):
         The dimensions of the result.  This matters since
         the gaussian centers are in this coordinate syste.
     psf: optional
-        An optional gaussian mixture PSf model.  The models will be convolved
-        with this PSF.
+        An optional gaussian mixture PSf model. Must be a generic list of
+        dicts.
     coellip:
         If True, and the input are parameter arrays, then the model
         represents coelliptical gaussians.
@@ -53,8 +53,7 @@ def _gmix2image_lod(gmix, dims, psf=None):
     psf_pars = None
     if psf is not None:
         if not isinstance(psf[0],dict):
-            raise ValueError("if gmix is a list of dicts, psf must be "
-                             "also")
+            raise ValueError("psf must be list of dicts")
         psf_pars = gmix2pars(psf)
 
     im = zeros(dims,dtype='f8')
@@ -67,18 +66,15 @@ def _gmix2image_pars(pars, dims, psf=None, coellip=False):
 
     psf_pars=None
     if psf is not None:
-        psf_pars = numpy.array(psf, dtype='f8')
+        if not isinstance(psf[0],dict):
+            raise ValueError("psf must be list of dicts")
+        psf_pars = gmix2pars(psf)
 
     im = zeros(dims,dtype='f8')
     if coellip:
         if ( (len(obj_pars)-4) % 2 ) != 0:
             raise ValueError("object pars must have size 2*ngauss+4 "
                              "for coellip")
-        if psf_pars:
-            if ( (len(psf_pars)-4) % 2 ) != 0:
-                raise ValueError("psf pars must have size 2*ngauss+4 "
-                                 "for coellip")
-
         flags=_render.fill_model_coellip(im, obj_pars, psf_pars, None)
     else:
         if ( len(obj_pars) % 6 ) != 0:
