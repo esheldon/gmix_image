@@ -66,7 +66,7 @@ class GMixFitCoellip:
     """
     def __init__(self, image, pixerr, prior, width,
                  psf=None, 
-                 purepy=False, # ignored
+                 Tpositive=True,
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
@@ -80,6 +80,8 @@ class GMixFitCoellip:
 
         self.ngauss=(len(prior)-4)/2
         self.nsub=1
+
+        self.Tpositive=Tpositive
 
         self.dofit()
 
@@ -209,12 +211,13 @@ class GMixFitCoellip:
             return False
 
         # Tmax and Tfrac
-        Tfvals=pars[4:4+self.ngauss]
-        w,=where(Tfvals <= 0)
-        if w.size > 0:
-            if self.verbose:
-                print_pars(Tfvals,front='bad T or Tfrac: ')
-            return False
+        if self.Tpositive:
+            Tfvals=pars[4:4+self.ngauss]
+            w,=where(Tfvals <= 0)
+            if w.size > 0:
+                if self.verbose:
+                    print_pars(Tfvals,front='bad T or Tfrac: ')
+                return False
 
         pvals=pars[4+self.ngauss:]
         w,=where(pvals <= 0)
@@ -289,9 +292,14 @@ class GMixFitCoellip:
         s2n = msum/sqrt(model.size)/self.pixerr
         return s2n
 
+    def get_numiter(self):
+        return self.numiter
+
     def get_chi2(self):
         ydiff = self.get_ydiff(self.pars)
         return (ydiff**2).sum()
+    def get_dof(self):
+        return self.image.size-len(self.pars)
 
     def get_chi2per(self):
         chi2=self.get_chi2()

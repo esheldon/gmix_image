@@ -182,7 +182,7 @@ static struct gvec
     num = PyList_Size(lod);
     if (num <= 0) {
         PyErr_SetString(PyExc_ValueError, 
-                        "You must init GVec with a lis of dictionaries "
+                        "You must init GVec with a list of dictionaries "
                         "of size > 0");
         status=0;
         goto _gvec_copy_list_of_dicts_bail;

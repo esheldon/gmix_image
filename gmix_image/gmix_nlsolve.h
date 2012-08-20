@@ -316,8 +316,17 @@ class GMixCoellipSolver : public NLSolver {
             size_t nrows=this->image->nrows;
             size_t ncols=this->image->ncols;
 
-            this->_render_model(pars, &ydiff(0));
 
+            /*
+            if (!this->check_hard_priors(pars)) {
+                for (ssize_t i=0; i<ydiff.size(); i++) {
+                    ydiff(i) = 1.e20;
+                }
+                return;
+            }
+            */
+
+            this->_render_model(pars, &ydiff(0));
             double *ptr=&ydiff(0);
             for (size_t row=0; row<nrows; row++) {
                 for (size_t col=0; col<ncols; col++) {
@@ -332,6 +341,27 @@ class GMixCoellipSolver : public NLSolver {
         }
 
 
+        bool check_hard_priors(const tmv::Vector<double>& pars) const
+        {
+
+            double maxe = .9999;
+            double e1 = pars[2];
+            double e2 = pars[3];
+            double esq = e1*e1 + e2*e2;
+            if (fabs(e1) > maxe || fabs(e2) > maxe || esq > maxe) {
+                std::cerr<<"bad e\n";
+                return false;
+            }
+
+            for (int i=4; i<pars.size(); i++) {
+                if (pars(i) < 0) {
+                    std::cerr<<"bad Tfrac or p"<<pars(i)<<"\n";
+                    return false;
+                }
+            }
+
+            return true;
+        }
         void _render_model(const tmv::Vector<double>& pars, 
                            double *model) const {
 

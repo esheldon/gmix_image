@@ -220,6 +220,8 @@ class GMixEM(_gmix_em.GMixEM):
     numiter=property(_gmix_em.GMixEM.get_numiter)
     fdiff=property(_gmix_em.GMixEM.get_fdiff)
 
+    def get_gmix(self):
+        return self.get_pars()
     def get_model(self):
         pars=self.get_pars()
         return gmix2image_em(pars, self._image.shape,
