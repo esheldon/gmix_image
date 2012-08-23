@@ -288,7 +288,6 @@ class GMixFitCoellip:
             raise ValueError("Implement S/N for error image")
         model = self.get_model()
         msum = model.sum()
-        print 'msum:',msum
         s2n = msum/sqrt(model.size)/self.pixerr
         return s2n
 
