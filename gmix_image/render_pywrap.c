@@ -156,6 +156,111 @@ struct image *associate_image(PyObject* image_obj, size_t nrows, size_t ncols)
 
 
 /*
+         like is exp(0.5*A*B^2) where
+         A is sum((model/err)^2) and is fixed
+         and
+           B = sum(model*image/err^2)/A
+             = sum(model/err * image/err)/A
+*/
+
+int calculate_loglike(struct image *image, 
+                      struct gvec *obj_gvec, 
+                      struct gvec *psf_gvec,
+                      double A,
+                      double ierr,
+                      double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL, *pgauss=NULL;
+    double u=0, v=0, uv=0, u2=0, v2=0;
+    double chi2=0, b=0;
+    size_t i=0, j=0, col=0, row=0;
+    double irr=0, irc=0, icc=0, det=0, psum=0;
+
+    double model_val=0, tval=0;
+    double ymodsum=0; // sum of (image/err)
+    double ymod2sum=0; // sum of (image/err)^2
+    double norm=0;
+    double B=0.; // sum(model*image/err^2)/A
+    int flags=0;
+
+    *loglike=-9999.9e9;
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            for (i=0; i<obj_gvec->size; i++) {
+                gauss = &obj_gvec->data[i];
+                if (gauss->det <= 0) {
+                    DBG wlog("found det: %.16g\n", gauss->det);
+                    flags |= GMIX_ERROR_NEGATIVE_DET;
+                    goto _eval_model_bail;
+                }
+
+                u = row-gauss->row;
+                v = col-gauss->col;
+
+                u2 = u*u; v2 = v*v; uv = u*v;
+
+                tval=0;
+                if (psf_gvec) { 
+                    psum=0;
+                    for (j=0; j<psf_gvec->size; j++) {
+                        pgauss=&psf_gvec->data[j];
+                        irr = gauss->irr + pgauss->irr;
+                        irc = gauss->irc + pgauss->irc;
+                        icc = gauss->icc + pgauss->icc;
+                        det = irr*icc - irc*irc;
+                        if (det <= 0) {
+                            DBG wlog("found convolved det: %.16g\n", det);
+                            flags |= GMIX_ERROR_NEGATIVE_DET;
+                            goto _eval_model_bail;
+                        }
+                        chi2=icc*u2 + irr*v2 - 2.0*irc*uv;
+                        chi2 /= det;
+
+                        b = M_TWO_PI*sqrt(det);
+                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        psum += pgauss->p;
+                    }
+                    // psf always normalized to unity
+                    tval *= gauss->p/psum;
+                } else {
+                    chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                    chi2 /= gauss->det;
+                    b = M_TWO_PI*sqrt(gauss->det);
+                    tval = gauss->p*exp( -0.5*chi2 )/b;
+                }
+
+                model_val += tval;
+            } // gvec
+
+            ymodsum += model_val;
+            ymod2sum += model_val*model_val;
+            B += IM_GET(image, row, col)*model_val;
+
+
+        } // cols
+    } // rows
+
+    ymodsum = ymodsum*ierr;
+    ymod2sum = ymod2sum*ierr*ierr;
+    norm = sqrt(ymodsum*ymodsum*A/ymod2sum);
+
+    // renorm so A is fixed; also extra factor of 1/err^2 and 1/A
+    B *= (norm/ymodsum*ierr*ierr/A);
+
+    *loglike = 0.5*A*B*B;
+
+
+_eval_model_bail:
+    return flags;
+}
+
+
+
+/*
  * If diff is NULL, we fill in image.
  * If diff is not NULL, we fill in diff with model-image
  */
@@ -280,12 +385,12 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
     }
 
     obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
-    DBG gvec_print(obj_gvec, stderr);
+    DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
         // always use full gmix for psf
         psf_gvec = pars_to_gvec(psf_pars_obj);
-        DBG gvec_print(psf_gvec, stderr);
+        DBG2 gvec_print(psf_gvec, stderr);
     }
 
     flags=fill_model(image, obj_gvec, psf_gvec, diff);
@@ -298,6 +403,64 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
 
     return PyInt_FromLong(flags);
 }
+
+
+static PyObject *
+PyGMixFit_loglike_coellip(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* obj_pars_obj=NULL;
+    PyObject* psf_pars_obj=NULL; // Can be None
+    double A=0, ierr=0;
+
+    double loglike=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    struct gvec *obj_gvec=NULL;
+    struct gvec *psf_gvec=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOOdd", 
+                          &image_obj, &obj_pars_obj, &psf_pars_obj,
+                          &A, &ierr)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
+    DBG2 gvec_print(obj_gvec, stderr);
+
+    if (psf_pars_obj != Py_None) {
+        // always use full gmix for psf
+        psf_gvec = pars_to_gvec(psf_pars_obj);
+        DBG2 gvec_print(psf_gvec, stderr);
+    }
+
+    flags=calculate_loglike(image, obj_gvec, psf_gvec, A, ierr, &loglike);
+
+    obj_gvec = gvec_free(obj_gvec);
+    psf_gvec = gvec_free(psf_gvec);
+    // does not free underlying array
+    image = image_free(image);
+
+    tup = PyTuple_New(2);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
+
 
 /*
  * The pars are full gaussian mixtures.
@@ -337,11 +500,11 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
     }
 
     obj_gvec = pars_to_gvec(obj_pars_obj);
-    DBG gvec_print(obj_gvec, stderr);
+    DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
         psf_gvec = pars_to_gvec(psf_pars_obj);
-        DBG gvec_print(psf_gvec, stderr);
+        DBG2 gvec_print(psf_gvec, stderr);
     }
 
     flags=fill_model(image, obj_gvec, psf_gvec, diff);
@@ -362,9 +525,9 @@ static PyMethodDef render_module_methods[] = {
     {"hello",      (PyCFunction)PyGMixFit_hello,               METH_NOARGS,  "test hello"},
     {"fill_model_coellip", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image"},
+    {"loglike_coellip", (PyCFunction)PyGMixFit_loglike_coellip,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {NULL}  /* Sentinel */
 };
-
 
 #if PY_MAJOR_VERSION >= 3
     static struct PyModuleDef moduledef = {

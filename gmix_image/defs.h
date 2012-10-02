@@ -10,13 +10,20 @@
 # define M_TWO_PI   6.28318530717958647693
 
 
-//#define DEBUG
+#define DEBUG
+//#define DEBUG2
 
 #ifdef DEBUG
  #define DBG if(1) 
 #else
  #define DBG if(0) 
 #endif
+#ifdef DEBUG2
+ #define DBG2 if(1) 
+#else
+ #define DBG2 if(0) 
+#endif
+
 
 
 #endif
