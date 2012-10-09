@@ -24,6 +24,11 @@ struct gvec {
     double total_icc;
 };
 
+enum gapprox {
+    GAPPROX_EXP,
+    GAPPROX_DEV
+};
+ 
 struct gvec *gvec_new(size_t n);
 struct gvec *gvec_free(struct gvec *self);
 void gvec_set_dets(struct gvec *self);
@@ -56,5 +61,29 @@ void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
 /* convolution results in an nobj*npsf total gaussians */
 struct gvec *gvec_convolve(struct gvec *obj_gvec, 
                            struct gvec *psf_gvec);
+
+
+/* full parameters list
+   [pi,rowi,coli,irri,irci,icci,...]
+*/
+struct gvec *pars_to_gvec(double *pars, int sz);
+/* coellip list
+   [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3..]
+ */
+struct gvec *coellip_pars_to_gvec(double *pars, int sz);
+
+/* 
+   Generate a gvec from the inputs pars assuming an appoximate
+   3-gaussian representation of an exponential disk or devauc.
+
+   One component is nearly a delta function
+
+   pars should be [row,col,e1,e2,T,p]
+
+   T = sum(pi*Ti)/sum(pi)
+
+   The p and F values are chosen to make this so
+*/
+struct gvec *gapprox_pars_to_gvec(double *pars, enum gapprox type);
 
 #endif

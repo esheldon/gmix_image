@@ -13,91 +13,6 @@ PyGMixFit_hello(void) {
     return PyString_FromString("hello world!");
 }
 
-// pars are full gmix of size 6*ngauss
-struct gvec *pars_to_gvec(PyObject *array)
-{
-    npy_intp sz=0;
-    npy_intp ngauss=0;
-    double *pars=NULL;
-    struct gauss *gauss=NULL;
-
-    int i=0, beg=0;
-
-    pars = PyArray_DATA(array);
-    sz = PyArray_SIZE(array);
-
-    ngauss = sz/6;
-
-    struct gvec *gvec = gvec_new(ngauss);
-
-
-    for (i=0; i<ngauss; i++) {
-        beg = i*6;
-
-        gauss = &gvec->data[i];
-
-        gauss->p   = pars[beg+0];
-        gauss->row = pars[beg+1];
-        gauss->col = pars[beg+2];
-        gauss->irr = pars[beg+3];
-        gauss->irc = pars[beg+4];
-        gauss->icc = pars[beg+5];
-    }
-
-    gvec_set_dets(gvec);
-    return gvec;
-}
-
-
-
-struct gvec *coellip_pars_to_gvec(PyObject *array)
-{
-    npy_intp sz=0;
-    npy_intp ngauss=0;
-    double row=0, col=0, e1=0, e2=0, Tmax=0, Ti=0, pi=0, Tfrac=0;
-    double *pars=NULL;
-    struct gauss *gauss=NULL;
-
-    int i=0;
-
-    pars = PyArray_DATA(array);
-    sz = PyArray_SIZE(array);
-
-    ngauss = (sz-4)/2;
-
-    struct gvec * gvec = gvec_new(ngauss);
-
-    row=pars[0];
-    col=pars[1];
-    e1 = pars[2];
-    e2 = pars[3];
-    Tmax = pars[4];
-
-    for (i=0; i<ngauss; i++) {
-        gauss = &gvec->data[i];
-
-        if (i==0) {
-            Ti = Tmax;
-        } else {
-            Tfrac = pars[4+i];
-            Ti = Tmax*Tfrac;
-        }
-
-        pi = pars[4+ngauss+i];
-
-        gauss->p = pi;
-        gauss->row = row;
-        gauss->col = col;
-
-        gauss->irr = (Ti/2.)*(1-e1);
-        gauss->irc = (Ti/2.)*e2;
-        gauss->icc = (Ti/2.)*(1+e1);
-    }
-
-    gvec_set_dets(gvec);
-    return gvec;
-}
-
 /* 
  * Generate gaussian random numbers mean 0 sigma 1
  *
@@ -138,7 +53,28 @@ int check_numpy_array(PyObject *obj)
     return 1;
 }
 
+struct gvec *pyarray_to_gvec(PyObject *array)
+{
+    double *pars=NULL;
+    int sz=0;
+    struct gvec *gvec=NULL;
+    pars = PyArray_DATA(array);
+    sz = PyArray_SIZE(array);
 
+    gvec = pars_to_gvec(pars, sz);
+    return gvec;
+}
+struct gvec *coellip_pyarray_to_gvec(PyObject *array)
+{
+    double *pars=NULL;
+    int sz=0;
+    struct gvec *gvec=NULL;
+    pars = PyArray_DATA(array);
+    sz = PyArray_SIZE(array);
+
+    gvec = coellip_pars_to_gvec(pars, sz);
+    return gvec;
+}
 int check_image_and_diff(PyObject *image_obj, PyObject *diff_obj)
 {
     if (!check_numpy_image(image_obj)) {
@@ -479,12 +415,12 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
         diff = associate_image(diff_obj, dims[0], dims[1]);
     }
 
-    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
+    obj_gvec = coellip_pyarray_to_gvec(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
         // always use full gmix for psf
-        psf_gvec = pars_to_gvec(psf_pars_obj);
+        psf_gvec = pyarray_to_gvec(psf_pars_obj);
         DBG2 gvec_print(psf_gvec, stderr);
     }
 
@@ -532,9 +468,9 @@ PyGMixFit_loglike_coellip(PyObject *self, PyObject *args)
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
-    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
+    obj_gvec = coellip_pyarray_to_gvec(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
-    psf_gvec = pars_to_gvec(psf_pars_obj);
+    psf_gvec = pyarray_to_gvec(psf_pars_obj);
     DBG2 gvec_print(psf_gvec, stderr);
 
     gvec = gvec_convolve(obj_gvec, psf_gvec);
@@ -588,12 +524,12 @@ PyGMixFit_loglike_coellip_old(PyObject *self, PyObject *args)
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
-    obj_gvec = coellip_pars_to_gvec(obj_pars_obj);
+    obj_gvec = coellip_pyarray_to_gvec(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
         // always use full gmix for psf
-        psf_gvec = pars_to_gvec(psf_pars_obj);
+        psf_gvec = pyarray_to_gvec(psf_pars_obj);
         DBG2 gvec_print(psf_gvec, stderr);
     }
 
@@ -650,11 +586,11 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
         diff = associate_image(diff_obj, dims[0], dims[1]);
     }
 
-    obj_gvec = pars_to_gvec(obj_pars_obj);
+    obj_gvec = pyarray_to_gvec(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
-        psf_gvec = pars_to_gvec(psf_pars_obj);
+        psf_gvec = pyarray_to_gvec(psf_pars_obj);
         DBG2 gvec_print(psf_gvec, stderr);
     }
 

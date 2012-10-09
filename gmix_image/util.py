@@ -176,4 +176,79 @@ def _pars2gmix_coellip(pars):
     return gmix
 
 
+def get_f_p_vals(fname):
+    """
+    Can do for exp or devauc
+    exp file
+        /gmix-fit-et10r99/outputs/gmix-fit-et10r99-001-000.rec
+    dev file
+        /gmix-fit-dt03r99/outputs/gmix-fit-dt03r99-001-000.rec
+        ??
+    """
+    import esutil as eu
+    t=eu.io.read(fname)
+
+    # make sure ordered
+    pars=t['pars'].copy()
+    n=t.size
+
+    # smallest to largest
+    T1s=numpy.zeros(n)
+    T2s=numpy.zeros(n)
+    T3s=numpy.zeros(n)
+    p1s=numpy.zeros(n)
+    p2s=numpy.zeros(n)
+    p3s=numpy.zeros(n)
+
+    for i in xrange(t.size):
+        # these always fixed
+        Tmax=pars[i,4]
+        T3s[i] = Tmax
+        p3s[i] = pars[i,7]
+
+        if pars[i,5] < pars[i,6]:
+            T1s[i] = pars[i,5]*Tmax
+            p1s[i] = pars[i,8]
+
+            T2s[i] = pars[i,6]*Tmax
+            p2s[i] = pars[i,9]
+        else:
+            T1s[i] = pars[i,6]*Tmax
+            p1s[i] = pars[i,9]
+
+            T2s[i] = pars[i,5]*Tmax
+            p2s[i] = pars[i,8]
+
+
+    T1 = T1s.mean()
+    T2 = T2s.mean()
+    T3 = T3s.mean()
+    p1 = p1s.mean()
+    p2 = p2s.mean()
+    p3 = p3s.mean()
+
+    Tvals=numpy.array([T1,T2,T3])
+    pvals=numpy.array([p1,p2,p3])
+    psum=pvals.sum()
+    pvals /= psum
+    psum=pvals.sum()
+
+    T = (Tvals*pvals).sum()/pvals.sum()
+    Fvals=Tvals/T
+    
+    print 'T:    ',T
+    print 'Tcalc:',(Fvals*T*pvals).sum()/psum
+    print 'Fvals: [%.16g,%.16g,%.16g]' % tuple(Fvals)
+    print 'pvals: [%.16g,%.16g,%.16g]' % tuple(pvals/psum)
+    print 'sum(Fvals*pvals): %.16g' % ( (Fvals*pvals).sum(), )
+    # these should equal
+    print 'psum: %.16g' % psum
+    print 'Fsum: %.16g' % Fvals.sum()
+
+    Fpsum = (Fvals*pvals).sum()
+    print 'Tvals: [%.16g,%.16g,%.16g]' % tuple(Tvals)
+    print T/pvals[0]*(psum - Fpsum + pvals[0]*Fvals[0])
+    print T/pvals[1]*(psum - Fpsum + pvals[1]*Fvals[1])
+    print T/pvals[2]*(psum - Fpsum + pvals[2]*Fvals[2])
+
 

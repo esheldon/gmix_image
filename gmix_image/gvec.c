@@ -263,3 +263,167 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
     return gvec;
 }
 
+
+// pars are full gmix of size 6*ngauss
+struct gvec *pars_to_gvec(double *pars, int sz)
+{
+    int ngauss=0;
+    struct gauss *gauss=NULL;
+
+    int i=0, beg=0;
+
+    //pars = PyArray_DATA(array);
+    //sz = PyArray_SIZE(array);
+
+    ngauss = sz/6;
+
+    struct gvec *gvec = gvec_new(ngauss);
+
+
+    for (i=0; i<ngauss; i++) {
+        beg = i*6;
+
+        gauss = &gvec->data[i];
+
+        gauss->p   = pars[beg+0];
+        gauss->row = pars[beg+1];
+        gauss->col = pars[beg+2];
+        gauss->irr = pars[beg+3];
+        gauss->irc = pars[beg+4];
+        gauss->icc = pars[beg+5];
+    }
+
+    gvec_set_dets(gvec);
+    return gvec;
+}
+
+
+
+struct gvec *coellip_pars_to_gvec(double *pars, int sz)
+{
+    int ngauss=0;
+    double row=0, col=0, e1=0, e2=0, Tmax=0, Ti=0, pi=0, Tfrac=0;
+    struct gauss *gauss=NULL;
+
+    int i=0;
+
+    //pars = PyArray_DATA(array);
+    //sz = PyArray_SIZE(array);
+
+    ngauss = (sz-4)/2;
+
+    struct gvec * gvec = gvec_new(ngauss);
+
+    row=pars[0];
+    col=pars[1];
+    e1 = pars[2];
+    e2 = pars[3];
+    Tmax = pars[4];
+
+    for (i=0; i<ngauss; i++) {
+        gauss = &gvec->data[i];
+
+        if (i==0) {
+            Ti = Tmax;
+        } else {
+            Tfrac = pars[4+i];
+            Ti = Tmax*Tfrac;
+        }
+
+        pi = pars[4+ngauss+i];
+
+        gauss->p = pi;
+        gauss->row = row;
+        gauss->col = col;
+
+        gauss->irr = (Ti/2.)*(1-e1);
+        gauss->irc = (Ti/2.)*e2;
+        gauss->icc = (Ti/2.)*(1+e1);
+    }
+
+    gvec_set_dets(gvec);
+    return gvec;
+}
+
+/* 
+   Generate a gvec from the inputs pars assuming an appoximate
+   3-gaussian representation of an exponential disk or devauc.
+
+   One component is nearly a delta function
+
+   pars should be [row,col,e1,e2,T,p]
+
+   T = sum(pi*Ti)/sum(pi)
+
+   The p and F values are chosen to make this so
+*/
+
+/* helper function */
+static struct gvec *_gapprox_pars_to_gvec(double *pars, 
+                                          const double *Fvals, 
+                                          const double *pvals)
+{
+    double row=0, col=0, e1=0, e2=0;
+    double T=0, Tvals[3]={0};
+    double p=0, counts[3]={0};
+
+    struct gauss *gauss=NULL;
+    struct gvec * gvec = NULL;
+
+    int i=0;
+
+    row=pars[0];
+    col=pars[1];
+    e1=pars[2];
+    e2=pars[3];
+    T=pars[4];
+    p=pars[5];
+
+    Tvals[0] = Fvals[0]*T;
+    Tvals[1] = Fvals[1]*T;
+    Tvals[2] = Fvals[2]*T;
+    counts[0] = pvals[0]*p;
+    counts[1] = pvals[1]*p;
+    counts[2] = pvals[2]*p;
+
+    gvec = gvec_new(3);
+
+    gauss=gvec->data;
+    for (i=0; i<gvec->size; i++) {
+        gauss->p = counts[i];
+        gauss->row = row;
+        gauss->col = col;
+        gauss->irr = (Tvals[i]/2.)*(1-e1);
+        gauss->irc = (Tvals[i]/2.)*e2;
+        gauss->icc = (Tvals[i]/2.)*(1+e1);
+
+        gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+        gauss++;
+    }
+
+    return gvec;
+}
+struct gvec *gapprox_pars_to_gvec(double *pars, enum gapprox type)
+{
+    /* pvals are normalized */
+    static const double exp_Fvals[3] = 
+        {3.947146384343532e-05, 0.5010756804049256, 1.911515572152285};
+    static const double exp_pvals[3] = 
+        {0.06031348356539361,   0.5645244398053312, 0.3751620766292753};
+
+    /* seems to me more a function of size than for exp */
+    static const double dev_Fvals[3] = 
+        {0.003718633817323675, 0.9268795541243965, 9.627400726500005};
+    static const double dev_pvals[3] = 
+        {0.659318547053916,    0.2623209100496331, 0.07836054289645095};
+
+    if (type==GAPPROX_EXP) {
+        return _gapprox_pars_to_gvec(pars, exp_Fvals, exp_pvals);
+    } else if (type==GAPPROX_DEV) {
+        return _gapprox_pars_to_gvec(pars, dev_Fvals, dev_pvals);
+    } else {
+        return NULL;
+    }
+}
+
+
