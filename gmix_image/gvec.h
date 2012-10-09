@@ -53,4 +53,8 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
 
 void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
 
+/* convolution results in an nobj*npsf total gaussians */
+struct gvec *gvec_convolve(struct gvec *obj_gvec, 
+                           struct gvec *psf_gvec);
+
 #endif

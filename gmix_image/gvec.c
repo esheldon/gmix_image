@@ -217,3 +217,49 @@ void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
     cov->m12 /= psum;
     cov->m22 /= psum;
 }
+
+/* convolution results in an nobj*npsf total gaussians */
+struct gvec *gvec_convolve(struct gvec *obj_gvec, 
+                           struct gvec *psf_gvec)
+{
+    struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
+
+    int ntot=0, iobj=0, ipsf=0;
+    double psum=0;
+
+    ntot = obj_gvec->size*psf_gvec->size;
+    struct gvec *gvec = gvec_new(ntot);
+
+    for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
+        psf = &psf_gvec->data[ipsf];
+        psum += psf->p;
+    }
+
+    obj = obj_gvec->data;
+    comb = gvec->data;
+    for (iobj=0; iobj<obj_gvec->size; iobj++) {
+
+        psf = psf_gvec->data;
+        for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
+
+            comb->row = obj->row;
+            comb->col = obj->col;
+
+            comb->irr = obj->irr + psf->irr;
+            comb->irc = obj->irc + psf->irc;
+            comb->icc = obj->icc + psf->icc;
+
+            comb->det = comb->irr*comb->icc - comb->irc*comb->irc;
+
+            comb->p = obj->p*psf->p/psum;
+
+            psf++;
+            comb++;
+        }
+
+        obj++;
+    }
+
+    return gvec;
+}
+
