@@ -69,6 +69,29 @@ void gvec_set_dets(struct gvec *self)
         gptr++;
     }
 }
+
+int gvec_verify(struct gvec *self)
+{
+    size_t i=0;
+    struct gauss *gauss=NULL;
+
+    if (!self) {
+        DBG wlog("gvec is not initialized\n");
+        return 0;
+    }
+
+    gauss=self->data;
+    for (i=0; i<self->size; i++) {
+        if (gauss->det <= 0) {
+            DBG wlog("found det: %.16g\n", gauss->det);
+            return 0;
+        }
+        gauss++;
+    }
+    return 1;
+}
+
+
 int gvec_copy(struct gvec *self, struct gvec* dest)
 {
     if (dest->size != self->size) {

@@ -33,6 +33,9 @@ struct gvec *gvec_new(size_t n);
 struct gvec *gvec_free(struct gvec *self);
 void gvec_set_dets(struct gvec *self);
 
+// make sure pointer not null and det>0 for all gauss
+int gvec_verify(struct gvec *self);
+
 // only makes sense for same center, e.g. psf
 void gvec_set_total_moms(struct gvec *self);
 

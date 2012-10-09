@@ -115,6 +115,84 @@ struct image *associate_image(PyObject* image_obj, size_t nrows, size_t ncols)
 
 
 /*
+   fill a model with a gaussian mixture.  The model can be
+   on a sub-grid (n > 1)
+
+ */
+static int
+fill_model_subgrid(struct image *image, 
+                   struct gvec *gvec, 
+                   int nsub)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0, uv=0, u2=0, v2=0;
+    double chi2=0, b=0;
+    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;
+
+    double model_val=0, tval=0;
+    double stepsize=0, offset=0, trow=0, tcol=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_model_subgrid_bail;
+    }
+    if (nsub < 1)
+        nsub=1;
+    stepsize = 1./nsub;
+    offset = (nsub-1)*stepsize/2.;
+
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+
+                // work over the subgrid
+                tval=0;
+                trow = row-offset;
+                for (irowsub=0; irowsub<nsub; irowsub++) {
+                    tcol = col-offset;
+                    for (icolsub=0; icolsub<nsub; icolsub++) {
+
+                        u = trow-gauss->row;
+                        v = tcol-gauss->col;
+
+                        u2 = u*u; v2 = v*v; uv = u*v;
+
+                        chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                        chi2 /= gauss->det;
+                        tval += gauss->p*exp( -0.5*chi2 );
+
+                        tcol += stepsize;
+                    }
+                    trow += stepsize;
+                }
+
+                b = M_TWO_PI*sqrt(gauss->det);
+                tval /= (b*nsub*nsub);
+                model_val += tval;
+
+                gauss++;
+            } // gvec
+
+            IM_SETFAST(image, row, col, model_val);
+
+        } // cols
+    } // rows
+
+_fill_model_subgrid_bail:
+    return flags;
+}
+
+
+
+
+
+/*
    Pre-marginilized over the amplitude
          like is exp(0.5*A*B^2) where
          A is sum((model/err)^2) and is fixed
@@ -241,6 +319,11 @@ int calculate_loglike(struct image *image,
     double B=0.; // sum(model*image/err^2)/A
     int flags=0;
 
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_bail;
+    }
+
     *loglike=-9999.9e9;
     for (row=0; row<nrows; row++) {
         for (col=0; col<ncols; col++) {
@@ -248,12 +331,6 @@ int calculate_loglike(struct image *image,
             model_val=0;
             gauss=gvec->data;
             for (i=0; i<gvec->size; i++) {
-
-                if (gauss->det <= 0) {
-                    DBG wlog("found det: %.16g\n", gauss->det);
-                    flags |= GMIX_ERROR_NEGATIVE_DET;
-                    goto _eval_model_bail;
-                }
 
                 u = row-gauss->row;
                 v = col-gauss->col;
@@ -285,7 +362,7 @@ int calculate_loglike(struct image *image,
 
     *loglike = 0.5*A*B*B;
 
-_eval_model_bail:
+_calculate_loglike_bail:
     return flags;
 }
 
@@ -606,12 +683,55 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
 }
 
 
+/* 
+   This one can work on a subgrid.  There is not separate psf gmix, 
+   you are expected to "convolve" them beforehand 
+
+   pars are a full gmix
+*/
+
+static PyObject *
+PyGMixFit_fill_model_subgrid(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* pars_obj=NULL;
+    int nsub=0;
+
+    struct image *image=NULL;
+    struct gvec *gvec=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOi", &image_obj, &pars_obj, &nsub)) {
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    gvec = pyarray_to_gvec(pars_obj);
+    DBG2 gvec_print(gvec, stderr);
+
+    flags=fill_model_subgrid(image, gvec, nsub);
+
+    gvec = gvec_free(gvec);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    return PyInt_FromLong(flags);
+}
+
+
 
 
 static PyMethodDef render_module_methods[] = {
     {"hello",      (PyCFunction)PyGMixFit_hello,               METH_NOARGS,  "test hello"},
     {"fill_model_coellip", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image"},
+    {"fill_model_subgrid", (PyCFunction)PyGMixFit_fill_model_subgrid,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
+
     {"loglike_coellip_old", (PyCFunction)PyGMixFit_loglike_coellip_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {"loglike_coellip", (PyCFunction)PyGMixFit_loglike_coellip,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {NULL}  /* Sentinel */
