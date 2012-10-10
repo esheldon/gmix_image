@@ -25,6 +25,7 @@ def GMixCoellip(pars):
 def GMixExp(pars):
     """
     Generate a gaussian mixture representing an approximate exponential disk.
+    Only works well if the object is not too large compared to the PSF.
 
     parameters
     ----------
@@ -36,6 +37,7 @@ def GMixExp(pars):
 def GMixDev(pars):
     """
     Generate a gaussian mixture representing an approximate devauc profile.
+    Only works well if the object is not too large compared to the PSF.
 
     parameters
     ----------
