@@ -11,8 +11,107 @@ from numpy import zeros
 
 from .util import gmix2pars
 from . import _render
+from . import gmix
+from .gmix import GMix
 
-def gmix2image(gmix, dims, psf=None, coellip=False, getflags=False):
+def gmix2image(gmix, dims, psf=None, coellip=False, nsub=1, 
+               getflags=False):
+    """
+    Create an image from the gaussian input mixture model.
+
+    TODO: allow non-coelliptical PSF when using coelliptical
+    object
+
+    parameters
+    ----------
+    gmix:
+        The gaussian mixture model.
+    dims:
+        The dimensions of the result.  This matters since
+        the gaussian centers are in this coordinate syste.
+    psf: optional
+        An optional gaussian mixture PSf model. Must be a generic mixture
+    coellip:
+        If True, and the input are parameter arrays, then the model
+        represents coelliptical gaussians.
+    nsub:
+        Sub-pixel integration for simulations.  Default 1
+    """
+
+    if len(dims)  != 2:
+        raise ValueError("dims must be 2 element sequence/array")
+
+    gmix=_convert_gmix(gmix, coellip=coellip)
+    if psf:
+        psf=_convert_gmix(psf)
+        gmix=gmix.convolve(psf)
+
+    im=zeros(dims,dtype='f8')
+    flags=_render.fill_model(im, gmix, nsub)
+
+    if getflags:
+        return im, flags
+    else:
+        return im
+
+
+def _convert_gmix(gmix, coellip=False):
+    if isinstance(gmix, GMix):
+        # noop
+        return gmix
+
+    if isinstance(gmix[0], dict):
+        # full gaussian mixture as list of dicts
+        return GMix(gmix)
+
+    if coellip:
+        # special coelliptical form
+        return GMix(gmix, type=gmix.GMIX_COELLIP)
+
+    # we assume this is a full gaussian mixture in array form
+    return GMix(gmix)
+
+def _gmix2image_lod(gmix, dims, psf=None):
+    pars = gmix2pars(gmix)
+    psf_pars = None
+    if psf is not None:
+        if not isinstance(psf[0],dict):
+            raise ValueError("psf must be list of dicts")
+        psf_pars = gmix2pars(psf)
+
+    im = zeros(dims,dtype='f8')
+    flags=_render.fill_model_old(im, pars, psf_pars, None)
+    return im, flags
+
+def _gmix2image_pars(pars, dims, psf=None, coellip=False):
+
+    obj_pars = numpy.array(pars, dtype='f8')
+
+    psf_pars=None
+    if psf is not None:
+        if not isinstance(psf[0],dict):
+            raise ValueError("psf must be list of dicts")
+        psf_pars = gmix2pars(psf)
+
+    im = zeros(dims,dtype='f8')
+    if coellip:
+        if ( (len(obj_pars)-4) % 2 ) != 0:
+            raise ValueError("object pars must have size 2*ngauss+4 "
+                             "for coellip")
+        flags=_render.fill_model_coellip_old(im, obj_pars, psf_pars, None)
+    else:
+        if ( len(obj_pars) % 6 ) != 0:
+            raise ValueError("object pars must have size 6*ngauss "
+                             "for not coellip")
+        if ( len(psf_pars) % 6 ) != 0:
+            raise ValueError("psf pars must have size 6*ngauss "
+                             "for not coellip")
+
+       
+        flags=_render.fill_model_old(im, obj_pars, psf_pars, None)
+    return im, flags
+
+def gmix2image_old(gmix, dims, psf=None, coellip=False, getflags=False):
     """
     Create an image from the gaussian input mixture model.
 
@@ -47,45 +146,5 @@ def gmix2image(gmix, dims, psf=None, coellip=False, getflags=False):
         return im, flags
     else:
         return im
-
-def _gmix2image_lod(gmix, dims, psf=None):
-    pars = gmix2pars(gmix)
-    psf_pars = None
-    if psf is not None:
-        if not isinstance(psf[0],dict):
-            raise ValueError("psf must be list of dicts")
-        psf_pars = gmix2pars(psf)
-
-    im = zeros(dims,dtype='f8')
-    flags=_render.fill_model(im, pars, psf_pars, None)
-    return im, flags
-
-def _gmix2image_pars(pars, dims, psf=None, coellip=False):
-
-    obj_pars = numpy.array(pars, dtype='f8')
-
-    psf_pars=None
-    if psf is not None:
-        if not isinstance(psf[0],dict):
-            raise ValueError("psf must be list of dicts")
-        psf_pars = gmix2pars(psf)
-
-    im = zeros(dims,dtype='f8')
-    if coellip:
-        if ( (len(obj_pars)-4) % 2 ) != 0:
-            raise ValueError("object pars must have size 2*ngauss+4 "
-                             "for coellip")
-        flags=_render.fill_model_coellip(im, obj_pars, psf_pars, None)
-    else:
-        if ( len(obj_pars) % 6 ) != 0:
-            raise ValueError("object pars must have size 6*ngauss "
-                             "for not coellip")
-        if ( len(psf_pars) % 6 ) != 0:
-            raise ValueError("psf pars must have size 6*ngauss "
-                             "for not coellip")
-
-       
-        flags=_render.fill_model(im, obj_pars, psf_pars, None)
-    return im, flags
 
 

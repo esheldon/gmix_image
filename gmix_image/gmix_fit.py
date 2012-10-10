@@ -185,7 +185,8 @@ class GMixFitCoellip:
 
         ydiff_tot = zeros(ntot, dtype='f8')
 
-        _render.fill_model_coellip(self.image, pars, self.psf_pars, ydiff_tot)
+        # this is an old renderer that can also fill in a diff image
+        _render.fill_model_coellip_old(self.image, pars, self.psf_pars, ydiff_tot)
         ydiff_tot[0:self.image.size] /= self.pixerr
 
         prior_diff = (self.prior-pars)/self.width

@@ -194,6 +194,77 @@ static PyObject *PyGVecObject_get_dlist(struct PyGVecObject* self)
 
     return list;
 }
+static PyObject *PyGVecObject_get_T(struct PyGVecObject* self)
+{
+    double T=0;
+    double psum=0;
+    size_t i=0;
+    struct gauss *gauss=NULL;
+
+    gauss=self->gvec->data;
+    for (i=0; i<self->gvec->size; i++) {
+        T += (gauss->irr + gauss->icc)*gauss->p;
+        psum += gauss->p;
+        gauss++;
+    }
+
+    T /= psum;
+
+    return PyFloat_FromDouble(T);
+}
+static PyObject *PyGVecObject_get_cen(struct PyGVecObject* self)
+{
+    double psum=0;
+    size_t i=0;
+    struct gauss *gauss=NULL;
+    npy_intp dims[1] = {2};
+    int npy_dtype=NPY_FLOAT64;
+    double row=0, col=0;
+    PyObject *cen=NULL;
+    double *cendata=NULL;
+
+    cen=PyArray_ZEROS(1, dims, npy_dtype, 0);
+    cendata=PyArray_DATA(cen);
+
+    gauss=self->gvec->data;
+    for (i=0; i<self->gvec->size; i++) {
+        row += gauss->row*gauss->p;
+        col += gauss->col*gauss->p;
+        psum += gauss->p;
+        gauss++;
+    }
+
+    row /= psum;
+    col /= psum;
+
+    cendata[0] = row;
+    cendata[1] = col;
+
+    return cen;
+}
+static PyObject *PyGVecObject_set_cen(struct PyGVecObject* self, PyObject *args)
+{
+    double row=0, col=0;
+    size_t i=0;
+    struct gauss *gauss=NULL;
+
+    if (!PyArg_ParseTuple(args, (char*)"dd", &row, &col)) {
+        return NULL;
+    }
+
+    gauss=self->gvec->data;
+    for (i=0; i<self->gvec->size; i++) {
+        gauss->row=row;
+        gauss->col=col;
+        gauss++;
+    }
+
+    Py_XINCREF(Py_None);
+    return Py_None;
+}
+
+
+
 
 /* error checking should happen in python */
 static PyObject *PyGVecObject_convolve_inplace(struct PyGVecObject* self, PyObject *args)
@@ -218,7 +289,10 @@ static PyObject *PyGVecObject_convolve_inplace(struct PyGVecObject* self, PyObje
 }
 
 static PyMethodDef PyGVecObject_methods[] = {
-    {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_VARARGS, "get_dlist\n\nreturn list of dicts."},
+    {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_NOARGS, "get_dlist\n\nreturn list of dicts."},
+    {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
+    {"get_cen", (PyCFunction)PyGVecObject_get_cen, METH_NOARGS, "get_cen\n\nreturn cen=sum(cen_i*p)/sum(p)."},
+    {"set_cen", (PyCFunction)PyGVecObject_set_cen, METH_VARARGS, "set_cen\n\nSet all centers to the input row,col"},
     {"_convolve_inplace", (PyCFunction)PyGVecObject_convolve_inplace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
     {NULL}  /* Sentinel */
 };
@@ -585,10 +659,10 @@ _calculate_loglike_bail:
  * If diff is NULL, we fill in image.
  * If diff is not NULL, we fill in diff with model-image
  */
-int fill_model(struct image *image, 
-               struct gvec *obj_gvec, 
-               struct gvec *psf_gvec,
-               struct image *diff)
+int fill_model_old(struct image *image, 
+                   struct gvec *obj_gvec, 
+                   struct gvec *psf_gvec,
+                   struct image *diff)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
@@ -675,7 +749,7 @@ _eval_model_bail:
  * that will contain priors, so don't try to grab it's dimensions
  */
 static PyObject *
-PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args) 
+PyGMixFit_coellip_fill_model_old(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* diff_obj=NULL;
@@ -690,7 +764,8 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
 
     int flags=0;
 
-    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, &psf_pars_obj, &diff_obj)) {
+    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, 
+                &psf_pars_obj, &diff_obj)) {
         return NULL;
     }
 
@@ -714,7 +789,7 @@ PyGMixFit_coellip_fill_model(PyObject *self, PyObject *args)
         DBG2 gvec_print(psf_gvec, stderr);
     }
 
-    flags=fill_model(image, obj_gvec, psf_gvec, diff);
+    flags=fill_model_old(image, obj_gvec, psf_gvec, diff);
 
     obj_gvec = gvec_free(obj_gvec);
     psf_gvec = gvec_free(psf_gvec);
@@ -846,7 +921,7 @@ PyGMixFit_loglike_coellip_old(PyObject *self, PyObject *args)
  * that will contain priors, so don't try to grab it's dimensions
  */
 static PyObject *
-PyGMixFit_fill_model(PyObject *self, PyObject *args) 
+PyGMixFit_fill_model_old(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* diff_obj=NULL;
@@ -884,7 +959,7 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
         DBG2 gvec_print(psf_gvec, stderr);
     }
 
-    flags=fill_model(image, obj_gvec, psf_gvec, diff);
+    flags=fill_model_old(image, obj_gvec, psf_gvec, diff);
 
     obj_gvec = gvec_free(obj_gvec);
     psf_gvec = gvec_free(psf_gvec);
@@ -904,7 +979,7 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
 */
 
 static PyObject *
-PyGMixFit_fill_model_subgrid(PyObject *self, PyObject *args) 
+PyGMixFit_fill_model(PyObject *self, PyObject *args) 
 {
     PyObject *image_obj=NULL;
     PyObject *gvec_pyobj=NULL;
@@ -960,9 +1035,9 @@ double randn()
 
 
 static PyMethodDef render_module_methods[] = {
-    {"fill_model_coellip", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
-    {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image"},
-    {"fill_model_subgrid", (PyCFunction)PyGMixFit_fill_model_subgrid,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
+    {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
+    {"fill_model_coellip_old", (PyCFunction)PyGMixFit_coellip_fill_model_old,  METH_VARARGS,  "fill the model image"},
+    {"fill_model_old", (PyCFunction)PyGMixFit_fill_model_old,  METH_VARARGS,  "fill the model image"},
 
     {"loglike_coellip_old", (PyCFunction)PyGMixFit_loglike_coellip_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {"loglike_coellip", (PyCFunction)PyGMixFit_loglike_coellip,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},

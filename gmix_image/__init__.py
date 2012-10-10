@@ -10,7 +10,10 @@ from sys import stderr
 from . import gmix_em
 from . import gmix_fit
 from . import util
+
 from . import render
+from .render import gmix2image
+
 from . import gmix
 from .gmix import GMix
 from .gmix import GMixCoellip
@@ -32,7 +35,6 @@ except:
     pass
 
 from .util import gmix2pars, pars2gmix, total_moms,  gmix_print
-from .render import gmix2image
 
 from .gmix_em import GMixEM
 from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET
