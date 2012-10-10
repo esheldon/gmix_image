@@ -2,6 +2,7 @@ import numpy
 from numpy import array
 import copy
 from . import _gvec
+from .util import gmix2pars
 from ._gvec import version
 
 GMIX_FULL=0
@@ -17,23 +18,35 @@ class GMix(_gvec.GVec):
     parameters
     ----------
     type: int
-        0 pars are full gaussian mixture 
+        GMIX_FULL 
+            input is a full gaussian mixture, either represented as
                 [p1,row1,row2,irr1,irc1,icc2,...]
-        1 pars are coellip pars
+            or as a list of dicts with each dict
+                p,row,col,irr,irc,icc
+
+        GMIX_COELLIP 
+            input is for coelliptical gaussians
                 [row,col,e1,e2,Tmax,f2,f3...,p1,p2,p3...]
-        2 pars specify an approximate exponential disk with
+
+        GMIX_EXP 
+            input specifies an approximate exponential disk with
             parameters
                 [row,col,e1,e2,T,p]
-        3 pars specify an approximate devauc profile with
+
+        GMIX_DEV 
+            input specifies an approximate devauc profile with
             parameters
                 [row,col,e1,e2,T,p]
-        4 pars specify an approximate turbulent psf with
+
+        GMIX_TURB 
+            input specifies an approximate turbulent psf with
             parameters.  Always round.
                 [row,col,T,p]
 
-    pars: sequence
+    pars: sequence or list of dicts
         A sequence describing the gaussians, as determined
-        by the type parameter
+        by the type parameter.  For GMIX_FULL can also be
+        a list of dictionaries
 
     methods
     -------
@@ -47,10 +60,15 @@ class GMix(_gvec.GVec):
         Get a copy of the type of the input parameters
     """
     def __init__(self, type, pars):
-        pars=array(pars,dtype='f8')
         type=int(type)
-        super(GMix,self).__init__(type, pars)
-        self._pars=pars
+
+        if type==GMIX_FULL and isinstance(pars[0], dict):
+            pars_array=gmix2pars(pars)
+        else:
+            pars_array=array(pars,dtype='f8')
+
+        super(GMix,self).__init__(type, pars_array)
+        self._pars=pars_array
         self._type=type
 
 
