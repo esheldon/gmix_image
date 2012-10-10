@@ -42,7 +42,7 @@ def GMixDev(pars):
     pars: sequence
         [row,col,e1,e2,T,p]
     """
-    return GMix(pars, type=GMIX_EXP)
+    return GMix(pars, type=GMIX_DEV)
 
 def GMixTurb(pars):
     """
@@ -54,7 +54,7 @@ def GMixTurb(pars):
     pars: sequence
         [row,col,e1,e2,T,p]
     """
-    return GMix(pars, type=GMIX_EXP)
+    return GMix(pars, type=GMIX_TURB)
 
 
 
@@ -105,6 +105,8 @@ class GMix(_render.GVec):
         return a list of dicts representing the gaussian mixture
     get_T():
         Return T=sum(p*T_i)/sum(p)
+    get_e1e2T():
+        Return stats based on averaged moments val=sum(p*val_i)/sum(p)
     get_cen():
         Return cen=sum(p*cen_i)/sum(p)
     set_cen(row,col):

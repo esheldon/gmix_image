@@ -263,6 +263,44 @@ static PyObject *PyGVecObject_set_cen(struct PyGVecObject* self, PyObject *args)
     return Py_None;
 }
 
+static PyObject *PyGVecObject_get_e1e2T(struct PyGVecObject* self)
+{
+    double psum=0;
+    size_t i=0;
+    struct gauss *gauss=NULL;
+    npy_intp dims[1] = {3};
+    int npy_dtype=NPY_FLOAT64;
+    double irr=0, irc=0, icc=0, T=0;
+    double e1=0, e2=0;
+    PyObject *arr=NULL;
+    double *data=NULL;
+
+    arr=PyArray_ZEROS(1, dims, npy_dtype, 0);
+    data=PyArray_DATA(arr);
+
+    gauss=self->gvec->data;
+    for (i=0; i<self->gvec->size; i++) {
+        irr += gauss->irr*gauss->p;
+        irc += gauss->irc*gauss->p;
+        icc += gauss->icc*gauss->p;
+        psum += gauss->p;
+        gauss++;
+    }
+
+    irr /= psum;
+    irc /= psum;
+    icc /= psum;
+
+    T = icc+irr;
+    e1 = (icc-irr)/T;
+    e2 = 2.*irc/T;
+
+    data[0] = e1;
+    data[1] = e2;
+    data[2] = T;
+
+    return arr;
+}
 
 
 
@@ -290,6 +328,7 @@ static PyObject *PyGVecObject_convolve_inplace(struct PyGVecObject* self, PyObje
 
 static PyMethodDef PyGVecObject_methods[] = {
     {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_NOARGS, "get_dlist\n\nreturn list of dicts."},
+    {"get_e1e2T", (PyCFunction)PyGVecObject_get_e1e2T, METH_NOARGS, "get_e1e2T\n\nreturn stats based on average moments val=sum(val_i*p)/sum(p)."},
     {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
     {"get_cen", (PyCFunction)PyGVecObject_get_cen, METH_NOARGS, "get_cen\n\nreturn cen=sum(cen_i*p)/sum(p)."},
     {"set_cen", (PyCFunction)PyGVecObject_set_cen, METH_VARARGS, "set_cen\n\nSet all centers to the input row,col"},
@@ -856,6 +895,50 @@ PyGMixFit_loglike_coellip(PyObject *self, PyObject *args)
     return tup;
 }
 
+static PyObject *
+PyGMixFit_loglike(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* gvec_pyobj=NULL;
+    struct PyGVecObject *gvec_obj=NULL;
+    double A=0, ierr=0;
+
+    double loglike=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOdd", 
+                                       &image_obj, &gvec_pyobj,
+                                       &A, &ierr)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    flags=calculate_loglike(image, gvec_obj->gvec, A, ierr, &loglike);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    tup = PyTuple_New(2);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
 
 static PyObject *
 PyGMixFit_loglike_coellip_old(PyObject *self, PyObject *args) 
@@ -1041,6 +1124,7 @@ static PyMethodDef render_module_methods[] = {
 
     {"loglike_coellip_old", (PyCFunction)PyGMixFit_loglike_coellip_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {"loglike_coellip", (PyCFunction)PyGMixFit_loglike_coellip,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
+    {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {NULL}  /* Sentinel */
 };
 

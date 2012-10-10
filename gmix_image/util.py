@@ -329,4 +329,43 @@ def get_f_p_vals_turb():
     pars=pars.reshape(1,pars.size)
     get_f_p_vals(pars=pars)
 
+def compare_gmix_approx(type, s2):
+    import fimage
+    from .render import gmix2image
+    from .gmix import GMixCoellip, GMixDev, GMixExp
+    import images
+    Tpsf=3.9
+    Tobj=Tpsf/s2
+
+    objpars = {'model':type, 'cov':[Tobj/2.,0.0,Tobj/2.]}
+    psfpars = {'model':'gauss', 'cov':[Tpsf/2.,0.0,Tpsf/2.]}
+    ci0=fimage.convolved.ConvolverGaussFFT(objpars,psfpars)
+
+    ci = fimage.convolved.TrimmedConvolvedImage(ci0, fluxfrac=.9997)
+
+    cen=ci['cen']
+    psfcen=ci['cen_psf_uw']
+    if type=='dev':
+        gmix   = GMixDev(     [cen[0],cen[1], 0., 0., Tobj, 1.] )
+    elif type=='exp':
+        gmix   = GMixExp(     [cen[0],cen[1], 0., 0., Tobj, 1.] )
+    else:
+        raise ValueError("bad type: '%s'" % type)
+
+    psf_gauss  = GMixCoellip( [psfcen[0],psfcen[1], 0., 0., Tpsf, 1.] )
+    obj = gmix.convolve(psf_gauss)
+
+    psf=gmix2image(psf_gauss,ci.image.shape,nsub=16)
+    im=gmix2image(obj,ci.image.shape,nsub=16)
+
+    im *= 1.0/im.sum()
+    imdev = ci.image*1.0/ci.image.sum()
+
+    images.compare_images(ci.psf, psf,
+                          label1='psf0', label2='psf')
+
+    images.compare_images(imdev, im,
+                          label1='%s fft' % type, label2='%s gmix' % type)
+
+
 
