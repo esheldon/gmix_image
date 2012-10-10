@@ -357,19 +357,9 @@ struct gvec *gvec_from_pars_dev(double *pars, int size)
 }
 struct gvec *gvec_from_pars_turb(double *pars, int size)
 {
-    double tpars[6];
-
-    if (size != 4) {
+    if (size != 6) {
         return NULL;
     }
-
-    tpars[0] = pars[0];
-    tpars[1] = pars[1];
-    tpars[2] = 0.;
-    tpars[3] = 0.;
-    tpars[4] = pars[2];
-    tpars[5] = pars[3];
-
 
     /* seems to me more a function of size than for exp */
     static const double Fvals[3] = 
@@ -377,7 +367,7 @@ struct gvec *gvec_from_pars_turb(double *pars, int size)
     static const double pvals[3] = 
         {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
 
-    return _gapprox_pars_to_gvec(tpars, Fvals, pvals);
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
 
 

@@ -12,6 +12,12 @@ from . import gmix_fit
 from . import util
 from . import render
 from . import gmix
+from .gmix import GMix
+from .gmix import GMixCoellip
+from .gmix import GMixExp
+from .gmix import GMixDev
+from .gmix import GMixTurb
+
 from .gmix import GMIX_FULL
 from .gmix import GMIX_COELLIP
 from .gmix import GMIX_EXP

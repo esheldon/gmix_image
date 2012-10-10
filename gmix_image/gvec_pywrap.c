@@ -2,13 +2,16 @@
 #include <numpy/arrayobject.h> 
 
 #include "gvec.h"
+#include "gvec_pywrap.h"
 #include "defs.h"
 
 
+/*
 struct PyGVecObject {
     PyObject_HEAD
     struct gvec *gvec;
 };
+*/
 
 struct gvec *pyarray_to_gvec(PyObject *array)
 {
@@ -111,7 +114,7 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars_turb(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "turb pars not size 4: %ld", size);
+                        "turb pars not size 6: %ld", size);
             }
             break;
 

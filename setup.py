@@ -14,13 +14,9 @@ em_ext=Extension("gmix_image._gmix_em",
 render_ext=Extension("gmix_image._render", 
                      ["gmix_image/render_pywrap.c",
                       "gmix_image/gvec.c",
-                      "gmix_image/matrix.c",
                       "gmix_image/image.c"])
-gvec_ext=Extension("gmix_image._gvec", 
-                     ["gmix_image/gvec_pywrap.c",
-                      "gmix_image/gvec.c"])
 
-ext_modules=[em_ext,render_ext,gvec_ext]
+ext_modules=[em_ext,render_ext]
 
 class WithNLSolver(Command):
     _ext_modules=ext_modules

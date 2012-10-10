@@ -1,9 +1,8 @@
 import numpy
 from numpy import array
 import copy
-from . import _gvec
+from . import _render
 from .util import gmix2pars
-from ._gvec import version
 
 GMIX_FULL=0
 GMIX_COELLIP=1
@@ -11,18 +10,72 @@ GMIX_EXP=2
 GMIX_DEV=3
 GMIX_TURB=4
 
-class GMix(_gvec.GVec):
+def GMixCoellip(pars):
     """
-    Generate a gaussian mixture vector from the input parameters.
+    Generate a co-elliptical gaussian mixture.
 
     parameters
     ----------
-    type: int
+    pars: sequence
+        [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3...]
+    """
+    return GMix(pars, type=GMIX_COELLIP)
+
+
+def GMixExp(pars):
+    """
+    Generate a gaussian mixture representing an approximate exponential disk.
+
+    parameters
+    ----------
+    pars: sequence
+        [row,col,e1,e2,T,p]
+    """
+    return GMix(pars, type=GMIX_EXP)
+
+def GMixDev(pars):
+    """
+    Generate a gaussian mixture representing an approximate devauc profile.
+
+    parameters
+    ----------
+    pars: sequence
+        [row,col,e1,e2,T,p]
+    """
+    return GMix(pars, type=GMIX_EXP)
+
+def GMixTurb(pars):
+    """
+    Generate a gaussian mixture representing an approximate turbulent 
+    atmospheric PSF.  Can be ellipticial.
+
+    parameters
+    ----------
+    pars: sequence
+        [row,col,e1,e2,T,p]
+    """
+    return GMix(pars, type=GMIX_EXP)
+
+
+
+class GMix(_render.GVec):
+    """
+    Generate a gaussian mixture from the input parameters.
+
+    parameters
+    ----------
+    pars: sequence or list of dicts
+        A sequence describing the gaussians, as determined
+        by the type parameter.  For GMIX_FULL can also be
+        a list of dictionaries
+
+    type: int, optional
         GMIX_FULL 
             input is a full gaussian mixture, either represented as
                 [p1,row1,row2,irr1,irc1,icc2,...]
             or as a list of dicts with each dict
                 p,row,col,irr,irc,icc
+            This is the default
 
         GMIX_COELLIP 
             input is for coelliptical gaussians
@@ -40,13 +93,9 @@ class GMix(_gvec.GVec):
 
         GMIX_TURB 
             input specifies an approximate turbulent psf with
-            parameters.  Always round.
-                [row,col,T,p]
+            parameters.  Can be elliptical.
+                [row,col,e1,e2,T,p]
 
-    pars: sequence or list of dicts
-        A sequence describing the gaussians, as determined
-        by the type parameter.  For GMIX_FULL can also be
-        a list of dictionaries
 
     methods
     -------
@@ -59,7 +108,7 @@ class GMix(_gvec.GVec):
     get_type():
         Get a copy of the type of the input parameters
     """
-    def __init__(self, type, pars):
+    def __init__(self, pars, type=GMIX_FULL):
         type=int(type)
 
         if type==GMIX_FULL and isinstance(pars[0], dict):
