@@ -60,7 +60,7 @@ class GMix(_gvec.GVec):
             raise ValueError("Can only convolve with another GMix object")
 
         gmix = GMix(self._type,self._pars)
-        gmix.convolve_inplace(psf)
+        gmix._convolve_inplace(psf)
         return gmix
 
     def get_pars(self):

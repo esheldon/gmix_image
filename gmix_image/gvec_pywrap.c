@@ -205,7 +205,7 @@ PyGVec_version(void) {
 
 static PyMethodDef PyGVecObject_methods[] = {
     {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_VARARGS, "get_dlist\n\nreturn list of dicts."},
-    {"convolve_inplace", (PyCFunction)PyGVecObject_convolve_inplace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
+    {"_convolve_inplace", (PyCFunction)PyGVecObject_convolve_inplace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
     {NULL}  /* Sentinel */
 };
 
