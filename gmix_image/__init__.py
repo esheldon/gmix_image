@@ -12,6 +12,12 @@ from . import gmix_fit
 from . import util
 from . import render
 from . import gmix
+from .gmix import GMIX_FULL
+from .gmix import GMIX_COELLIP
+from .gmix import GMIX_EXP
+from .gmix import GMIX_DEV
+from .gmix import GMIX_TURB
+
 
 # we might not have built the c++ library
 try:
