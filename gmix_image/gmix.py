@@ -4,6 +4,12 @@ import copy
 from . import _gvec
 from ._gvec import version
 
+GMIX_FULL=0
+GMIX_COELLIP=1
+GMIX_EXP=2
+GMIX_DEV=3
+GMIX_TURB=4
+
 class GMix(_gvec.GVec):
     """
     Generate a gaussian mixture vector from the input parameters.
@@ -22,8 +28,8 @@ class GMix(_gvec.GVec):
             parameters
                 [row,col,e1,e2,T,p]
         4 pars specify an approximate turbulent psf with
-            parameters
-                [row,col,e1,e2,T,p]
+            parameters.  Always round.
+                [row,col,T,p]
 
     pars: sequence
         A sequence describing the gaussians, as determined

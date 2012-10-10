@@ -111,7 +111,7 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars_turb(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "turb pars not size 6: %ld", size);
+                        "turb pars not size 4: %ld", size);
             }
             break;
 
