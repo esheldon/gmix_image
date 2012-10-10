@@ -1,7 +1,7 @@
 #ifndef _GVEC_HEADER_GUARD
 #define _GVEC_HEADER_GUARD
 
-#include "matrix.h"
+//#include "matrix.h"
 
 struct gauss {
     double p;
@@ -57,9 +57,9 @@ void gvec_print(struct gvec *self, FILE* fptr);
 double gvec_wmomsum(struct gvec* gvec);
 
 // 0 returned if a zero determinant is found somewhere, else 1
-int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
+//int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
 
-void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
+//void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
 
 /* convolution results in an nobj*npsf total gaussians */
 struct gvec *gvec_convolve(struct gvec *obj_gvec, 
@@ -69,15 +69,16 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
 /* full parameters list
    [pi,rowi,coli,irri,irci,icci,...]
 */
-struct gvec *pars_to_gvec(double *pars, int sz);
+struct gvec *gvec_from_pars(double *pars, int size);
 /* coellip list
    [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3..]
  */
-struct gvec *coellip_pars_to_gvec(double *pars, int sz);
+struct gvec *gvec_from_coellip(double *pars, int size);
 
 /* 
    Generate a gvec from the inputs pars assuming an appoximate
-   3-gaussian representation of an exponential disk or devauc.
+   3-gaussian representation of an exponential disk. It's only
+   a good approx when convolved with a substantial psf.
 
    One component is nearly a delta function
 
@@ -87,6 +88,23 @@ struct gvec *coellip_pars_to_gvec(double *pars, int sz);
 
    The p and F values are chosen to make this so
 */
-struct gvec *gapprox_pars_to_gvec(double *pars, enum gapprox type);
+struct gvec *gvec_from_pars_exp(double *pars, int size);
+/* 
+   Generate a gvec from the inputs pars assuming an appoximate
+   3-gaussian representation of a devauc profile. It's only
+   a good approx when convolved with a substantial psf.
+
+   One component is nearly a delta function
+
+   pars should be [row,col,e1,e2,T,p]
+
+   T = sum(pi*Ti)/sum(pi)
+
+   The p and F values are chosen to make this so
+*/
+struct gvec *gvec_from_pars_dev(double *pars, int size);
+
+/* similar to above but for a turbulent psf */
+struct gvec *gvec_from_pars_turb(double *pars, int size);
 
 #endif

@@ -8,11 +8,6 @@
 #include "defs.h"
 
 
-static PyObject *
-PyGMixFit_hello(void) {
-    return PyString_FromString("hello world!");
-}
-
 /* 
  * Generate gaussian random numbers mean 0 sigma 1
  *
@@ -61,7 +56,12 @@ struct gvec *pyarray_to_gvec(PyObject *array)
     pars = PyArray_DATA(array);
     sz = PyArray_SIZE(array);
 
-    gvec = pars_to_gvec(pars, sz);
+    if ((sz % 6) != 0) {
+        PyErr_Format(PyExc_ValueError, 
+                "gmix pars size not multiple of 6: %d\n", sz);
+        return NULL;
+    }
+    gvec = gvec_from_pars(pars, sz);
     return gvec;
 }
 struct gvec *coellip_pyarray_to_gvec(PyObject *array)
@@ -72,9 +72,11 @@ struct gvec *coellip_pyarray_to_gvec(PyObject *array)
     pars = PyArray_DATA(array);
     sz = PyArray_SIZE(array);
 
-    gvec = coellip_pars_to_gvec(pars, sz);
+    gvec = gvec_from_coellip(pars, sz);
     return gvec;
 }
+
+
 int check_image_and_diff(PyObject *image_obj, PyObject *diff_obj)
 {
     if (!check_numpy_image(image_obj)) {
@@ -706,11 +708,18 @@ PyGMixFit_fill_model_subgrid(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, (char*)"OOi", &image_obj, &pars_obj, &nsub)) {
         return NULL;
     }
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
 
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
     gvec = pyarray_to_gvec(pars_obj);
+    if (gvec==NULL) {
+        return NULL;
+    }
     DBG2 gvec_print(gvec, stderr);
 
     flags=fill_model_subgrid(image, gvec, nsub);
@@ -727,7 +736,6 @@ PyGMixFit_fill_model_subgrid(PyObject *self, PyObject *args)
 
 
 static PyMethodDef render_module_methods[] = {
-    {"hello",      (PyCFunction)PyGMixFit_hello,               METH_NOARGS,  "test hello"},
     {"fill_model_coellip", (PyCFunction)PyGMixFit_coellip_fill_model,  METH_VARARGS,  "fill the model image"},
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image"},
     {"fill_model_subgrid", (PyCFunction)PyGMixFit_fill_model_subgrid,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},

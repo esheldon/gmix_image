@@ -40,6 +40,7 @@
 #include "gmix_em.h"
 #include "image.h"
 #include "gvec.h"
+#include "matrix.h"
 #include "defs.h"
 
 int gmix_em(struct gmix* self,
@@ -101,6 +102,92 @@ _gmix_em_bail:
 
     return flags;
 }
+/*
+ 
+ Find the weighted average center
+
+ for j gaussians
+
+     munew = sum_j( C_j^-1 p_j mu_j )/sum( C_j^-1 p_j )
+
+ where the mus are mean vectors and the C are the covarance
+ matrices.
+
+ The following would be a lot simpler if we use vec2 and mtx2
+ types in the gaussian!  Maybe some other day.
+
+ */
+int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
+{
+    int status=1;
+    struct vec2 mu_Cinvp, mu_Cinvpsum;
+    struct mtx2 Cinvpsum, Cinvpsum_inv, C, Cinvp;
+    size_t i=0;
+
+    memset(&Cinvpsum,0,sizeof(struct mtx2));
+    memset(&mu_Cinvpsum,0,sizeof(struct vec2));
+
+    const struct gauss* gauss = gvec->data;
+    for (i=0; i<gvec->size; i++) {
+        // p*C^-1
+        mtx2_set(&C, gauss->irr, gauss->irc, gauss->icc);
+        if (!mtx2_invert(&C, &Cinvp)) {
+            wlog("gvec_fix_centers: zero determinant found in C\n");
+            status=0;
+            goto _gvec_wmean_center_bail;
+        }
+        mtx2_sprodi(&Cinvp, gauss->p);
+
+        // running sum of p*C^-1
+        mtx2_sumi(&Cinvpsum, &Cinvp);
+
+        // set the center as a vec2
+        vec2_set(&mu_Cinvp, gauss->row, gauss->col);
+        // p*C^-1 * mu in place on mu
+        mtx2_vec2prodi(&Cinvp, &mu_Cinvp);
+
+        // running sum of p*C^-1 * mu
+        vec2_sumi(&mu_Cinvpsum, &mu_Cinvp);
+        gauss++;
+    }
+
+    if (!mtx2_invert(&Cinvpsum, &Cinvpsum_inv)) {
+        wlog("gvec_fix_centers: zero determinant found in Cinvpsum\n");
+        status=0;
+        goto _gvec_wmean_center_bail;
+    }
+
+    mtx2_vec2prod(&Cinvpsum_inv, &mu_Cinvpsum, mu_new);
+
+_gvec_wmean_center_bail:
+    return status;
+}
+
+/*
+ * calculate the mean covariance matrix
+ *
+ *   sum(p*Covar)/sum(p)
+ */
+void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
+{
+    double psum=0.0;
+    struct gauss *gauss=gvec->data;
+    struct gauss *end=gvec->data+gvec->size;
+
+    mtx2_sprodi(cov, 0.0);
+    
+    for (; gauss != end; gauss++) {
+        psum += gauss->p;
+        cov->m11 += gauss->p*gauss->irr;
+        cov->m12 += gauss->p*gauss->irc;
+        cov->m22 += gauss->p*gauss->icc;
+    }
+
+    cov->m11 /= psum;
+    cov->m12 /= psum;
+    cov->m22 /= psum;
+}
+
 
 static void set_means(struct gvec *gvec, struct vec2 *cen)
 {

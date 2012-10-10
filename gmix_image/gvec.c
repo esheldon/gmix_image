@@ -155,92 +155,6 @@ void gvec_set_total_moms(struct gvec *self)
 }
 
 
-/*
- 
- Find the weighted average center
-
- for j gaussians
-
-     munew = sum_j( C_j^-1 p_j mu_j )/sum( C_j^-1 p_j )
-
- where the mus are mean vectors and the C are the covarance
- matrices.
-
- The following would be a lot simpler if we use vec2 and mtx2
- types in the gaussian!  Maybe some other day.
-
- */
-int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
-{
-    int status=1;
-    struct vec2 mu_Cinvp, mu_Cinvpsum;
-    struct mtx2 Cinvpsum, Cinvpsum_inv, C, Cinvp;
-    size_t i=0;
-
-    memset(&Cinvpsum,0,sizeof(struct mtx2));
-    memset(&mu_Cinvpsum,0,sizeof(struct vec2));
-
-    const struct gauss* gauss = gvec->data;
-    for (i=0; i<gvec->size; i++) {
-        // p*C^-1
-        mtx2_set(&C, gauss->irr, gauss->irc, gauss->icc);
-        if (!mtx2_invert(&C, &Cinvp)) {
-            wlog("gvec_fix_centers: zero determinant found in C\n");
-            status=0;
-            goto _gvec_wmean_center_bail;
-        }
-        mtx2_sprodi(&Cinvp, gauss->p);
-
-        // running sum of p*C^-1
-        mtx2_sumi(&Cinvpsum, &Cinvp);
-
-        // set the center as a vec2
-        vec2_set(&mu_Cinvp, gauss->row, gauss->col);
-        // p*C^-1 * mu in place on mu
-        mtx2_vec2prodi(&Cinvp, &mu_Cinvp);
-
-        // running sum of p*C^-1 * mu
-        vec2_sumi(&mu_Cinvpsum, &mu_Cinvp);
-        gauss++;
-    }
-
-    if (!mtx2_invert(&Cinvpsum, &Cinvpsum_inv)) {
-        wlog("gvec_fix_centers: zero determinant found in Cinvpsum\n");
-        status=0;
-        goto _gvec_wmean_center_bail;
-    }
-
-    mtx2_vec2prod(&Cinvpsum_inv, &mu_Cinvpsum, mu_new);
-
-_gvec_wmean_center_bail:
-    return status;
-}
-
-/*
- * calculate the mean covariance matrix
- *
- *   sum(p*Covar)/sum(p)
- */
-void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
-{
-    double psum=0.0;
-    struct gauss *gauss=gvec->data;
-    struct gauss *end=gvec->data+gvec->size;
-
-    mtx2_sprodi(cov, 0.0);
-    
-    for (; gauss != end; gauss++) {
-        psum += gauss->p;
-        cov->m11 += gauss->p*gauss->irr;
-        cov->m12 += gauss->p*gauss->irc;
-        cov->m22 += gauss->p*gauss->icc;
-    }
-
-    cov->m11 /= psum;
-    cov->m12 /= psum;
-    cov->m22 /= psum;
-}
-
 /* convolution results in an nobj*npsf total gaussians */
 struct gvec *gvec_convolve(struct gvec *obj_gvec, 
                            struct gvec *psf_gvec)
@@ -288,17 +202,17 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
 
 
 // pars are full gmix of size 6*ngauss
-struct gvec *pars_to_gvec(double *pars, int sz)
+struct gvec *gvec_from_pars(double *pars, int size)
 {
     int ngauss=0;
     struct gauss *gauss=NULL;
 
     int i=0, beg=0;
 
-    //pars = PyArray_DATA(array);
-    //sz = PyArray_SIZE(array);
-
-    ngauss = sz/6;
+    if ( (size % 6) != 0) {
+        return NULL;
+    }
+    ngauss = size/6;
 
     struct gvec *gvec = gvec_new(ngauss);
 
@@ -322,7 +236,7 @@ struct gvec *pars_to_gvec(double *pars, int sz)
 
 
 
-struct gvec *coellip_pars_to_gvec(double *pars, int sz)
+struct gvec *gvec_from_coellip(double *pars, int size)
 {
     int ngauss=0;
     double row=0, col=0, e1=0, e2=0, Tmax=0, Ti=0, pi=0, Tfrac=0;
@@ -330,10 +244,10 @@ struct gvec *coellip_pars_to_gvec(double *pars, int sz)
 
     int i=0;
 
-    //pars = PyArray_DATA(array);
-    //sz = PyArray_SIZE(array);
-
-    ngauss = (sz-4)/2;
+    if ( ((size-4) % 2) != 0) {
+        return NULL;
+    }
+    ngauss = (size-4)/2;
 
     struct gvec * gvec = gvec_new(ngauss);
 
@@ -367,19 +281,6 @@ struct gvec *coellip_pars_to_gvec(double *pars, int sz)
     gvec_set_dets(gvec);
     return gvec;
 }
-
-/* 
-   Generate a gvec from the inputs pars assuming an appoximate
-   3-gaussian representation of an exponential disk or devauc.
-
-   One component is nearly a delta function
-
-   pars should be [row,col,e1,e2,T,p]
-
-   T = sum(pi*Ti)/sum(pi)
-
-   The p and F values are chosen to make this so
-*/
 
 /* helper function */
 static struct gvec *_gapprox_pars_to_gvec(double *pars, 
@@ -426,27 +327,47 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 
     return gvec;
 }
-struct gvec *gapprox_pars_to_gvec(double *pars, enum gapprox type)
+
+
+struct gvec *gvec_from_pars_exp(double *pars, int size)
 {
-    /* pvals are normalized */
-    static const double exp_Fvals[3] = 
-        {3.947146384343532e-05, 0.5010756804049256, 1.911515572152285};
-    static const double exp_pvals[3] = 
-        {0.06031348356539361,   0.5645244398053312, 0.3751620766292753};
-
-    /* seems to me more a function of size than for exp */
-    static const double dev_Fvals[3] = 
-        {0.003718633817323675, 0.9268795541243965, 9.627400726500005};
-    static const double dev_pvals[3] = 
-        {0.659318547053916,    0.2623209100496331, 0.07836054289645095};
-
-    if (type==GAPPROX_EXP) {
-        return _gapprox_pars_to_gvec(pars, exp_Fvals, exp_pvals);
-    } else if (type==GAPPROX_DEV) {
-        return _gapprox_pars_to_gvec(pars, dev_Fvals, dev_pvals);
-    } else {
+    if (size != 6) {
         return NULL;
     }
+    /* pvals are normalized */
+    static const double Fvals[3] = 
+        {3.947146384343532e-05, 0.5010756804049256, 1.911515572152285};
+    static const double pvals[3] = 
+        {0.06031348356539361,   0.5645244398053312, 0.3751620766292753};
+
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
+struct gvec *gvec_from_pars_dev(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+    /* seems to me more a function of size than for exp */
+    static const double Fvals[3] = 
+        {0.003718633817323675, 0.9268795541243965, 9.627400726500005};
+    static const double pvals[3] = 
+        {0.659318547053916,    0.2623209100496331, 0.07836054289645095};
+
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
+}
+struct gvec *gvec_from_pars_turb(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+    /* seems to me more a function of size than for exp */
+    static const double Fvals[3] = 
+        {0.5793612389470884,1.621860687127999,7.019347162356363};
+    static const double pvals[3] = 
+        {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
+
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
+}
+
 
 

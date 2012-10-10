@@ -449,4 +449,23 @@ def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
 
 
 
+class GMix(object):
+    """
+    Gaussian mixture object
 
+    dlist: list of dicts, elements p, row, col, irr, irc, icc
+    pars: full pars
+        [p_1,cen1_1,cen2_1,irr_1,irc_1,icc_1,
+         p_2,cen1_2,cen2_2,irr_2,irc_2,icc_2,
+         ...]
+    coellip:  
+        [cen1,cen2,e1,e2,Tmax,Tfrac2,Tfrac3..,p1,p2,p3...]
+
+        Tmax was a bad choice but this does at least
+        reduce to 
+            [cen1,cen2,e1,e2,T,p] 
+        for models with just a scale and norm
+
+    """
+    def __init__(self, dict=None, coellip=None, full=None):
+        pass

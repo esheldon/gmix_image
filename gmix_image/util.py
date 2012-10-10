@@ -175,8 +175,46 @@ def _pars2gmix_coellip(pars):
 
     return gmix
 
+def pars2full_coellip(pars):
+    """
+    Convert a coellip par array to a full
+    pars array [p_1,cen1_1,cen2_1,irr_1,irc_1,icc_1,
+                p_2,cen1_2,cen2_2,irr_2,irc_2,icc_2,
+                ...]
 
-def get_f_p_vals(fname):
+    input is
+    [cen1,cen2,e1,e2,Tmax,Tfrac2,Tfrac3..,p1,p2,p3...]
+    """
+    ngauss = (len(pars)-4)/2
+    gmix=zeros(ngauss*6)
+
+    row=pars[0]
+    col=pars[1]
+    e1 = pars[2]
+    e2 = pars[3]
+    Tmax = pars[4]
+
+    for i in xrange(ngauss):
+        beg=i*6
+
+        if i == 0:
+            T = Tmax
+        else:
+            Tfrac = pars[4+i]
+            T = Tmax*Tfrac
+
+        p = pars[4+ngauss+i]
+
+        pars[beg+0] = p
+        pars[beg+1] = row
+        pars[beg+2] = col
+        pars[beg+3] = (T/2.)*(1-e1)
+        pars[beg+4] = (T/2.)*e2
+        pars[beg+5] = (T/2.)*(1+e1)
+
+    return gmix
+
+def get_f_p_vals(fname=None, pars=None):
     """
     Can do for exp or devauc
     exp file
@@ -185,12 +223,15 @@ def get_f_p_vals(fname):
         /gmix-fit-dt03r99/outputs/gmix-fit-dt03r99-001-000.rec
         ??
     """
-    import esutil as eu
-    t=eu.io.read(fname)
 
     # make sure ordered
-    pars=t['pars'].copy()
-    n=t.size
+    if fname is not None:
+        import esutil as eu
+        t=eu.io.read(fname)
+        pars=t['pars'].copy()
+    elif pars is None:
+        raise ValueError("send fname= or pars=")
+    n=pars.shape[0]
 
     # smallest to largest
     T1s=numpy.zeros(n)
@@ -200,7 +241,7 @@ def get_f_p_vals(fname):
     p2s=numpy.zeros(n)
     p3s=numpy.zeros(n)
 
-    for i in xrange(t.size):
+    for i in xrange(n):
         # these always fixed
         Tmax=pars[i,4]
         T3s[i] = Tmax
@@ -250,5 +291,42 @@ def get_f_p_vals(fname):
     print T/pvals[0]*(psum - Fpsum + pvals[0]*Fvals[0])
     print T/pvals[1]*(psum - Fpsum + pvals[1]*Fvals[1])
     print T/pvals[2]*(psum - Fpsum + pvals[2]*Fvals[2])
+
+def get_f_p_vals_turb():
+    import fimage
+    from numpy.random import random as randu
+    from .gmix_fit import GMixFitCoellip
+    dims=[1000,1000]
+    fwhm=100.
+    im_nonoise=fimage.pixmodel.ogrid_turb_psf(dims, fwhm)
+    im,skysig=fimage.noise.add_noise_admom(im_nonoise, 1.e8)
+    #0.4422839982971848,0.9764735420431805,4.784430363572698
+    #0.5356908850142901,0.3829828442516049,0.08132627073410502
+
+    guess=array([100. + 0.01*(randu()-0.5),
+                 100. + 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+
+                 fwhm + 0.01*(randu()-0.5),
+                 0.2 + 0.01*(randu()-0.5),
+                 0.08 + 0.01*(randu()-0.5),
+
+                 0.08 + 0.01*(randu()-0.5),
+                 0.4 + 0.01*(randu()-0.5),
+                 0.54 + 0.01*(randu()-0.5)])
+
+    width=guess.copy()
+    width[:] = 100
+
+    gm = GMixFitCoellip(im, skysig,
+                        guess,width,
+                        Tpositive=True)
+
+    pars=gm.get_pars()
+    perr=gm.get_perr()
+
+    pars=pars.reshape(1,pars.size)
+    get_f_p_vals(pars=pars)
 
 
