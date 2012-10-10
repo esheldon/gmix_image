@@ -11,7 +11,7 @@ from . import gmix_em
 from . import gmix_fit
 from . import util
 from . import render
-from . import gvec
+from . import gmix
 
 # we might not have built the c++ library
 try:
