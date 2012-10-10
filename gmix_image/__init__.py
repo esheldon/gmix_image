@@ -42,8 +42,6 @@ from .gmix_em import gmix2image_em, gmix2image_psf_em
 from .gmix_em import ogrid_image
 
 from .gmix_fit import GMixFitCoellip
-from .gmix_fit import GMixFitCoellipTry
-from .gmix_fit import GMixFitDev
 
 from .gmix_fit import get_ngauss_coellip
 
