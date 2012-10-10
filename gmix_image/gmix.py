@@ -43,7 +43,7 @@ class GMix(_gvec.GVec):
     def __init__(self, type, pars):
         pars=array(pars,dtype='f8')
         type=int(type)
-        super(GVec,self).__init__(type, pars)
+        super(GMix,self).__init__(type, pars)
         self._pars=pars
         self._type=type
 
@@ -59,9 +59,9 @@ class GMix(_gvec.GVec):
         if not isinstance(psf, GMix):
             raise ValueError("Can only convolve with another GMix object")
 
-        gvec = GMix(self._type,self._pars)
-        gvec.convolve_inplace(psf)
-        return gvec
+        gmix = GMix(self._type,self._pars)
+        gmix.convolve_inplace(psf)
+        return gmix
 
     def get_pars(self):
         """
