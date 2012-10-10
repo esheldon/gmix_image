@@ -4,7 +4,7 @@ import copy
 from . import _gvec
 from ._gvec import version
 
-class GVec(_gvec.GVec):
+class GMix(_gvec.GVec):
     """
     Generate a gaussian mixture vector from the input parameters.
 
@@ -32,11 +32,11 @@ class GVec(_gvec.GVec):
     methods
     -------
     convolve(psf):
-        Get a new GVec that is the convolution of the GVec with the input psf
+        Get a new GMix that is the convolution of the GMix with the input psf
     get_dlist():
         return a list of dicts representing the gaussian mixture
     get_pars():
-        Get a copy of the parameter array used to initialize the GVec
+        Get a copy of the parameter array used to initialize the GMix
     get_type():
         Get a copy of the type of the input parameters
     """
@@ -50,22 +50,22 @@ class GVec(_gvec.GVec):
 
     def convolve(self, psf):
         """
-        Get a new GVec that is the convolution of the GVec with the input psf
+        Get a new GMix that is the convolution of the GMix with the input psf
 
         parameters
         ----------
-        psf: GVec object
+        psf: GMix object
         """
-        if not isinstance(psf, GVec):
-            raise ValueError("Can only convolve with another GVec object")
+        if not isinstance(psf, GMix):
+            raise ValueError("Can only convolve with another GMix object")
 
-        gvec = GVec(self._type,self._pars)
+        gvec = GMix(self._type,self._pars)
         gvec.convolve_inplace(psf)
         return gvec
 
     def get_pars(self):
         """
-        Get a copy of the parameter array used to initialize the GVec
+        Get a copy of the parameter array used to initialize the GMix
         """
         return self._pars.copy()
 
