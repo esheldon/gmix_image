@@ -11,6 +11,12 @@ struct gauss {
     double irc;
     double icc;
     double det;
+
+    double drr;
+    double drc;
+    double dcc;
+
+    double norm; // 1/(2*pi*sqrt(det))
 };
 
 struct gvec {

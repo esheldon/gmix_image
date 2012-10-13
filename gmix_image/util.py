@@ -216,7 +216,7 @@ def pars2full_coellip(pars):
 
 def get_f_p_vals(fname=None, pars=None):
     """
-    Can do for exp or devauc
+    To check values from runs, send pars from e.g.
     exp file
         /gmix-fit-et10r99/outputs/gmix-fit-et10r99-001-000.rec
     dev file
@@ -329,6 +329,164 @@ def get_f_p_vals_turb():
     pars=pars.reshape(1,pars.size)
     get_f_p_vals(pars=pars)
 
+
+def get_f_p_vals_exp(s2,show=False):
+    """
+    Determine high-resulution Fvals etc. for exp approximated
+    by three gaussians
+    """
+    import fimage
+    from numpy.random import random as randu
+    from .gmix_fit import GMixFitCoellip
+    import pprint
+
+    Tpsf=1000
+    Tobj=Tpsf/s2
+
+    fvals=array(list(reversed([0.23,1.0,2.8])))
+    
+    fvals /= fvals.max()
+
+    #pvals=array(list(reversed([0.06,0.56,0.37])))
+    pvals=array(list(reversed([0.33,0.53,0.14])))
+    
+
+    objpars = {'model':'exp', 'cov':[Tobj/2.,0.0,Tobj/2.]}
+    psfpars = {'model':'gauss', 'cov':[Tpsf/2.,0.0,Tpsf/2.]}
+    ci0=fimage.convolved.ConvolverGaussFFT(objpars,psfpars)
+    ci_nonoise = fimage.convolved.TrimmedConvolvedImage(ci0, fluxfrac=.9997)
+    ci=fimage.convolved.NoisyConvolvedImage(ci_nonoise,1.e8, 1.e8,s2n_method='uw')
+
+    psf_guess=array([ci['cen'][0] + 0.01*(randu()-0.5),
+                     ci['cen'][1] + 0.01*(randu()-0.5),
+                     0.01*(randu()-0.5),
+                     0.01*(randu()-0.5),
+                     Tpsf + 0.01*(randu()-0.5),
+                     1.0 + 0.01*(randu()-0.5)])
+    psf_width=psf_guess.copy()
+    psf_width[:] = 100
+
+    guess=array([ci['cen'][0] + 0.01*(randu()-0.5),
+                 ci['cen'][1] + 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+
+                 Tobj + 0.01*(randu()-0.5),
+                 fvals[1] + 0.01*(randu()-0.5),
+                 fvals[2] + 0.01*(randu()-0.5),
+
+                 pvals[0] + 0.01*(randu()-0.5),
+                 pvals[1] + 0.01*(randu()-0.5),
+                 pvals[2] + 0.01*(randu()-0.5)])
+
+    width=guess.copy()
+    width[0] = 0.01
+    width[1] = 0.01
+    width[5] = .001
+    width[:] = 100
+
+    gm_psf = GMixFitCoellip(ci.psf, ci['skysig_psf'],
+                            psf_guess, psf_width,
+                            Tpositive=True)
+    psf_gmix=gm_psf.get_gmix()
+    pprint.pprint(psf_gmix)
+    gm = GMixFitCoellip(ci.image, ci['skysig'], guess, width,
+                        psf=psf_gmix)
+
+    pars=gm.get_pars()
+    perr=gm.get_perr()
+    gmix=gm.get_gmix()
+
+    pars=pars.reshape(1,pars.size)
+    get_f_p_vals(pars=pars)
+
+    if show:
+        import images
+        from .render import gmix2image
+
+        model=gmix2image(gmix, ci.image.shape, psf=psf_gmix)
+        images.compare_images(ci.image, model)
+
+     
+
+def get_f_p_vals_dev(s2,show=False):
+    """
+    Determine high-resulution Fvals etc. for devaucouleur approximated
+    by three gaussians
+    """
+    import fimage
+    from numpy.random import random as randu
+    from .gmix_fit import GMixFitCoellip
+    import pprint
+
+    Tpsf=1000
+    Tobj=Tpsf/s2
+
+    fvals=array(list(reversed([0.1, 1.86, 12.6])))
+    #fvals=array(list(reversed([0.0, 0.9268795541243965, 9.627400726500005])))
+    fvals /= fvals.max()
+
+    pvals=array(list(reversed([0.77,0.18,0.046])))
+    
+
+    objpars = {'model':'dev', 'cov':[Tobj/2.,0.0,Tobj/2.]}
+    psfpars = {'model':'gauss', 'cov':[Tpsf/2.,0.0,Tpsf/2.]}
+    ci0=fimage.convolved.ConvolverGaussFFT(objpars,psfpars)
+    ci_nonoise = fimage.convolved.TrimmedConvolvedImage(ci0, fluxfrac=.9997)
+    ci=fimage.convolved.NoisyConvolvedImage(ci_nonoise,1.e8, 1.e8,s2n_method='uw')
+
+    psf_guess=array([ci['cen'][0] + 0.01*(randu()-0.5),
+                     ci['cen'][1] + 0.01*(randu()-0.5),
+                     0.01*(randu()-0.5),
+                     0.01*(randu()-0.5),
+                     Tpsf + 0.01*(randu()-0.5),
+                     1.0 + 0.01*(randu()-0.5)])
+    psf_width=psf_guess.copy()
+    psf_width[:] = 100
+
+    guess=array([ci['cen'][0] + 0.01*(randu()-0.5),
+                 ci['cen'][1] + 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+                 0.01*(randu()-0.5),
+
+                 Tobj + 0.01*(randu()-0.5),
+                 fvals[1] + 0.01*(randu()-0.5),
+                 fvals[2] + 0.01*(randu()-0.5),
+
+                 pvals[0] + 0.01*(randu()-0.5),
+                 pvals[1] + 0.01*(randu()-0.5),
+                 pvals[2] + 0.01*(randu()-0.5)])
+
+    width=guess.copy()
+    width[0] = 0.01
+    width[1] = 0.01
+    width[5] = .001
+    width[:] = 100
+
+    gm_psf = GMixFitCoellip(ci.psf, ci['skysig_psf'],
+                            psf_guess, psf_width,
+                            Tpositive=True)
+    psf_gmix=gm_psf.get_gmix()
+    pprint.pprint(psf_gmix)
+    gm = GMixFitCoellip(ci.image, ci['skysig'], guess, width,
+                        psf=psf_gmix)
+
+    pars=gm.get_pars()
+    perr=gm.get_perr()
+    gmix=gm.get_gmix()
+
+    pars=pars.reshape(1,pars.size)
+    get_f_p_vals(pars=pars)
+
+    if show:
+        import images
+        from .render import gmix2image
+
+        model=gmix2image(gmix, ci.image.shape, psf=psf_gmix)
+        images.compare_images(ci.image, model)
+
+        
+
 def compare_gmix_approx(type, s2):
     import fimage
     from .render import gmix2image
@@ -340,7 +498,6 @@ def compare_gmix_approx(type, s2):
     objpars = {'model':type, 'cov':[Tobj/2.,0.0,Tobj/2.]}
     psfpars = {'model':'gauss', 'cov':[Tpsf/2.,0.0,Tpsf/2.]}
     ci0=fimage.convolved.ConvolverGaussFFT(objpars,psfpars)
-
     ci = fimage.convolved.TrimmedConvolvedImage(ci0, fluxfrac=.9997)
 
     cen=ci['cen']

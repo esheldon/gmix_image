@@ -314,7 +314,8 @@ int add_mask_to_image(struct PyGMixEMObject* self, PyObject* bound_obj)
         goto _bound_copy_from_dict_bail;
     }
 
-    image_add_mask(self->image, &bound);
+    // 1 means update counts, needed for EM
+    image_add_mask(self->image, &bound, 1);
 
 _bound_copy_from_dict_bail:
     return status;

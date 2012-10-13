@@ -59,6 +59,12 @@ void gauss_set(struct gauss* self,
     self->irc = irc;
     self->icc = icc;
     self->det = irr*icc - irc*irc;
+
+    self->drr = self->irr/self->det;
+    self->drc = self->irc/self->det;
+    self->dcc = self->icc/self->det;
+    self->norm = 1./(M_TWO_PI*sqrt(self->det));
+
 }
 void gvec_set_dets(struct gvec *self)
 {
@@ -162,7 +168,7 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
     struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
 
     int ntot=0, iobj=0, ipsf=0;
-    double psum=0;
+    double irr=0, irc=0, icc=0, psum=0;
 
     ntot = obj_gvec->size*psf_gvec->size;
     struct gvec *gvec = gvec_new(ntot);
@@ -179,6 +185,16 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
         psf = psf_gvec->data;
         for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
 
+            irr = obj->irr + psf->irr;
+            irc = obj->irc + psf->irc;
+            icc = obj->icc + psf->icc;
+
+            gauss_set(comb,
+                      obj->p*psf->p/psum,
+                      obj->row, obj->col, 
+                      irr, irc, icc);
+
+            /*
             comb->row = obj->row;
             comb->col = obj->col;
 
@@ -189,7 +205,7 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
             comb->det = comb->irr*comb->icc - comb->irc*comb->irc;
 
             comb->p = obj->p*psf->p/psum;
-
+            */
             psf++;
             comb++;
         }
@@ -222,15 +238,24 @@ struct gvec *gvec_from_pars(double *pars, int size)
 
         gauss = &gvec->data[i];
 
+        gauss_set(gauss,
+                  pars[beg+0],
+                  pars[beg+1],
+                  pars[beg+2],
+                  pars[beg+3],
+                  pars[beg+4],
+                  pars[beg+5]);
+        /*
         gauss->p   = pars[beg+0];
         gauss->row = pars[beg+1];
         gauss->col = pars[beg+2];
         gauss->irr = pars[beg+3];
         gauss->irc = pars[beg+4];
         gauss->icc = pars[beg+5];
+        */
     }
 
-    gvec_set_dets(gvec);
+    //gvec_set_dets(gvec);
     return gvec;
 }
 
@@ -269,6 +294,14 @@ struct gvec *gvec_from_coellip(double *pars, int size)
 
         pi = pars[4+ngauss+i];
 
+        gauss_set(gauss,
+                  pi,
+                  row, 
+                  col, 
+                  (Ti/2.)*(1-e1),
+                  (Ti/2.)*e2,
+                  (Ti/2.)*(1+e1));
+        /*
         gauss->p = pi;
         gauss->row = row;
         gauss->col = col;
@@ -276,9 +309,10 @@ struct gvec *gvec_from_coellip(double *pars, int size)
         gauss->irr = (Ti/2.)*(1-e1);
         gauss->irc = (Ti/2.)*e2;
         gauss->icc = (Ti/2.)*(1+e1);
+        */
     }
 
-    gvec_set_dets(gvec);
+    //gvec_set_dets(gvec);
     return gvec;
 }
 
@@ -314,6 +348,13 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 
     gauss=gvec->data;
     for (i=0; i<gvec->size; i++) {
+        gauss_set(gauss,
+                  counts[i], 
+                  row, col, 
+                  (Tvals[i]/2.)*(1-e1), 
+                  (Tvals[i]/2.)*e2,
+                  (Tvals[i]/2.)*(1+e1));
+        /*
         gauss->p = counts[i];
         gauss->row = row;
         gauss->col = col;
@@ -322,6 +363,7 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
         gauss->icc = (Tvals[i]/2.)*(1+e1);
 
         gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+        */
         gauss++;
     }
 
@@ -337,8 +379,10 @@ struct gvec *gvec_from_pars_exp(double *pars, int size)
     /* pvals are normalized */
     static const double Fvals[3] = 
         {3.947146384343532e-05, 0.5010756804049256, 1.911515572152285};
+        //{0.2293900119477738,1.01629012204044,2.770958917351007};  // this is the newer version using high res
     static const double pvals[3] = 
         {0.06031348356539361,   0.5645244398053312, 0.3751620766292753};
+        //{0.3327063609401037,0.5273717628243284,0.1399218762355679};// this is the newer version using high res
 
     return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
@@ -349,9 +393,11 @@ struct gvec *gvec_from_pars_dev(double *pars, int size)
     }
     /* seems to me more a function of size than for exp */
     static const double Fvals[3] = 
-        {0.003718633817323675, 0.9268795541243965, 9.627400726500005};
+        {0.09707812795975101,1.855263916143735,12.53275155599699};// this is the newer version using high res
+        //{0.003718633817323675, 0.9268795541243965, 9.627400726500005};
     static const double pvals[3] = 
-        {0.659318547053916,    0.2623209100496331, 0.07836054289645095};
+        {0.769283048205522,0.1841443288072131,0.04657262298726506};// this is the newer version using high res
+        //{0.659318547053916,    0.2623209100496331, 0.07836054289645095};
 
     return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }

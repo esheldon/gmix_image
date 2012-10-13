@@ -71,10 +71,10 @@ struct image {
 #define IM_PARENT_COUNTS(im) ( (im)->_counts )
 
 #define IM_ROW0(im) ((im)->row0)
-#define IM_COL0(im) ((im)->row0)
+#define IM_COL0(im) ((im)->col0)
 
 #define IM_ROW(im,row) \
-    ((im)->rows[(im)->row0 + (row)])
+    ((im)->rows[(im)->row0 + (row)] + (im)->col0)
 #define IM_ROW_ITER(im,row) \
     ((im)->rows[(im)->row0 + (row)] + (im)->col0)
 #define IM_ROW_END(im,row) \
@@ -112,7 +112,7 @@ struct image *image_read_text(const char* filename);
 struct image *image_free(struct image *self);
 
 // note the bounds will be trimmed to within the image
-void image_add_mask(struct image *self, const struct bound* bound);
+void image_add_mask(struct image *self, const struct bound* bound, int update_counts);
 
 void image_write(const struct image *self, FILE* stream);
 
