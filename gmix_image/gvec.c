@@ -194,18 +194,6 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
                       obj->row, obj->col, 
                       irr, irc, icc);
 
-            /*
-            comb->row = obj->row;
-            comb->col = obj->col;
-
-            comb->irr = obj->irr + psf->irr;
-            comb->irc = obj->irc + psf->irc;
-            comb->icc = obj->icc + psf->icc;
-
-            comb->det = comb->irr*comb->icc - comb->irc*comb->irc;
-
-            comb->p = obj->p*psf->p/psum;
-            */
             psf++;
             comb++;
         }
@@ -245,17 +233,8 @@ struct gvec *gvec_from_pars(double *pars, int size)
                   pars[beg+3],
                   pars[beg+4],
                   pars[beg+5]);
-        /*
-        gauss->p   = pars[beg+0];
-        gauss->row = pars[beg+1];
-        gauss->col = pars[beg+2];
-        gauss->irr = pars[beg+3];
-        gauss->irc = pars[beg+4];
-        gauss->icc = pars[beg+5];
-        */
     }
 
-    //gvec_set_dets(gvec);
     return gvec;
 }
 
@@ -301,18 +280,8 @@ struct gvec *gvec_from_coellip(double *pars, int size)
                   (Ti/2.)*(1-e1),
                   (Ti/2.)*e2,
                   (Ti/2.)*(1+e1));
-        /*
-        gauss->p = pi;
-        gauss->row = row;
-        gauss->col = col;
-
-        gauss->irr = (Ti/2.)*(1-e1);
-        gauss->irc = (Ti/2.)*e2;
-        gauss->icc = (Ti/2.)*(1+e1);
-        */
     }
 
-    //gvec_set_dets(gvec);
     return gvec;
 }
 
@@ -354,16 +323,6 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
                   (Tvals[i]/2.)*(1-e1), 
                   (Tvals[i]/2.)*e2,
                   (Tvals[i]/2.)*(1+e1));
-        /*
-        gauss->p = counts[i];
-        gauss->row = row;
-        gauss->col = col;
-        gauss->irr = (Tvals[i]/2.)*(1-e1);
-        gauss->irc = (Tvals[i]/2.)*e2;
-        gauss->icc = (Tvals[i]/2.)*(1+e1);
-
-        gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
-        */
         gauss++;
     }
 
@@ -407,7 +366,6 @@ struct gvec *gvec_from_pars_turb(double *pars, int size)
         return NULL;
     }
 
-    /* seems to me more a function of size than for exp */
     static const double Fvals[3] = 
         {0.5793612389470884,1.621860687127999,7.019347162356363};
     static const double pvals[3] = 
