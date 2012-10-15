@@ -530,7 +530,7 @@ _fill_model_subgrid_bail:
     at now S/N
 */
 
-int calculate_loglike_old(struct image *image, 
+int calculate_loglike_old_old(struct image *image, 
                           struct gvec *obj_gvec, 
                           struct gvec *psf_gvec,
                           double A,
@@ -625,11 +625,11 @@ _eval_model_bail:
     return flags;
 }
 
-int calculate_loglike_faster(struct image *image, 
-                             struct gvec *gvec, 
-                             double A,
-                             double ierr,
-                             double *loglike)
+int calculate_loglike_margamp(struct image *image, 
+                              struct gvec *gvec, 
+                              double A,
+                              double ierr,
+                              double *loglike)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
@@ -652,37 +652,6 @@ int calculate_loglike_faster(struct image *image,
     }
 
 
-    /*
-    *loglike=-9999.9e9;
-    for (row=0; row<nrows; row++) {
-        rowdata=IM_ROW(image, row);
-        for (col=0; col<ncols; col++) {
-
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-                u = row-gauss->row;
-                u2=u*u;
-
-                v = col-gauss->col;
-                v2 = v*v;
-                uv = u*v;
-
-                chi2=gauss->dcc*u2 + gauss->drr*v2 - 2.0*gauss->drc*uv;
-                model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-
-                gauss++;
-            } // gvec
-
-            ymodsum += model_val;
-            ymod2sum += model_val*model_val;
-            //B += IM_GET(image, row, col)*model_val;
-            B += (*rowdata)*model_val;
-
-            rowdata++;
-        } // cols
-    } // rows
-    */
     *loglike=-9999.9e9;
     for (row=0; row<nrows; row++) {
         rowdata=IM_ROW(image, row);
@@ -726,11 +695,64 @@ _calculate_loglike_bail:
     return flags;
 }
 
-
-
-
-
 int calculate_loglike(struct image *image, 
+                      struct gvec *gvec, 
+                      double ivar,
+                      double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    size_t i=0, col=0, row=0;
+
+    double model_val=0;
+    double *rowdata=NULL;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_bail;
+    }
+
+
+    *loglike=-9999.9e9;
+    for (row=0; row<nrows; row++) {
+        rowdata=IM_ROW(image, row);
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+                u = row-gauss->row;
+                v = col-gauss->col;
+
+                chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
+                model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+
+                gauss++;
+            } // gvec
+
+            diff = model_val -(*rowdata);
+            (*loglike) += diff*diff*ivar;
+
+            rowdata++;
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+
+    //fprintf(stderr,"OK faster\n");
+_calculate_loglike_bail:
+    return flags;
+}
+
+
+
+
+
+int calculate_loglike_old(struct image *image, 
                       struct gvec *gvec, 
                       double A,
                       double ierr,
@@ -945,7 +967,7 @@ PyGMixFit_coellip_fill_model_old(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-PyGMixFit_loglike_coellip(PyObject *self, PyObject *args) 
+PyGMixFit_loglike_coellip_margamp(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* obj_pars_obj=NULL;
@@ -984,7 +1006,7 @@ PyGMixFit_loglike_coellip(PyObject *self, PyObject *args)
 
     gvec = gvec_convolve(obj_gvec, psf_gvec);
 
-    flags=calculate_loglike(image, gvec, A, ierr, &loglike);
+    flags=calculate_loglike_old(image, gvec, A, ierr, &loglike);
 
     obj_gvec = gvec_free(obj_gvec);
     psf_gvec = gvec_free(psf_gvec);
@@ -1001,7 +1023,7 @@ PyGMixFit_loglike_coellip(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-PyGMixFit_loglike_faster(PyObject *self, PyObject *args) 
+PyGMixFit_loglike_margamp(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* gvec_pyobj=NULL;
@@ -1032,7 +1054,7 @@ PyGMixFit_loglike_faster(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    flags=calculate_loglike_faster(image, gvec_obj->gvec, A, ierr, &loglike);
+    flags=calculate_loglike_margamp(image, gvec_obj->gvec, A, ierr, &loglike);
 
     // does not free underlying array
     image = image_free(image);
@@ -1046,7 +1068,7 @@ PyGMixFit_loglike_faster(PyObject *self, PyObject *args)
 
 
 static PyObject *
-PyGMixFit_loglike(PyObject *self, PyObject *args) 
+PyGMixFit_loglike_old(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* gvec_pyobj=NULL;
@@ -1077,7 +1099,7 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    flags=calculate_loglike(image, gvec_obj->gvec, A, ierr, &loglike);
+    flags=calculate_loglike_old(image, gvec_obj->gvec, A, ierr, &loglike);
 
     // does not free underlying array
     image = image_free(image);
@@ -1088,6 +1110,54 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 
     return tup;
 }
+
+
+
+static PyObject *
+PyGMixFit_loglike(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* gvec_pyobj=NULL;
+    struct PyGVecObject *gvec_obj=NULL;
+    double ivar=0;
+
+    double loglike=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOd", 
+                                &image_obj, &gvec_pyobj, &ivar)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    flags=calculate_loglike(image, gvec_obj->gvec, ivar, &loglike);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    tup = PyTuple_New(2);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
+
+
 
 
 static PyObject *
@@ -1131,7 +1201,7 @@ PyGMixFit_loglike_coellip_old(PyObject *self, PyObject *args)
         DBG2 gvec_print(psf_gvec, stderr);
     }
 
-    flags=calculate_loglike_old(image, obj_gvec, psf_gvec, A, ierr, &loglike);
+    flags=calculate_loglike_old_old(image, obj_gvec, psf_gvec, A, ierr, &loglike);
 
     obj_gvec = gvec_free(obj_gvec);
     psf_gvec = gvec_free(psf_gvec);
@@ -1273,9 +1343,11 @@ static PyMethodDef render_module_methods[] = {
     {"fill_model_old", (PyCFunction)PyGMixFit_fill_model_old,  METH_VARARGS,  "fill the model image"},
 
     {"loglike_coellip_old", (PyCFunction)PyGMixFit_loglike_coellip_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
-    {"loglike_coellip", (PyCFunction)PyGMixFit_loglike_coellip,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
-    {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
-    {"loglike_faster", (PyCFunction)PyGMixFit_loglike_faster,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
+    {"loglike_coellip_margamp", (PyCFunction)PyGMixFit_loglike_coellip_margamp,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
+    {"loglike_old", (PyCFunction)PyGMixFit_loglike_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
+    {"loglike_margamp", (PyCFunction)PyGMixFit_loglike_margamp,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
+
+    {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc full log likelihood"},
     {NULL}  /* Sentinel */
 };
 
