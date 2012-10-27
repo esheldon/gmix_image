@@ -278,6 +278,7 @@ class GMixFitCoellip:
 
     def get_flags(self):
         return self.flags
+
     def get_s2n(self):
         """
         This is a raw S/N including all pixels and
@@ -289,6 +290,21 @@ class GMixFitCoellip:
         msum = model.sum()
         s2n = msum/sqrt(model.size)/self.pixerr
         return s2n
+
+    def get_weighted_s2n(self):
+        """
+        This is a raw S/N including all pixels
+        """
+        if isinstance(self.pixerr, numpy.ndarray):
+            raise ValueError("Implement S/N for error image")
+        model = self.get_model()
+
+        w2sum=(model**2).sum()
+        sum=(model*self.image).sum()
+
+        s2n = sum/sqrt(w2sum)/self.pixerr
+        return s2n
+
 
     def get_numiter(self):
         return self.numiter
