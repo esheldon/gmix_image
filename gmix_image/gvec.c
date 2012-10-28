@@ -360,6 +360,19 @@ struct gvec *gvec_from_pars_dev(double *pars, int size)
 
     return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
+struct gvec *gvec_from_pars_dev_galsim(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+    static const double Fvals[3] = 
+        {0.01363633086742435,0.2102054613098215,2.118481126679793};
+    static const double pvals[3] = 
+        {0.2257072307972325,0.3371643040023132,0.4371284652004544};
+
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
+}
+
 struct gvec *gvec_from_pars_turb(double *pars, int size)
 {
     if (size != 6) {

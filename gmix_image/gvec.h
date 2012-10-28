@@ -109,6 +109,7 @@ struct gvec *gvec_from_pars_exp(double *pars, int size);
    The p and F values are chosen to make this so
 */
 struct gvec *gvec_from_pars_dev(double *pars, int size);
+struct gvec *gvec_from_pars_dev_galsim(double *pars, int size);
 
 /* similar to above but for a turbulent psf */
 struct gvec *gvec_from_pars_turb(double *pars, int size);

@@ -65,6 +65,7 @@ class GMixFitCoellip:
     def __init__(self, image, pixerr, prior, width,
                  psf=None, 
                  Tpositive=True,
+                 model=None,
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
@@ -80,6 +81,8 @@ class GMixFitCoellip:
         self.nsub=1
 
         self.Tpositive=Tpositive
+
+        self.model=model
 
         self.dofit()
 
@@ -186,7 +189,18 @@ class GMixFitCoellip:
         ydiff_tot = zeros(ntot, dtype='f8')
 
         # this is an old renderer that can also fill in a diff image
-        _render.fill_model_coellip_old(self.image, pars, self.psf_pars, ydiff_tot)
+        if self.model=='gdev':
+            if self.psf_pars is None:
+                raise ValueError("for dev you must send the psf")
+            _render.fill_ydiff_dev_galsim(self.image, pars, self.psf_pars, ydiff_tot)
+            #_render.fill_ydiff_dev(self.image, pars, self.psf_pars, ydiff_tot)
+        elif self.model=='gexp':
+            if self.psf_pars is None:
+                raise ValueError("for exp you must send the psf")
+            _render.fill_ydiff_exp(self.image, pars, self.psf_pars, ydiff_tot)
+        else:
+            _render.fill_model_coellip_old(self.image, pars, self.psf_pars, ydiff_tot)
+
         ydiff_tot[0:self.image.size] /= self.pixerr
 
         prior_diff = (self.prior-pars)/self.width
