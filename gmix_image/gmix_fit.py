@@ -192,8 +192,9 @@ class GMixFitCoellip:
         if self.model=='gdev':
             if self.psf_pars is None:
                 raise ValueError("for dev you must send the psf")
-            _render.fill_ydiff_dev_galsim(self.image, pars, self.psf_pars, ydiff_tot)
+            #_render.fill_ydiff_dev_galsim(self.image, pars, self.psf_pars, ydiff_tot)
             #_render.fill_ydiff_dev(self.image, pars, self.psf_pars, ydiff_tot)
+            _render.fill_ydiff_dev6(self.image, pars, self.psf_pars, ydiff_tot)
         elif self.model=='gexp':
             if self.psf_pars is None:
                 raise ValueError("for exp you must send the psf")

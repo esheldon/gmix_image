@@ -345,6 +345,7 @@ struct gvec *gvec_from_pars_exp(double *pars, int size)
 
     return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
+
 struct gvec *gvec_from_pars_dev(double *pars, int size)
 {
     if (size != 6) {
@@ -387,5 +388,70 @@ struct gvec *gvec_from_pars_turb(double *pars, int size)
     return _gapprox_pars_to_gvec(pars, Fvals, pvals);
 }
 
+
+static struct gvec *_gapprox_pars_to_gvec_gen(double *pars, 
+                                              const double *Fvals, 
+                                              const double *pvals,
+                                              int ngauss)
+{
+    double row=0, col=0, e1=0, e2=0;
+    double T=0, T_i=0;
+    double counts=0, counts_i=0;
+
+    struct gauss *gauss=NULL;
+    struct gvec * gvec = NULL;
+
+    int i=0;
+
+    row=pars[0];
+    col=pars[1];
+    e1=pars[2];
+    e2=pars[3];
+    T=pars[4];
+    counts=pars[5];
+
+    gvec = gvec_new(ngauss);
+
+    gauss=gvec->data;
+    for (i=0; i<gvec->size; i++) {
+        T_i = T*Fvals[i];
+        counts_i=counts*pvals[i];
+
+        gauss_set(gauss,
+                  counts_i,
+                  row, col, 
+                  (T_i/2.)*(1-e1), 
+                  (T_i/2.)*e2,
+                  (T_i/2.)*(1+e1));
+        gauss++;
+    }
+
+    return gvec;
+}
+
+struct gvec *gvec_from_pars_dev6(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+
+    // from Hogg & Lang, normalized
+    static const double Fvals[6] = 
+        {8.094092042722281e-06, 
+         0.0001690696202011497, 
+         0.0019014383023117968, 
+         0.017212145881988744, 
+         0.15359226155140734, 
+         1.7878113597233429};
+    static const double pvals[6] = 
+        {0.00070880632246569225, 
+         0.0067331181625659223, 
+         0.034438341436557503, 
+         0.12060545499079853, 
+         0.30562612308952852, 
+         0.53188815599808381};
+
+    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 6);
+}
 
 
