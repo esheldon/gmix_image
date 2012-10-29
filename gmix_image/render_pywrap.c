@@ -135,6 +135,24 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             }
             break;
 
+        case 5:
+            self->gvec = gvec_from_pars_dev6(pars, size);
+            if (self->gvec == NULL) {
+                PyErr_Format(PyExc_ValueError, 
+                        "dev6 pars not size 6: %ld", size);
+            }
+            break;
+        case 6:
+            self->gvec = gvec_from_pars_dev10(pars, size);
+            if (self->gvec == NULL) {
+                PyErr_Format(PyExc_ValueError, 
+                        "dev10 pars not size 6: %ld", size);
+            }
+            break;
+
+
+
+
         default:
             PyErr_Format(PyExc_ValueError, "bad pars type value: %d", type);
             return -1;
@@ -1023,6 +1041,62 @@ PyGMixFit_fill_ydiff_dev6(PyObject *self, PyObject *args)
 }
 
 
+static PyObject *
+PyGMixFit_fill_ydiff_dev10(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* diff_obj=NULL;
+    PyObject* obj_pars_obj=NULL;
+    PyObject* psf_pars_obj=NULL; // Can be None
+
+    struct image *image=NULL;
+    struct gvec *obj_gvec=NULL;
+    struct gvec *psf_gvec=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+    double *pars=NULL;
+    size_t npars=0;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOOO", 
+                &image_obj, &obj_pars_obj, &psf_pars_obj, &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    diff = associate_image(diff_obj, dims[0], dims[1]);
+
+    if (!check_numpy_array(obj_pars_obj) || PyArray_SIZE(obj_pars_obj) != 6) {
+        PyErr_SetString(PyExc_ValueError, "pars must be double array of length 6: %d\n");
+        return NULL;
+    }
+    pars = PyArray_DATA(obj_pars_obj);
+    npars = PyArray_SIZE(obj_pars_obj);
+    obj_gvec = gvec_from_pars_dev10(pars,npars);
+    DBG2 gvec_print(obj_gvec, stderr);
+
+    // always use full gmix for psf
+    psf_gvec = pyarray_to_gvec(psf_pars_obj);
+    DBG2 gvec_print(psf_gvec, stderr);
+
+    flags=fill_model_old(image, obj_gvec, psf_gvec, diff);
+
+    obj_gvec = gvec_free(obj_gvec);
+    psf_gvec = gvec_free(psf_gvec);
+    // does not free underlying array
+    image = image_free(image);
+    diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+
 
 
 static PyObject *
@@ -1571,6 +1645,7 @@ static PyMethodDef render_module_methods[] = {
     {"fill_ydiff_dev_galsim", (PyCFunction)PyGMixFit_fill_ydiff_dev_galsim,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_dev", (PyCFunction)PyGMixFit_fill_ydiff_dev,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_dev6", (PyCFunction)PyGMixFit_fill_ydiff_dev6,  METH_VARARGS,  "fill the dev model image"},
+    {"fill_ydiff_dev10", (PyCFunction)PyGMixFit_fill_ydiff_dev10,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_exp", (PyCFunction)PyGMixFit_fill_ydiff_exp,  METH_VARARGS,  "fill the exp model image"},
     {"fill_model_old", (PyCFunction)PyGMixFit_fill_model_old,  METH_VARARGS,  "fill the model image"},
 

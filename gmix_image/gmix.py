@@ -9,6 +9,8 @@ GMIX_COELLIP=1
 GMIX_EXP=2
 GMIX_DEV=3
 GMIX_TURB=4
+GMIX_DEV6=5
+GMIX_DEV10=6
 
 def GMixCoellip(pars):
     """
@@ -34,7 +36,7 @@ def GMixExp(pars):
     """
     return GMix(pars, type=GMIX_EXP)
 
-def GMixDev(pars):
+def GMixDev(pars, ngauss=3):
     """
     Generate a gaussian mixture representing an approximate devauc profile.
     Only works well if the object is not too large compared to the PSF.
@@ -44,7 +46,15 @@ def GMixDev(pars):
     pars: sequence
         [row,col,e1,e2,T,p]
     """
-    return GMix(pars, type=GMIX_DEV)
+    if ngauss==3:
+        gmix=GMix(pars, type=GMIX_DEV)
+    elif ngauss==6:
+        gmix=GMix(pars, type=GMIX_DEV6)
+    elif ngauss==10:
+        gmix=GMix(pars, type=GMIX_DEV10)
+    else:
+        raise ValueError("ngauss should be in [3,6,10]")
+    return gmix
 
 def GMixTurb(pars):
     """

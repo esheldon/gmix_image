@@ -549,13 +549,35 @@ def print_hogglang(nsersic, ngauss):
                      2.22560,
                      5.63989,
                      9.81523])
+    elif nsersic==4 and ngauss==10:
+        Tvals=array([0.00087**2,
+                     0.00296**2,
+                     0.00792**2,
+                     0.01902**2,
+                     0.04289**2,
+                     0.09351**2,
+                     0.20168**2,
+                     0.44126**2,
+                     1.01833**2,
+                     2.74555**2])
+        pvals=array([0.00139,
+                     0.00941,
+                     0.04441,
+                     0.16162,
+                     0.48121,
+                     1.20357,
+                     2.54182,
+                     4.46441,
+                     6.22820,
+                     6.15393])
+
 
     pvals /= pvals.sum()
     T = (Tvals*pvals).sum()
     Fvals = Tvals/T
 
-    print 'pvals:',tuple(pvals)
     print 'Fvals:',tuple(Fvals)
+    print 'pvals:',tuple(pvals)
 
     print 'pvals.sum():',pvals.sum()
     print 'Fvals.sum():',Fvals.sum()
