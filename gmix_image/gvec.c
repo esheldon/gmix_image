@@ -286,7 +286,7 @@ struct gvec *gvec_from_coellip(double *pars, int size)
 }
 
 /* helper function */
-static struct gvec *_gapprox_pars_to_gvec(double *pars, 
+static struct gvec *_gapprox_pars_to_gvec_old(double *pars, 
                                           const double *Fvals, 
                                           const double *pvals)
 {
@@ -330,51 +330,7 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 }
 
 
-struct gvec *gvec_from_pars_exp(double *pars, int size)
-{
-    if (size != 6) {
-        return NULL;
-    }
-    /* pvals are normalized */
-    static const double Fvals[3] = 
-        {3.947146384343532e-05, 0.5010756804049256, 1.911515572152285};
-        //{0.2293900119477738,1.01629012204044,2.770958917351007};  // this is the newer version using high res
-    static const double pvals[3] = 
-        {0.06031348356539361,   0.5645244398053312, 0.3751620766292753};
-        //{0.3327063609401037,0.5273717628243284,0.1399218762355679};// this is the newer version using high res
-
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
-}
-
-struct gvec *gvec_from_pars_dev(double *pars, int size)
-{
-    if (size != 6) {
-        return NULL;
-    }
-    /* seems to me more a function of size than for exp */
-    static const double Fvals[3] = 
-        {0.09707812795975101,1.855263916143735,12.53275155599699};// this is the newer version using high res
-        //{0.003718633817323675, 0.9268795541243965, 9.627400726500005};
-    static const double pvals[3] = 
-        {0.769283048205522,0.1841443288072131,0.04657262298726506};// this is the newer version using high res
-        //{0.659318547053916,    0.2623209100496331, 0.07836054289645095};
-
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
-}
-struct gvec *gvec_from_pars_dev_galsim(double *pars, int size)
-{
-    if (size != 6) {
-        return NULL;
-    }
-    static const double Fvals[3] = 
-        {0.01363633086742435,0.2102054613098215,2.118481126679793};
-    static const double pvals[3] = 
-        {0.2257072307972325,0.3371643040023132,0.4371284652004544};
-
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
-}
-
-struct gvec *gvec_from_pars_turb(double *pars, int size)
+struct gvec *gvec_from_pars_turb_old(double *pars, int size)
 {
     if (size != 6) {
         return NULL;
@@ -385,14 +341,14 @@ struct gvec *gvec_from_pars_turb(double *pars, int size)
     static const double pvals[3] = 
         {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals);
+    return _gapprox_pars_to_gvec_old(pars, Fvals, pvals);
 }
 
 
-static struct gvec *_gapprox_pars_to_gvec_gen(double *pars, 
-                                              const double *Fvals, 
-                                              const double *pvals,
-                                              int ngauss)
+static struct gvec *_gapprox_pars_to_gvec(double *pars, 
+                                          const double *Fvals, 
+                                          const double *pvals,
+                                          int ngauss)
 {
     double row=0, col=0, e1=0, e2=0;
     double T=0, T_i=0;
@@ -451,7 +407,7 @@ struct gvec *gvec_from_pars_dev6(double *pars, int size)
          0.30562612308952852, 
          0.53188815599808381};
 
-    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 6);
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
 }
 
 struct gvec *gvec_from_pars_dev10(double *pars, int size)
@@ -484,7 +440,7 @@ struct gvec *gvec_from_pars_dev10(double *pars, int size)
          0.29254151133139222, 
          0.28905301416582552};
 
-    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 10);
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 10);
 }
 
 struct gvec *gvec_from_pars_exp4(double *pars, int size)
@@ -505,7 +461,7 @@ struct gvec *gvec_from_pars_exp4(double *pars, int size)
          0.4214499816612774, 
          0.47523176351057955};
 
-    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 4);
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 4);
 }
 
 struct gvec *gvec_from_pars_exp6(double *pars, int size)
@@ -530,7 +486,21 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size)
          0.45496740582554868, 
          0.26521634184240478};
 
-    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 6);
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
+}
+
+struct gvec *gvec_from_pars_turb(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+
+    static const double Fvals[3] = 
+        {0.5793612389470884,1.621860687127999,7.019347162356363};
+    static const double pvals[3] = 
+        {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
+
+    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 3);
 }
 
 
