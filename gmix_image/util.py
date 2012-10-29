@@ -214,7 +214,7 @@ def pars2full_coellip(pars):
 
     return gmix
 
-def get_f_p_vals(fname=None, pars=None):
+def get_f_p_vals(fname=None, pars=None, Tfrac=True):
     """
     To check values from runs, send pars from e.g.
     exp file
@@ -243,22 +243,32 @@ def get_f_p_vals(fname=None, pars=None):
 
     for i in xrange(n):
         # these always fixed
-        Tmax=pars[i,4]
-        T3s[i] = Tmax
-        p3s[i] = pars[i,7]
+        if Tfrac:
+            Tmax=pars[i,4]
+            T3s[i] = Tmax
+            p3s[i] = pars[i,7]
 
-        if pars[i,5] < pars[i,6]:
-            T1s[i] = pars[i,5]*Tmax
-            p1s[i] = pars[i,8]
+            if pars[i,5] < pars[i,6]:
+                T1s[i] = pars[i,5]*Tmax
+                p1s[i] = pars[i,8]
 
-            T2s[i] = pars[i,6]*Tmax
-            p2s[i] = pars[i,9]
+                T2s[i] = pars[i,6]*Tmax
+                p2s[i] = pars[i,9]
+            else:
+                T1s[i] = pars[i,6]*Tmax
+                p1s[i] = pars[i,9]
+
+                T2s[i] = pars[i,5]*Tmax
+                p2s[i] = pars[i,8]
         else:
-            T1s[i] = pars[i,6]*Tmax
-            p1s[i] = pars[i,9]
+            s=pars[i,4:4+3].argsort()
+            T1s[i]=pars[i,4+s[0]]
+            T2s[i]=pars[i,4+s[1]]
+            T3s[i]=pars[i,4+s[2]]
 
-            T2s[i] = pars[i,5]*Tmax
-            p2s[i] = pars[i,8]
+            p1s[i] = pars[i,7+s[0]]
+            p2s[i] = pars[i,7+s[1]]
+            p3s[i] = pars[i,7+s[2]]
 
 
     T1 = T1s.mean()
@@ -525,4 +535,29 @@ def compare_gmix_approx(type, s2):
                           label1='%s fft' % type, label2='%s gmix' % type)
 
 
+def print_hogglang(nsersic, ngauss):
+    if nsersic==4 and ngauss==6:
+        Tvals=array([0.00263**2,
+                     0.01202**2,
+                     0.04031**2,
+                     0.12128**2,
+                     0.36229**2,
+                     1.23604**2])
+        pvals=array([0.01308,
+                     0.12425,
+                     0.63551,
+                     2.22560,
+                     5.63989,
+                     9.81523])
+
+    pvals /= pvals.sum()
+    T = (Tvals*pvals).sum()
+    Fvals = Tvals/T
+
+    print 'pvals:',tuple(pvals)
+    print 'Fvals:',tuple(Fvals)
+
+    print 'pvals.sum():',pvals.sum()
+    print 'Fvals.sum():',Fvals.sum()
+    print '(Fvals*pvals).sum():',(Fvals*pvals).sum()
 
