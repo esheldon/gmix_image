@@ -487,4 +487,50 @@ struct gvec *gvec_from_pars_dev10(double *pars, int size)
     return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 10);
 }
 
+struct gvec *gvec_from_pars_exp4(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+
+    // from Hogg & Lang, normalized
+    static const double Fvals[4] = 
+        {0.01474041913425168, 
+         0.10842545172416658, 
+         0.47550246740469826, 
+         1.6605918409918259};
+    static const double pvals[4] = 
+        {0.008206472936682925, 
+         0.095111781891460051, 
+         0.4214499816612774, 
+         0.47523176351057955};
+
+    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 4);
+}
+
+struct gvec *gvec_from_pars_exp6(double *pars, int size)
+{
+    if (size != 6) {
+        return NULL;
+    }
+
+    // from Hogg & Lang, normalized
+    static const double Fvals[6] = 
+        {0.002467115141477932, 
+         0.018147435573256168, 
+         0.07944063151366336, 
+         0.27137669897479122, 
+         0.79782256866993773, 
+         2.1623306025075739};
+    static const double pvals[6] = 
+        {0.00061601229677880041, 
+         0.0079461395724623237, 
+         0.053280454055540001, 
+         0.21797364640726541, 
+         0.45496740582554868, 
+         0.26521634184240478};
+
+    return _gapprox_pars_to_gvec_gen(pars, Fvals, pvals, 6);
+}
+
 

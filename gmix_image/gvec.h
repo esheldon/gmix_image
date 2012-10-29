@@ -83,10 +83,8 @@ struct gvec *gvec_from_coellip(double *pars, int size);
 
 /* 
    Generate a gvec from the inputs pars assuming an appoximate
-   3-gaussian representation of an exponential disk. It's only
-   a good approx when convolved with a substantial psf.
-
-   One component is nearly a delta function
+   gaussian representation of an exponential disk.  Values
+   from Hogg and Lang
 
    pars should be [row,col,e1,e2,T,p]
 
@@ -94,13 +92,11 @@ struct gvec *gvec_from_coellip(double *pars, int size);
 
    The p and F values are chosen to make this so
 */
-struct gvec *gvec_from_pars_exp(double *pars, int size);
+struct gvec *gvec_from_pars_exp4(double *pars, int size);
+struct gvec *gvec_from_pars_exp6(double *pars, int size);
 /* 
    Generate a gvec from the inputs pars assuming an appoximate
-   3-gaussian representation of a devauc profile. It's only
-   a good approx when convolved with a substantial psf.
-
-   One component is nearly a delta function
+   10-gaussian representation of a devauc profile.
 
    pars should be [row,col,e1,e2,T,p]
 
@@ -108,9 +104,6 @@ struct gvec *gvec_from_pars_exp(double *pars, int size);
 
    The p and F values are chosen to make this so
 */
-struct gvec *gvec_from_pars_dev(double *pars, int size);
-struct gvec *gvec_from_pars_dev_galsim(double *pars, int size);
-struct gvec *gvec_from_pars_dev6(double *pars, int size);
 struct gvec *gvec_from_pars_dev10(double *pars, int size);
 
 /* similar to above but for a turbulent psf */

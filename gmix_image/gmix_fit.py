@@ -192,14 +192,11 @@ class GMixFitCoellip:
         if self.model=='gdev':
             if self.psf_pars is None:
                 raise ValueError("for dev you must send the psf")
-            #_render.fill_ydiff_dev_galsim(self.image, pars, self.psf_pars, ydiff_tot)
-            #_render.fill_ydiff_dev(self.image, pars, self.psf_pars, ydiff_tot)
-            #_render.fill_ydiff_dev6(self.image, pars, self.psf_pars, ydiff_tot)
             _render.fill_ydiff_dev10(self.image, pars, self.psf_pars, ydiff_tot)
         elif self.model=='gexp':
             if self.psf_pars is None:
                 raise ValueError("for exp you must send the psf")
-            _render.fill_ydiff_exp(self.image, pars, self.psf_pars, ydiff_tot)
+            _render.fill_ydiff_exp6(self.image, pars, self.psf_pars, ydiff_tot)
         else:
             _render.fill_model_coellip_old(self.image, pars, self.psf_pars, ydiff_tot)
 
@@ -282,7 +279,10 @@ class GMixFitCoellip:
     def pars2gmix(self, pars):
         from . import gmix
         if self.model=='gdev':
-            gmix=gmix.GMixDev(pars, ngauss=10)
+            gmix=gmix.GMixDev(pars)
+            return gmix.get_dlist()
+        elif self.model=='gexp':
+            gmix=gmix.GMixExp(pars)
             return gmix.get_dlist()
         else:
             return pars2gmix_coellip_Tfrac(pars)
