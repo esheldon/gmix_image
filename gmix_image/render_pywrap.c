@@ -6,6 +6,8 @@
 #include "bound.h"
 #include "defs.h"
 
+#include "fmath.h"
+
 /*
 
    Gaussian Mixtures
@@ -170,6 +172,10 @@ static void add_double_to_dict(PyObject* dict, const char* key, double value)
     Py_XDECREF(tobj);
 }
 
+static PyObject *PyGVecObject_get_size(struct PyGVecObject* self)
+{
+    return PyLong_FromLong((long)self->gvec->size);
+}
 static PyObject *PyGVecObject_get_dlist(struct PyGVecObject* self)
 {
     PyObject *list=NULL;
@@ -328,6 +334,7 @@ static PyObject *PyGVecObject_convolve_inplace(struct PyGVecObject* self, PyObje
 }
 
 static PyMethodDef PyGVecObject_methods[] = {
+    {"get_size", (PyCFunction)PyGVecObject_get_size, METH_NOARGS, "get_size\n\nreturn number of gaussians."},
     {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_NOARGS, "get_dlist\n\nreturn list of dicts."},
     {"get_e1e2T", (PyCFunction)PyGVecObject_get_e1e2T, METH_NOARGS, "get_e1e2T\n\nreturn stats based on average moments val=sum(val_i*p)/sum(p)."},
     {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
@@ -492,7 +499,8 @@ fill_model_subgrid(struct image *image,
 
                         chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                         chi2 /= gauss->det;
-                        tval += gauss->p*exp( -0.5*chi2 );
+                        //tval += gauss->p*exp( -0.5*chi2 );
+                        tval += gauss->p*expd( -0.5*chi2 );
 
                         tcol += stepsize;
                     }
@@ -589,7 +597,8 @@ int calculate_loglike_old_old(struct image *image,
                         chi2 /= det;
 
                         b = M_TWO_PI*sqrt(det);
-                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        //tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        tval += pgauss->p*expd( -0.5*chi2 )/b;
                         psum += pgauss->p;
                     }
                     // psf always normalized to unity
@@ -598,7 +607,8 @@ int calculate_loglike_old_old(struct image *image,
                     chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                     chi2 /= gauss->det;
                     b = M_TWO_PI*sqrt(gauss->det);
-                    tval = gauss->p*exp( -0.5*chi2 )/b;
+                    //tval = gauss->p*exp( -0.5*chi2 )/b;
+                    tval = gauss->p*expd( -0.5*chi2 )/b;
                 }
 
                 model_val += tval;
@@ -669,7 +679,8 @@ int calculate_loglike_margamp(struct image *image,
                 uv = u*v;
 
                 chi2=gauss->dcc*u2 + gauss->drr*v2 - 2.0*gauss->drc*uv;
-                model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
 
                 gauss++;
             } // gvec
@@ -730,7 +741,8 @@ int calculate_loglike(struct image *image,
                 v = col-gauss->col;
 
                 chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
-                model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
 
                 gauss++;
             } // gvec
@@ -795,7 +807,8 @@ int calculate_loglike_old(struct image *image,
                 chi2 /= gauss->det;
                 b = M_TWO_PI*sqrt(gauss->det);
 
-                model_val += gauss->p*exp( -0.5*chi2 )/b;
+                //model_val += gauss->p*exp( -0.5*chi2 )/b;
+                model_val += gauss->p*expd( -0.5*chi2 )/b;
 
                 gauss++;
             } // gvec
@@ -881,7 +894,8 @@ int fill_model_old(struct image *image,
                         chi2 /= det;
 
                         b = M_TWO_PI*sqrt(det);
-                        tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        //tval += pgauss->p*exp( -0.5*chi2 )/b;
+                        tval += pgauss->p*expd( -0.5*chi2 )/b;
                         psum += pgauss->p;
                     }
                     // psf always normalized to unity
@@ -890,7 +904,8 @@ int fill_model_old(struct image *image,
                     chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                     chi2 /= gauss->det;
                     b = M_TWO_PI*sqrt(gauss->det);
-                    tval = gauss->p*exp( -0.5*chi2 )/b;
+                    //tval = gauss->p*exp( -0.5*chi2 )/b;
+                    tval = gauss->p*expd( -0.5*chi2 )/b;
                 }
 
                 val += tval;
