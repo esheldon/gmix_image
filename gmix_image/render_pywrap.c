@@ -726,13 +726,13 @@ int calculate_loglike(struct image *image,
     int flags=0;
 
     if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        *s2n=-9999.9e9;
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _calculate_loglike_bail;
     }
 
-
-    *loglike=-9999.9e9;
-    *s2n=-9999.9e9;
+    (*loglike)=0;
     for (row=0; row<nrows; row++) {
         rowdata=IM_ROW(image, row);
         for (col=0; col<ncols; col++) {
@@ -761,8 +761,8 @@ int calculate_loglike(struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
-
     (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
     return flags;
