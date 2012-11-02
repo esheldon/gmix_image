@@ -710,6 +710,7 @@ _calculate_loglike_bail:
 int calculate_loglike(struct image *image, 
                       struct gvec *gvec, 
                       double ivar,
+                      double *s2n,
                       double *loglike)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
@@ -721,6 +722,7 @@ int calculate_loglike(struct image *image,
 
     double model_val=0;
     double *rowdata=NULL;
+    double sum=0, w2sum=0;
     int flags=0;
 
     if (!gvec_verify(gvec)) {
@@ -730,6 +732,7 @@ int calculate_loglike(struct image *image,
 
 
     *loglike=-9999.9e9;
+    *s2n=-9999.9e9;
     for (row=0; row<nrows; row++) {
         rowdata=IM_ROW(image, row);
         for (col=0; col<ncols; col++) {
@@ -750,12 +753,16 @@ int calculate_loglike(struct image *image,
             diff = model_val -(*rowdata);
             (*loglike) += diff*diff*ivar;
 
+            sum += (*rowdata)*model_val;
+            w2sum += model_val*model_val;
+
             rowdata++;
         } // cols
     } // rows
 
     (*loglike) *= (-0.5);
 
+    (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
     return flags;
@@ -1314,7 +1321,7 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
     struct PyGVecObject *gvec_obj=NULL;
     double ivar=0;
 
-    double loglike=0;
+    double loglike=0, s2n=0;
     PyObject *tup=NULL;
 
     struct image *image=NULL;
@@ -1337,14 +1344,15 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    flags=calculate_loglike(image, gvec_obj->gvec, ivar, &loglike);
+    flags=calculate_loglike(image, gvec_obj->gvec, ivar, &s2n, &loglike);
 
     // does not free underlying array
     image = image_free(image);
 
-    tup = PyTuple_New(2);
+    tup = PyTuple_New(3);
     PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
-    PyTuple_SetItem(tup, 1, PyInt_FromLong((long)flags));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n));
+    PyTuple_SetItem(tup, 2, PyInt_FromLong((long)flags));
 
     return tup;
 }
