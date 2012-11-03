@@ -89,7 +89,7 @@ int gvec_verify(struct gvec *self)
     gauss=self->data;
     for (i=0; i<self->size; i++) {
         if (gauss->det <= 0) {
-            DBG wlog("found det: %.16g\n", gauss->det);
+            DBG wlog("gvec_verify found det: %.16g\n", gauss->det);
             return 0;
         }
         gauss++;

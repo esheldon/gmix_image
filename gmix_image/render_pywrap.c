@@ -569,7 +569,7 @@ int calculate_loglike_old_old(struct image *image,
             for (i=0; i<obj_gvec->size; i++) {
                 gauss = &obj_gvec->data[i];
                 if (gauss->det <= 0) {
-                    DBG wlog("found det: %.16g\n", gauss->det);
+                    DBG wlog("loglike old old found det: %.16g\n", gauss->det);
                     flags |= GMIX_ERROR_NEGATIVE_DET;
                     goto _eval_model_bail;
                 }
@@ -873,7 +873,7 @@ int fill_model_old(struct image *image,
             for (i=0; i<obj_gvec->size; i++) {
                 gauss = &obj_gvec->data[i];
                 if (gauss->det <= 0) {
-                    DBG wlog("found det: %.16g\n", gauss->det);
+                    DBG wlog("fill_model_old: found det: %.16g\n", gauss->det);
                     flags |= GMIX_ERROR_NEGATIVE_DET;
                     goto _eval_model_bail;
                 }
