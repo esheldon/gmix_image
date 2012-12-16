@@ -106,20 +106,22 @@ class GMix(_render.GVec):
     -------
     convolve(psf):
         Get a new GMix that is the convolution of the GMix with the input psf
+    get_size():
+        get number of gaussians in mixture
     get_dlist():
-        return a list of dicts representing the gaussian mixture
+        get a list of dicts representing the gaussian mixture
     get_T():
-        Return T=sum(p*T_i)/sum(p)
+        get T=sum(p*T_i)/sum(p)
     get_e1e2T():
-        Return stats based on averaged moments val=sum(p*val_i)/sum(p)
+        get stats based on averaged moments val=sum(p*val_i)/sum(p)
     get_cen():
-        Return cen=sum(p*cen_i)/sum(p)
+        get cen=sum(p*cen_i)/sum(p)
     set_cen(row,col):
-        Set all centers to the input.
+        set all centers to the input.
     get_pars():
-        Get a copy of the parameters used to initialize the GMix
+        get a copy of the parameters used to initialize the GMix
     get_type():
-        Get a copy of the type of the input parameters
+        get a copy of the type of the input parameters
     """
     def __init__(self, pars, type=GMIX_FULL):
         type=int(type)
@@ -146,7 +148,7 @@ class GMix(_render.GVec):
             raise ValueError("Can only convolve with another GMix object")
 
         gmix = GMix(self._pars, type=self._type)
-        gmix._convolve_inplace(psf)
+        gmix._convolve_replace(psf)
         return gmix
 
     def get_pars(self):

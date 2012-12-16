@@ -334,7 +334,7 @@ static PyObject *PyGVecObject_get_e1e2T(struct PyGVecObject* self)
 
 
 /* error checking should happen in python */
-static PyObject *PyGVecObject_convolve_inplace(struct PyGVecObject* self, PyObject *args)
+static PyObject *PyGVecObject_convolve_replace(struct PyGVecObject* self, PyObject *args)
 {
     PyObject *psf_obj=NULL;
     struct PyGVecObject *psf=NULL;
@@ -362,7 +362,7 @@ static PyMethodDef PyGVecObject_methods[] = {
     {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
     {"get_cen", (PyCFunction)PyGVecObject_get_cen, METH_NOARGS, "get_cen\n\nreturn cen=sum(cen_i*p)/sum(p)."},
     {"set_cen", (PyCFunction)PyGVecObject_set_cen, METH_VARARGS, "set_cen\n\nSet all centers to the input row,col"},
-    {"_convolve_inplace", (PyCFunction)PyGVecObject_convolve_inplace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
+    {"_convolve_replace", (PyCFunction)PyGVecObject_convolve_replace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
     {NULL}  /* Sentinel */
 };
 
