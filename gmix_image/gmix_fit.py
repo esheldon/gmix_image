@@ -65,10 +65,11 @@ class GMixFitCoellip:
     def __init__(self, image, pixerr, prior, width,
                  psf=None, 
                  Tpositive=True,
-                 model=None,
+                 model='coellip',
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
+        self.ivar = 1./pixerr
         self.prior=prior
         self.width=width
 
@@ -178,8 +179,9 @@ class GMixFitCoellip:
         and demand T,p > 0
         """
 
-        if False:
+        if True:
             print_pars(pars, front="pars: ")
+            print_pars(self.psf_pars, front="psf_pars:")
         
         ntot = self.image.size + len(pars)
 
@@ -197,10 +199,14 @@ class GMixFitCoellip:
             if self.psf_pars is None:
                 raise ValueError("for exp you must send the psf")
             _render.fill_ydiff_exp6(self.image, pars, self.psf_pars, ydiff_tot)
+        elif self.model=='coellip-Tfrac':
+            _render.fill_model_coellip_Tfrac(self.image, pars, self.psf_pars, ydiff_tot)
+        elif self.model=='coellip':
+            _render.fill_ydiff_coellip(self.image, pars, self.psf_pars, ydiff_tot)
         else:
-            _render.fill_model_coellip_old(self.image, pars, self.psf_pars, ydiff_tot)
+            raise ValueError("bad model: '%s'" % self.model)
 
-        ydiff_tot[0:self.image.size] /= self.pixerr
+        ydiff_tot[0:self.image.size] *= self.ivar
 
         prior_diff = (self.prior-pars)/self.width
         ydiff_tot[self.image.size:] = prior_diff
@@ -222,26 +228,35 @@ class GMixFitCoellip:
                 print >>stderr,'ellip >= 1'
             return False
 
-        # Tmax and Tfrac
-        if self.Tpositive:
-            Tfvals=pars[4:4+self.ngauss]
-            w,=where(Tfvals <= 0)
-            if w.size > 0:
-                if self.verbose:
-                    print_pars(Tfvals,front='bad T or Tfrac: ')
-                return False
+        gmix_obj=self.pars2gmix(pars)
+        print gmix_obj
+        gmix=gmix_obj.get_dlist()
 
-        pvals=pars[4+self.ngauss:]
-        w,=where(pvals <= 0)
-        if w.size > 0:
+        # overall determinant and centroid
+        g0 = gmix[0]
+        det = g0['irr']*g0['icc'] - g0['irc']**2
+        if (det <= 0 
+                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
+                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
             if self.verbose:
-                print_pars(pvals,front='bad p: ')
+                print >>stderr,'bad det or centroid'
             return False
+
+        for g in gmix:
+            if self.Tpositive:
+                T = g['irr']+g['icc']
+                if T <= 0:
+                    if self.verbose:
+                        print_pars(Tfvals,front='bad T or Tfrac: ')
+                        return False
+            if g['p'] <= 0:
+                if self.verbose:
+                    print_pars(pvals,front='bad p: ')
+                return False
 
         # check determinant for all images we might have
         # to create with psf convolutions
 
-        gmix=self.pars2gmix(pars)
         if self.psf_gmix is not None:
             moms = total_moms(gmix, psf=self.psf_gmix)
             pdet = moms['irr']*moms['icc']-moms['irc']**2
@@ -260,16 +275,6 @@ class GMixFitCoellip:
                             print >>stderr,'bad p+obj det'
                         return False
 
-        # overall determinant and centroid
-        g0 = gmix[0]
-        det = g0['irr']*g0['icc'] - g0['irc']**2
-        if (det <= 0 
-                or pars[0] < 0 or pars[0] > (self.image.shape[0]-1)
-                or pars[1] < 0 or pars[1] > (self.image.shape[1]-1)):
-            if self.verbose:
-                print >>stderr,'bad det or centroid'
-            return False
-
         return True
 
     def get_model(self):
@@ -284,8 +289,12 @@ class GMixFitCoellip:
         elif self.model=='gexp':
             gmix=gmix.GMixExp(pars)
             return gmix.get_dlist()
+        elif self.model=='coellip-Tfrac':
+            return gmix.GMix(pars, type=gmix.GMIX_COELLIP_TFRAC)
+        elif self.model=='coellip':
+            return gmix.GMixCoellip(pars)
         else:
-            return pars2gmix_coellip_Tfrac(pars)
+            raise ValueError("bad model: '%s'" % self.model)
 
     def scale_leastsq_cov(self, pars, pcov):
         """
@@ -305,25 +314,25 @@ class GMixFitCoellip:
         This is a raw S/N including all pixels and
         no weighting
         """
-        if isinstance(self.pixerr, numpy.ndarray):
+        if isinstance(self.ivar, numpy.ndarray):
             raise ValueError("Implement S/N for error image")
         model = self.get_model()
         msum = model.sum()
-        s2n = msum/sqrt(model.size)/self.pixerr
+        s2n = msum/sqrt(model.size)*self.ivar
         return s2n
 
     def get_weighted_s2n(self):
         """
         This is a raw S/N including all pixels
         """
-        if isinstance(self.pixerr, numpy.ndarray):
+        if isinstance(self.ivar, numpy.ndarray):
             raise ValueError("Implement S/N for error image")
         model = self.get_model()
 
         w2sum=(model**2).sum()
         sum=(model*self.image).sum()
 
-        s2n = sum/sqrt(w2sum)/self.pixerr
+        s2n = sum/sqrt(w2sum)*self.ivar
         return s2n
 
 

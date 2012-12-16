@@ -80,6 +80,7 @@ struct gvec *gvec_from_pars(double *pars, int size);
    [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3..]
  */
 struct gvec *gvec_from_coellip(double *pars, int size);
+struct gvec *gvec_from_coellip_Tfrac(double *pars, int size);
 
 /* 
    Generate a gvec from the inputs pars assuming an appoximate

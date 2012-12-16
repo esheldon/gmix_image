@@ -9,6 +9,7 @@ GMIX_COELLIP=1
 GMIX_TURB=2
 GMIX_EXP=3
 GMIX_DEV=4
+GMIX_COELLIP_TFRAC=5
 
 def GMixCoellip(pars):
     """

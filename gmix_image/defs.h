@@ -9,9 +9,10 @@
 
 # define M_TWO_PI   6.28318530717958647693
 
+#define EXP_MAX_CHI2 200
 
 #define DEBUG
-//#define DEBUG2
+#define DEBUG2
 
 #ifdef DEBUG
  #define DBG if(1) 

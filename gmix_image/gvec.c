@@ -239,8 +239,7 @@ struct gvec *gvec_from_pars(double *pars, int size)
 }
 
 
-
-struct gvec *gvec_from_coellip(double *pars, int size)
+struct gvec *gvec_from_coellip_Tfrac(double *pars, int size)
 {
     int ngauss=0;
     double row=0, col=0, e1=0, e2=0, Tmax=0, Ti=0, pi=0, Tfrac=0;
@@ -275,6 +274,106 @@ struct gvec *gvec_from_coellip(double *pars, int size)
 
         gauss_set(gauss,
                   pi,
+                  row, 
+                  col, 
+                  (Ti/2.)*(1-e1),
+                  (Ti/2.)*e2,
+                  (Ti/2.)*(1+e1));
+    }
+
+    return gvec;
+}
+
+struct gvec *gvec_from_coellip_crap(double *pars, int size)
+{
+    int ngauss=0, Tstart=0, Astart=0;
+    double row=0, col=0, e1=0, e2=0, 
+           T=0, Ti=0, fi=0, A=0, Ai=0, pi=0, 
+           fsum=0, psum=0;
+    struct gauss *gauss=NULL;
+
+    int i=0;
+
+    if ( ((size-4) % 2) != 0) {
+        return NULL;
+    }
+    ngauss = (size-4)/2;
+
+    struct gvec * gvec = gvec_new(ngauss);
+
+    row=pars[0];
+    col=pars[1];
+    e1 = pars[2];
+    e2 = pars[3];
+
+
+    Tstart=4;
+    Astart=Tstart+ngauss;
+
+    T = pars[Tstart];
+    A = pars[Astart];
+
+    for (i=0; i<ngauss; i++) {
+        gauss = &gvec->data[i];
+
+        if (i < (ngauss-1)) {
+            fi = pars[Tstart+1+i];
+            pi = pars[Astart+1+i];
+            fsum += fi;
+            psum += pi;
+        } else {
+            fi = 1-fsum;
+            pi = 1-psum;
+        }
+        Ai = A*pi;
+        Ti = T*fi;
+
+        gauss_set(gauss,
+                  Ai,
+                  row, 
+                  col, 
+                  (Ti/2.)*(1-e1),
+                  (Ti/2.)*e2,
+                  (Ti/2.)*(1+e1));
+    }
+
+    return gvec;
+}
+
+
+struct gvec *gvec_from_coellip(double *pars, int size)
+{
+    int ngauss=0, Tstart=0, Astart=0;
+    double row=0, col=0, e1=0, e2=0, Ti=0, Ai=0;
+    struct gauss *gauss=NULL;
+
+    int i=0;
+
+    if ( ((size-4) % 2) != 0) {
+        return NULL;
+    }
+    ngauss = (size-4)/2;
+
+    struct gvec * gvec = gvec_new(ngauss);
+
+    row=pars[0];
+    col=pars[1];
+    e1 = pars[2];
+    e2 = pars[3];
+
+
+    Tstart=4;
+    Astart=Tstart+ngauss;
+
+
+    for (i=0; i<ngauss; i++) {
+        gauss = &gvec->data[i];
+
+        Ti = pars[Tstart+i];
+        Ai = pars[Astart+i];
+
+        gauss_set(gauss,
+                  Ai,
                   row, 
                   col, 
                   (Ti/2.)*(1-e1),

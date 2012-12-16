@@ -55,6 +55,18 @@ struct gvec *pyarray_to_gvec(PyObject *array)
     gvec = gvec_from_pars(pars, sz);
     return gvec;
 }
+
+struct gvec *coellip_pyarray_to_gvec_Tfrac(PyObject *array)
+{
+    double *pars=NULL;
+    int sz=0;
+    struct gvec *gvec=NULL;
+    pars = PyArray_DATA(array);
+    sz = PyArray_SIZE(array);
+
+    gvec = gvec_from_coellip_Tfrac(pars, sz);
+    return gvec;
+}
 struct gvec *coellip_pyarray_to_gvec(PyObject *array)
 {
     double *pars=NULL;
@@ -66,6 +78,7 @@ struct gvec *coellip_pyarray_to_gvec(PyObject *array)
     gvec = gvec_from_coellip(pars, sz);
     return gvec;
 }
+
 
 
 /*
@@ -115,6 +128,15 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
                         "coellip pars wrong size: %ld", size);
             }
             break;
+        case 5:
+            fprintf(stderr,"Using old Tfrac\n");
+            self->gvec = gvec_from_coellip_Tfrac(pars, size);
+            if (self->gvec == NULL) {
+                PyErr_Format(PyExc_ValueError, 
+                        "coellip pars wrong size: %ld", size);
+            }
+            break;
+
         case 2:
             self->gvec = gvec_from_pars_turb(pars, size);
             if (self->gvec == NULL) {
@@ -499,8 +521,9 @@ fill_model_subgrid(struct image *image,
 
                         chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                         chi2 /= gauss->det;
-                        //tval += gauss->p*exp( -0.5*chi2 );
-                        tval += gauss->p*expd( -0.5*chi2 );
+                        if (chi2 < EXP_MAX_CHI2) {
+                            tval += gauss->p*expd( -0.5*chi2 );
+                        }
 
                         tcol += stepsize;
                     }
@@ -598,7 +621,9 @@ int calculate_loglike_old_old(struct image *image,
 
                         b = M_TWO_PI*sqrt(det);
                         //tval += pgauss->p*exp( -0.5*chi2 )/b;
-                        tval += pgauss->p*expd( -0.5*chi2 )/b;
+                        if (chi2 < EXP_MAX_CHI2) {
+                            tval += pgauss->p*expd( -0.5*chi2 )/b;
+                        }
                         psum += pgauss->p;
                     }
                     // psf always normalized to unity
@@ -608,7 +633,9 @@ int calculate_loglike_old_old(struct image *image,
                     chi2 /= gauss->det;
                     b = M_TWO_PI*sqrt(gauss->det);
                     //tval = gauss->p*exp( -0.5*chi2 )/b;
-                    tval = gauss->p*expd( -0.5*chi2 )/b;
+                    if (chi2 < EXP_MAX_CHI2) {
+                        tval = gauss->p*expd( -0.5*chi2 )/b;
+                    }
                 }
 
                 model_val += tval;
@@ -680,7 +707,9 @@ int calculate_loglike_margamp(struct image *image,
 
                 chi2=gauss->dcc*u2 + gauss->drr*v2 - 2.0*gauss->drc*uv;
                 //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-                model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                }
 
                 gauss++;
             } // gvec
@@ -745,7 +774,9 @@ int calculate_loglike(struct image *image,
 
                 chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
                 //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-                model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                }
 
                 gauss++;
             } // gvec
@@ -815,7 +846,9 @@ int calculate_loglike_old(struct image *image,
                 b = M_TWO_PI*sqrt(gauss->det);
 
                 //model_val += gauss->p*exp( -0.5*chi2 )/b;
-                model_val += gauss->p*expd( -0.5*chi2 )/b;
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->p*expd( -0.5*chi2 )/b;
+                }
 
                 gauss++;
             } // gvec
@@ -902,7 +935,9 @@ int fill_model_old(struct image *image,
 
                         b = M_TWO_PI*sqrt(det);
                         //tval += pgauss->p*exp( -0.5*chi2 )/b;
-                        tval += pgauss->p*expd( -0.5*chi2 )/b;
+                        if (chi2 < EXP_MAX_CHI2) {
+                            tval += pgauss->p*expd( -0.5*chi2 )/b;
+                        }
                         psum += pgauss->p;
                     }
                     // psf always normalized to unity
@@ -911,8 +946,12 @@ int fill_model_old(struct image *image,
                     chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
                     chi2 /= gauss->det;
                     b = M_TWO_PI*sqrt(gauss->det);
-                    //tval = gauss->p*exp( -0.5*chi2 )/b;
-                    tval = gauss->p*expd( -0.5*chi2 )/b;
+
+                    if (chi2 < EXP_MAX_CHI2) {
+                        tval = gauss->p*expd( -0.5*chi2 )/b;
+                    } else {
+                        tval=0;
+                    }
                 }
 
                 val += tval;
@@ -938,7 +977,64 @@ _eval_model_bail:
  * that will contain priors, so don't try to grab it's dimensions
  */
 static PyObject *
-PyGMixFit_coellip_fill_model_old(PyObject *self, PyObject *args) 
+PyGMixFit_coellip_fill_model_Tfrac(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* diff_obj=NULL;
+    PyObject* obj_pars_obj=NULL;
+    PyObject* psf_pars_obj=NULL; // Can be None
+
+    struct image *image=NULL;
+    struct gvec *obj_gvec=NULL;
+    struct gvec *psf_gvec=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOOO", &image_obj, &obj_pars_obj, 
+                &psf_pars_obj, &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    if (diff_obj != Py_None) {
+        diff = associate_image(diff_obj, dims[0], dims[1]);
+    }
+
+    obj_gvec = coellip_pyarray_to_gvec_Tfrac(obj_pars_obj);
+    DBG2 gvec_print(obj_gvec, stderr);
+
+    if (psf_pars_obj != Py_None) {
+        // always use full gmix for psf
+        psf_gvec = pyarray_to_gvec(psf_pars_obj);
+        DBG2 gvec_print(psf_gvec, stderr);
+    }
+
+    flags=fill_model_old(image, obj_gvec, psf_gvec, diff);
+
+    obj_gvec = gvec_free(obj_gvec);
+    psf_gvec = gvec_free(psf_gvec);
+    // does not free underlying array
+    image = image_free(image);
+    diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+/* 
+   new coellip
+*/
+
+
+static PyObject *
+PyGMixFit_fill_ydiff_coellip(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
     PyObject* diff_obj=NULL;
@@ -988,7 +1084,6 @@ PyGMixFit_coellip_fill_model_old(PyObject *self, PyObject *args)
 
     return PyInt_FromLong(flags);
 }
-
 
 
 static PyObject *
@@ -1199,7 +1294,7 @@ PyGMixFit_loglike_coellip_margamp(PyObject *self, PyObject *args)
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
-    obj_gvec = coellip_pyarray_to_gvec(obj_pars_obj);
+    obj_gvec = coellip_pyarray_to_gvec_Tfrac(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
     psf_gvec = pyarray_to_gvec(psf_pars_obj);
     DBG2 gvec_print(psf_gvec, stderr);
@@ -1393,7 +1488,7 @@ PyGMixFit_loglike_coellip_old(PyObject *self, PyObject *args)
     dims = PyArray_DIMS((PyArrayObject*)image_obj);
     image = associate_image(image_obj, dims[0], dims[1]);
 
-    obj_gvec = coellip_pyarray_to_gvec(obj_pars_obj);
+    obj_gvec = coellip_pyarray_to_gvec_Tfrac(obj_pars_obj);
     DBG2 gvec_print(obj_gvec, stderr);
 
     if (psf_pars_obj != Py_None) {
@@ -1540,7 +1635,8 @@ double randn()
 
 static PyMethodDef render_module_methods[] = {
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
-    {"fill_model_coellip_old", (PyCFunction)PyGMixFit_coellip_fill_model_old,  METH_VARARGS,  "fill the model image"},
+    {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
+    {"fill_ydiff_coellip", (PyCFunction)PyGMixFit_fill_ydiff_coellip,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff_dev10", (PyCFunction)PyGMixFit_fill_ydiff_dev10,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_exp4", (PyCFunction)PyGMixFit_fill_ydiff_exp4,  METH_VARARGS,  "fill the exp model image"},
     {"fill_ydiff_exp6", (PyCFunction)PyGMixFit_fill_ydiff_exp6,  METH_VARARGS,  "fill the exp model image"},

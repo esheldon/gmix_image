@@ -14,7 +14,10 @@ from . import _render
 from . import gmix
 from .gmix import GMix
 
-def gmix2image(gmix, dims, psf=None, coellip=False, nsub=1, 
+def gmix2image(gmix, dims, psf=None, 
+               coellip=False, 
+               Tfrac=False, 
+               nsub=1, 
                getflags=False):
     """
     Create an image from the gaussian input mixture model.
@@ -55,7 +58,7 @@ def gmix2image(gmix, dims, psf=None, coellip=False, nsub=1,
         return im
 
 
-def _convert_gmix(gmix, coellip=False):
+def _convert_gmix(gmix, coellip=False, Tfrac=False):
     if isinstance(gmix, GMix):
         # noop
         return gmix
@@ -67,9 +70,11 @@ def _convert_gmix(gmix, coellip=False):
     if coellip:
         # special coelliptical form
         return GMix(gmix, type=gmix.GMIX_COELLIP)
-
-    # we assume this is a full gaussian mixture in array form
-    return GMix(gmix)
+    elif Tfrac:
+        return GMix(gmix, type=gmix.GMIX_COELLIP_TFRAC)
+    else:
+        # we assume this is a full gaussian mixture in array form
+        return GMix(gmix)
 
 def _gmix2image_lod(gmix, dims, psf=None):
     pars = gmix2pars(gmix)

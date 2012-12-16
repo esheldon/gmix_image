@@ -1561,7 +1561,139 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
     print_pars(gf.perr,front='perr:  ')
 
 
+def test_turb(ngauss=2, Tfrac=False):
+    import pprint
+    import fimage
+    import admom
+    from fimage.transform import rebin
+    import images
+    from .gmix_fit import print_pars
 
+    counts=1.
+    #fwhm=3.3
+    #dims=array([20,20])
+    fwhm=10.
+    dims=array([60,60])
+    s2n_psf=1.e9
+
+
+    print 'making image'
+
+    expand_fac=5
+    psfexp=fimage.pixmodel.ogrid_turb_psf(dims*expand_fac,fwhm*expand_fac,
+                                          counts=counts)
+    psf0=rebin(psfexp, expand_fac)
+    psf,skysig=fimage.noise.add_noise_admom(psf0, s2n_psf)
+
+    psfres = admom.admom(psf,
+                         dims[0]/2.,
+                         dims[1]/2.,
+                         sigsky=skysig,
+                         guess=4.,
+                         nsub=1)
+
+    """
+    psfpars={'model':'turb','psf_fwhm':fwhm}
+    objpars={'model':'exp','cov':[2.0,0.0,2.0]}
+    s2n_obj=200.
+    ci_nonoise = fimage.convolved.ConvolverTurbulence(objpars,psfpars)
+    ci=fimage.convolved.NoisyConvolvedImage(ci_nonoise, s2n_obj, s2n_psf, 
+                                            s2n_method='admom')
+
+    print ci['cen_uw']
+    print ci['cov_uw']
+
+    print 'running admom'
+    counts=ci.psf.sum()
+
+    psf=ci.psf, skysig=ci['skysig_psf']
+    psfres = admom.admom(ci.psf,
+                         ci['cen_uw'][0],
+                         ci['cen_uw'][1], 
+                         sigsky=ci['skysig_psf'],
+                         guess=4.,
+                         nsub=1)
+    """
+    pprint.pprint(psfres)
+    if psfres['whyflag'] != 0:
+        raise ValueError("found admom error: %s" % admom.wrappers.flagmap[psfres['whyflag']])
+
+    print 'making prior/guess'
+
+    npars=2*ngauss+4
+
+    prior=zeros(npars)
+    width=zeros(npars) + 1000
+    prior[0]=psfres['row']
+    prior[1]=psfres['col']
+    prior[2]=psfres['e1']
+    prior[3]=psfres['e2']
+
+    Tpsf=psfres['Irr']+psfres['Icc']
+    if Tfrac:
+        if ngauss==3:
+            model='coellip-Tfrac'
+            Tmax = Tpsf*8.3
+            Tfrac1 = 1.7/8.3
+            Tfrac2 = 0.8/8.3
+            prior[4] = Tmax
+            prior[5] = Tfrac1 
+            prior[6] = Tfrac2
+
+            prior[7] = 0.08*counts
+            prior[8] = 0.38*counts
+            prior[9] = 0.53*counts
+        else:
+            raise ValueError("Do Tfrac ngauss==2")
+    else:
+        model='coellip'
+        if ngauss==3:
+            Texamp=array([29.6161,296.453,63.8639])
+            Tfrac=Texamp/Texamp.sum()
+            pexamp=array([0.502608,0.0932536,0.405892])
+            pfrac=pexamp/pexamp.sum()
+            prior[4:4+3] = Tpsf*Tfrac
+            prior[7:7+3] = counts*pfrac
+        else:
+            prior[4] = Tpsf
+            prior[5] = 1.0/3.0 # f1
+
+            prior[6] = counts
+            prior[7] = 1.0/3.0 # p1
+
+
+
+    # randomize
+    prior[0] += 0.01*(randu()-0.5)
+    prior[1] += 0.01*(randu()-0.5)
+    e1start=prior[2]
+    e2start=prior[3]
+    prior[2:2+2] += 0.02*(randu()-0.5)
+
+    for i in xrange(4,npars):
+        prior[i] += prior[i]*0.05*(randu()-0.5)
+
+    print_pars(prior)
+    print 'doing fit'
+    gm = gmix_image.GMixFitCoellip(psf, skysig,
+                                   prior,width,
+                                   model=model,
+                                   Tpositive=True)
+
+    print_pars( gm.get_pars() )
+    gmix=gm.get_gmix()
+    print 'gmix'
+    pprint.pprint(gmix)
+
+    
+    #print 'Tpsf:',Tpsf
+    moms=fimage.fmom(psf0)
+    print 'uw T:',moms['cov'][0]+moms['cov'][2]
+    #print 'unweighted T:',ci['cov_uw'][0]+ci['cov_uw'][1]
+    print 'T:',gmix.get_T()
+
+    model=gm.get_model()
+    images.compare_images(psf,model)
 
 if __name__ == "__main__":
     test(add_noise=False)
