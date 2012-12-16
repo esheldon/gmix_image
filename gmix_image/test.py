@@ -11,6 +11,7 @@ from .gmix_em import gmix2image_em
 import copy
 
 import esutil as eu
+from esutil.random import srandu
 
 try:
     import images
@@ -1570,10 +1571,10 @@ def test_turb(ngauss=2, Tfrac=False):
     from .gmix_fit import print_pars
 
     counts=1.
-    #fwhm=3.3
-    #dims=array([20,20])
-    fwhm=10.
-    dims=array([60,60])
+    fwhm=3.3
+    dims=array([20,20])
+    #fwhm=10.
+    #dims=array([60,60])
     s2n_psf=1.e9
 
 
@@ -1648,30 +1649,30 @@ def test_turb(ngauss=2, Tfrac=False):
     else:
         model='coellip'
         if ngauss==3:
-            Texamp=array([29.6161,296.453,63.8639])
+            Texamp=array([0.46,5.95,2.52])
+            pexamp=array([0.1,0.7,0.22])
+
             Tfrac=Texamp/Texamp.sum()
-            pexamp=array([0.502608,0.0932536,0.405892])
             pfrac=pexamp/pexamp.sum()
             prior[4:4+3] = Tpsf*Tfrac
             prior[7:7+3] = counts*pfrac
         else:
-            prior[4] = Tpsf
-            prior[5] = 1.0/3.0 # f1
+            prior[4] = Tpsf/3.0
+            prior[5] = Tpsf/3.0
 
-            prior[6] = counts
-            prior[7] = 1.0/3.0 # p1
+            prior[6] = counts/3.
+            prior[7] = counts/3.
 
 
 
     # randomize
-    prior[0] += 0.01*(randu()-0.5)
-    prior[1] += 0.01*(randu()-0.5)
+    prior[0] += 0.01*srandu()
+    prior[1] += 0.01*srandu()
     e1start=prior[2]
     e2start=prior[3]
-    prior[2:2+2] += 0.02*(randu()-0.5)
+    prior[2:2+2] += 0.02*srandu(2)
 
-    for i in xrange(4,npars):
-        prior[i] += prior[i]*0.05*(randu()-0.5)
+    prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
 
     print_pars(prior)
     print 'doing fit'
