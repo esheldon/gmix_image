@@ -1,10 +1,7 @@
 """
-functions
----------
-gmix2pars:
-    Convert a list-of-dictionaries representation of a gaussian mixture
-    to an array
+functions, mostly superceded by the GMix class
 
+---------
 total_moms:
     total moments of a gaussian mixture.
 
@@ -16,30 +13,14 @@ import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
         tanh, arctanh, cos, sin, exp
 
-def gmix2pars(gmix):
-    """
-    convert a list of dictionaries to an array.
-
-    The packing is [p1,row1,col1,irr1,irc1,icc1,
-                    p2,row2,....]
-    """
-    ngauss=len(gmix)
-    pars=zeros(ngauss*6,dtype='f8')
-    for i,g in enumerate(gmix):
-        beg=i*6
-        pars[beg+0] = g['p']
-        pars[beg+1] = g['row']
-        pars[beg+2] = g['col']
-        pars[beg+3] = g['irr']
-        pars[beg+4] = g['irc']
-        pars[beg+5] = g['icc']
-
-    return pars
+from .gmix import GMix
+from .gmix import gmix2pars
 
 
 def total_moms(gauss_list, psf=None):
     """
-    Only makes sense if the centers are the same
+    This is superceded by the GMix method get_T()
+
 
     parameters
     ----------
@@ -49,9 +30,13 @@ def total_moms(gauss_list, psf=None):
         A PSF as a gaussian mixture model.  The result
         will be convolved with the PSF.
     """
+    gm=GMix(gauss_list)
     if psf is not None:
-        return _total_moms_psf(gauss_list, psf)
+        gmpsf=GMix(psf)
+        gm=gm.convolve(gmpsf)
 
+    return gm.get_T()
+    """
     d={'irr':0.0, 'irc':0.0, 'icc':0.0}
     psum=0.0
     for g in gauss_list:
@@ -65,9 +50,12 @@ def total_moms(gauss_list, psf=None):
     d['irc'] /= psum
     d['icc'] /= psum
     return d
+    """
 
 def _total_moms_psf(gauss_list, psf_list):
     """
+    Superceded by GMix method get_T()
+
     Only makes sense if the centers are the same
     """
     d={'irr':0.0, 'irc':0.0, 'icc':0.0}
@@ -106,6 +94,8 @@ def gmix_print(gmix, title=None):
 
 def pars2gmix(pars, coellip=False):
     """
+    superceded by using GMix(pars)
+
     Convert a parameter array.  
 
     if coellip, the packing is

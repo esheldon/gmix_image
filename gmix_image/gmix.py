@@ -1,8 +1,7 @@
 import numpy
-from numpy import array
+from numpy import array, zeros
 import copy
 from . import _render
-from .util import gmix2pars
 
 GMIX_FULL=0
 GMIX_COELLIP=1
@@ -18,7 +17,7 @@ def GMixCoellip(pars):
     parameters
     ----------
     pars: sequence
-        [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3...]
+        [row,col,e1,e2,T1,T2...,p1,p2...]
     """
     return GMix(pars, type=GMIX_COELLIP)
 
@@ -126,7 +125,7 @@ class GMix(_render.GVec):
     def __init__(self, pars, type=GMIX_FULL):
         type=int(type)
 
-        if type==GMIX_FULL and isinstance(pars[0], dict):
+        if type==GMIX_FULL: 
             pars_array=gmix2pars(pars)
         else:
             pars_array=array(pars,dtype='f8')
@@ -168,3 +167,62 @@ class GMix(_render.GVec):
         import pprint
         dlist=self.get_dlist()
         return pprint.pformat(dlist)
+
+
+def togmix(gmix, coellip=False, Tfrac=False):
+    """
+    Conver the input to a GMix object
+
+    parameters
+    ----------
+    gmix:
+        either a pars arrary or a list of dicts or a GMix object
+    coellip: bool
+        If True, interpret the pars array as coelliptical
+    """
+    if isinstance(gmix, GMix):
+        # noop
+        return gmix
+
+    if isinstance(gmix[0], dict):
+        # full gaussian mixture as list of dicts
+        return GMix(gmix)
+
+    if coellip:
+        # special coelliptical form
+        return GMix(gmix, type=gmix.GMIX_COELLIP)
+    elif Tfrac:
+        return GMix(gmix, type=gmix.GMIX_COELLIP_TFRAC)
+    else:
+        # we assume this is a full gaussian mixture in array form
+        return GMix(gmix)
+
+
+def gmix2pars(gmix_in):
+    """
+    convert a list of dictionaries to an array.
+
+    The packing is [p1,row1,col1,irr1,irc1,icc1,
+                    p2,row2,....]
+    """
+    if isinstance(gmix_in, GMix):
+        gm=gmix_in.get_dlist()
+    elif isinstance(gmix_in, list) and isinstance(gmix_in[0],dict):
+        gm=gmix_in
+    else:
+        raise ValueError("input should be a GMix object or list of dicts")
+
+    ngauss=len(gm)
+    pars=zeros(ngauss*6,dtype='f8')
+    for i,g in enumerate(gm):
+        beg=i*6
+        pars[beg+0] = g['p']
+        pars[beg+1] = g['row']
+        pars[beg+2] = g['col']
+        pars[beg+3] = g['irr']
+        pars[beg+4] = g['irc']
+        pars[beg+5] = g['icc']
+
+    return pars
+
+

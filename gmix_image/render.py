@@ -12,7 +12,7 @@ from numpy import zeros
 from .util import gmix2pars
 from . import _render
 from . import gmix
-from .gmix import GMix
+from .gmix import GMix, togmix
 
 def gmix2image(gmix, dims, psf=None, 
                coellip=False, 
@@ -44,9 +44,9 @@ def gmix2image(gmix, dims, psf=None,
     if len(dims)  != 2:
         raise ValueError("dims must be 2 element sequence/array")
 
-    gmix=_convert_gmix(gmix, coellip=coellip)
+    gmix=togmix(gmix, coellip=coellip)
     if psf:
-        psf=_convert_gmix(psf)
+        psf=togmix(psf)
         gmix=gmix.convolve(psf)
 
     im=zeros(dims,dtype='f8')
@@ -58,23 +58,6 @@ def gmix2image(gmix, dims, psf=None,
         return im
 
 
-def _convert_gmix(gmix, coellip=False, Tfrac=False):
-    if isinstance(gmix, GMix):
-        # noop
-        return gmix
-
-    if isinstance(gmix[0], dict):
-        # full gaussian mixture as list of dicts
-        return GMix(gmix)
-
-    if coellip:
-        # special coelliptical form
-        return GMix(gmix, type=gmix.GMIX_COELLIP)
-    elif Tfrac:
-        return GMix(gmix, type=gmix.GMIX_COELLIP_TFRAC)
-    else:
-        # we assume this is a full gaussian mixture in array form
-        return GMix(gmix)
 
 def _gmix2image_lod(gmix, dims, psf=None):
     pars = gmix2pars(gmix)

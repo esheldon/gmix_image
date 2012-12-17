@@ -11,6 +11,9 @@ from .util import total_moms, gmix2pars
 
 from . import _render
 
+from . import gmix
+from .gmix import GMix
+
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
 GMIXFIT_NEG_COV_EIG     = 2**5
@@ -92,13 +95,13 @@ class GMixFitCoellip:
             raise ValueError("prior and width must be same len")
 
     def set_psf(self, psf):
-        self.psf_gmix = psf
-        self.psf_pars = None
 
         if psf is not None:
-            if not isinstance(psf[0],dict):
-                raise ValueError("psf must be list of dicts")
-            self.psf_pars = gmix2pars(psf)
+            self.psf_gmix = GMix(psf)
+            self.psf_pars = gmix2pars(self.psf_gmix)
+        else:
+            self.psf_gmix = None
+            self.psf_pars = None
 
     def dofit(self):
         """
@@ -179,7 +182,7 @@ class GMixFitCoellip:
         and demand T,p > 0
         """
 
-        if True:
+        if False:
             print_pars(pars, front="pars: ")
             print_pars(self.psf_pars, front="psf_pars:")
         
@@ -229,7 +232,6 @@ class GMixFitCoellip:
             return False
 
         gmix_obj=self.pars2gmix(pars)
-        print gmix_obj
         gmix=gmix_obj.get_dlist()
 
         # overall determinant and centroid
@@ -253,27 +255,6 @@ class GMixFitCoellip:
                 if self.verbose:
                     print_pars(pvals,front='bad p: ')
                 return False
-
-        # check determinant for all images we might have
-        # to create with psf convolutions
-
-        if self.psf_gmix is not None:
-            moms = total_moms(gmix, psf=self.psf_gmix)
-            pdet = moms['irr']*moms['icc']-moms['irc']**2
-            if pdet <= 0:
-                if self.verbose:
-                    print >>stderr,'bad p det'
-                return False
-            for g in gmix:
-                for p in self.psf_gmix:
-                    irr = g['irr'] + p['irr']
-                    irc = g['irc'] + p['irc']
-                    icc = g['icc'] + p['icc']
-                    det = irr*icc-irc**2
-                    if det <= 0:
-                        if self.verbose:
-                            print >>stderr,'bad p+obj det'
-                        return False
 
         return True
 
