@@ -250,11 +250,28 @@ class GMixFitCoellip:
                 if T <= 0:
                     if self.verbose:
                         print_pars(Tfvals,front='bad T or Tfrac: ')
-                        return False
+                    return False
+            det=g['irr']*g['icc']-g['irc']**2
+            if det <= 0:
+                if self.verbose:
+                    print_pars(Tfvals,front='bad det: ')
+                return False
             if g['p'] <= 0:
                 if self.verbose:
                     print_pars(pvals,front='bad p: ')
                 return False
+
+        """
+        if self.psf_gmix:
+            gc=gmix_obj.convolve(self.psf_gmix)
+            dl=gc.get_dlist()
+            for g in dl:
+                det=g['irr']*g['icc']-g['irc']**2
+                if det <= 0:
+                    if self.verbose:
+                        print_pars(Tfvals,front='bad det: ')
+                    return False
+        """
 
         return True
 
@@ -265,11 +282,9 @@ class GMixFitCoellip:
     def pars2gmix(self, pars):
         from . import gmix
         if self.model=='gdev':
-            gmix=gmix.GMixDev(pars)
-            return gmix.get_dlist()
+            return gmix.GMixDev(pars)
         elif self.model=='gexp':
-            gmix=gmix.GMixExp(pars)
-            return gmix.get_dlist()
+            return gmix.GMixExp(pars)
         elif self.model=='coellip-Tfrac':
             return gmix.GMix(pars, type=gmix.GMIX_COELLIP_TFRAC)
         elif self.model=='coellip':
