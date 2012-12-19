@@ -9,12 +9,29 @@ gmix_print:
     print out a gaussian mixture
 """
 
+from sys import stdout,stderr
 import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
         tanh, arctanh, cos, sin, exp
 
 from .gmix import GMix
 from .gmix import gmix2pars
+
+from esutil.random import srandu
+
+def print_pars(pars, stream=stdout, front=None):
+    """
+    print the parameters with a uniform width
+    """
+    if front is not None:
+        stream.write(front)
+        stream.write(' ')
+    if pars is None:
+        stream.write('%s\n' % None)
+    else:
+        fmt = ' '.join( ['%10.6g ']*len(pars) )
+        stream.write(fmt % tuple(pars))
+        stream.write('\n')
 
 
 def total_moms(gauss_list, psf=None):
@@ -203,6 +220,22 @@ def pars2full_coellip(pars):
         pars[beg+5] = (T/2.)*(1+e1)
 
     return gmix
+
+
+def randomize_e1e2(e1start,e2start, width=0.1):
+    if e1start == 0 or e1start is None or e2start==0 or e2start is None:
+        e1rand = 0.05*srandu()
+        e2rand = 0.05*srandu()
+    else:
+        e1rand = e1start*(1 + 2*width*srandu())
+        e2rand = e2start*(1 + 2*width*srandu())
+        etot = sqrt(e1rand**2 + e2rand**2)
+        if etot > 0.95:
+            e1rand,e2rand=randomize_e1e2(None,None)
+
+    return e1rand, e2rand
+
+
 
 def get_f_p_vals(fname=None, pars=None, Tfrac=True):
     """

@@ -7,7 +7,7 @@ from sys import stderr
 
 from .gmix_em import gmix2image_em
 from .render import gmix2image
-from .util import total_moms, gmix2pars
+from .util import total_moms, gmix2pars, print_pars
 
 from . import _render
 
@@ -423,19 +423,5 @@ def ellip2eta(ellip):
 
 def get_ngauss_coellip(pars):
     return (len(pars)-4)/2
-
-def print_pars(pars, stream=stderr, front=None):
-    """
-    print the parameters with a uniform width
-    """
-    if front is not None:
-        stream.write(front)
-        stream.write(' ')
-    if pars is None:
-        stream.write('%s\n' % None)
-    else:
-        fmt = ' '.join( ['%10.6g ']*len(pars) )
-        stream.write(fmt % tuple(pars))
-        stream.write('\n')
 
 

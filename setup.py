@@ -20,25 +20,9 @@ render_ext=Extension("gmix_image._render", render_sources)
 
 ext_modules=[em_ext,render_ext]
 
-class WithNLSolver(Command):
-    _ext_modules=ext_modules
-    user_options=[]
-    def initialize_options(self):
-        pass
-    def finalize_options(self):
-        pass
-    def run(self):
-        nlsolve_ext=Extension("gmix_image._gmix_nlsolve", 
-                              ["gmix_image/nlsolver.cpp",
-                               "gmix_image/gmix_nlsolve_pywrap.cpp"],
-                              libraries=['tmv','tmv_symband'],
-                              define_macros=[('USE_TMV',None)])
-
-        WithNLSolver._ext_modules.append(nlsolve_ext)
 
 setup(name="gmix_image", 
       packages=['gmix_image'],
-      cmdclass={"with_nlsolve": WithNLSolver},
       version="1.0",
       data_files=data_files,
       ext_modules=ext_modules,

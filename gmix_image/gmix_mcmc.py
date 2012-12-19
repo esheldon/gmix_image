@@ -1,3 +1,4 @@
+import math
 import numpy
 from numpy import sqrt, log, log10, zeros, \
         where, array, diag, median
@@ -6,9 +7,15 @@ from esutil.random import srandu
 from esutil.misc import wlog
 from esutil.random import LogNormal
 
-import gmix_image
-from gmix_image import print_pars, GMix, gmix2pars
+from .util import print_pars, randomize_e1e2
+from .gmix import GMix, GMixExp, GMixDev, GMixCoellip, gmix2pars
 
+from . import render
+from .render import gmix2image
+
+from lensing.shear import Shear
+
+LOWVAL=-9999.9e9
 
 class MixMC:
     def __init__(self, image, ivar, psf, cenprior, T, gprior, model,
@@ -96,37 +103,33 @@ class MixMC:
 
         pars[2],pars[3]=e1,e2
         gmix=self._get_convolved_gmix(pars)
-        model=gmix_image.gmix2image(gmix, self.image.shape)
+        model=gmix2image(gmix, self.image.shape)
         return model
 
 
     def _go(self):
         import emcee
 
-        sampler = emcee.EnsembleSampler(self.nwalkers, 
-                                        self.npars, 
-                                        self._calc_lnprob,
-                                        a=self.mca_a)
+        self.sampler = emcee.EnsembleSampler(self.nwalkers, 
+                                             self.npars, 
+                                             self._calc_lnprob,
+                                             a=self.mca_a)
         
         self._do_trials()
 
-        self.trials  = sampler.flatchain
+        self.trials  = self.sampler.flatchain
 
-        lnprobs = sampler.lnprobability.reshape(self.nwalkers*self.nstep)
+        lnprobs = self.sampler.lnprobability.reshape(self.nwalkers*self.nstep)
         self.lnprobs = lnprobs - lnprobs.max()
-
-        self._emcee_sampler=sampler
 
         # get the expectation values, sensitivity and errors
         self._calc_result()
 
         if self.make_plots:
             self._doplots()
-            key=raw_input('hit a key (q to quit): ')
-            if key=='q':
-                stop
 
     def _do_trials(self):
+        sampler=self.sampler
         guess=self._get_guess()
 
         pos, prob, state = sampler.run_mcmc(guess, self.burnin)
@@ -191,9 +194,9 @@ class MixMC:
         gmix=self._get_convolved_gmix(pars)
 
         loglike,s2n,flags=\
-            gmix_image.render._render.loglike(self.image, 
-                                              gmix,
-                                              self.ivar)
+            render._render.loglike(self.image, 
+                                   gmix,
+                                   self.ivar)
 
         if flags != 0:
             return LOWVAL
@@ -213,13 +216,13 @@ class MixMC:
         This should have T linear
         """
         if self.model=='gexp':
-            gmix0=gmix_image.GMixExp(pars)
+            gmix0=GMixExp(pars)
         elif self.model=='gdev':
-            gmix0=gmix_image.GMixDev(pars)
+            gmix0=GMixDev(pars)
         elif self.model=='gauss':
-            gmix0=gmix_image.GMixCoellip(pars)
-        elif self.model='coellip':
-            raise ValueError("copy stuff from NGaussFitter")
+            gmix0=GMixCoellip(pars)
+        elif self.model=='coellip':
+            raise ValueError("use NGaussFitter")
         else:
             raise ValueError("bad model: '%s'" % self.model)
         gmix=gmix0.convolve(self.psf_gmix)
@@ -266,9 +269,8 @@ class MixMC:
         gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
         gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
  
-        arates = self._emcee_sampler.acceptance_fraction
+        arates = self.sampler.acceptance_fraction
         arate = arates.mean()
-        #print 'acceptance rate:',w.size/float(self.trials.size)
 
         # weighted s/n based on the most likely point
         s2n,loglike,chi2per,dof,prob=self._calculate_maxlike_stats()
@@ -276,7 +278,7 @@ class MixMC:
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
-        #print 'T s/n:',Ts2n
+
         self._result={'model':self.model,
                       'g':g,
                       'gcov':gcov,
@@ -292,12 +294,12 @@ class MixMC:
                       'chi2per':chi2per,
                       'dof':dof,
                       'fit_prob':prob}
-        #wlog("arate:",self._result['arate'])
 
     def _calculate_maxlike_stats(self):
         """
         Stats Based on the most likely point
         """
+        import scipy.stats
 
         w=self.lnprobs.argmax()
         pars = self.trials[w,:].copy()
@@ -309,9 +311,9 @@ class MixMC:
         gmix=self._get_convolved_gmix(pars)
 
         loglike,s2n,flags=\
-            gmix_image.render._render.loglike(self.image, 
-                                              gmix,
-                                              self.ivar)
+            render._render.loglike(self.image, 
+                                   gmix,
+                                   self.ivar)
         chi2=loglike/(-0.5)
         dof=self.image.size-pars.size
         chi2per = chi2/dof
@@ -339,18 +341,18 @@ class MixMC:
         # guess for T is self.T with scatter
         if self.T_is_prior:
             T=self.T.mean
-            guess[:,4] = T + T*0.1*srandu(self.nwalkers)
+            guess[:,4] = T*(1 + 0.1*srandu(self.nwalkers))
         else:
             T=self.T
-            guess[:,4] = T + T*0.1*srandu(self.nwalkers)
+            guess[:,4] = T*(1 + 0.1*srandu(self.nwalkers))
 
         # first guess at amp is the total flux
         if self.start_pars is not None:
             pguess=self.start_pars[5]
-            guess[:,5] = pguess*(1+0.1*srandu(self.nwalkers)
+            guess[:,5] = pguess*(1+0.1*srandu(self.nwalkers))
         else:
             imtot=self.image.sum()
-            guess[:,5] = imtot + imtot*0.1*srandu(self.nwalkers)
+            guess[:,5] = imtot*(1 + 0.1*srandu(self.nwalkers))
 
         return guess
 
@@ -511,5 +513,42 @@ class MixMC:
                         xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
                         ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
                         xlabel='T', ylabel='g2', levels=levels)
+
+        key=raw_input('hit a key (q to quit): ')
+        if key=='q':
+            stop
+
+
+class CenPrior:
+    def __init__(self, cen, sigma):
+        self.cen=cen
+        self.sigma=sigma
+        self.sigma2=[s**2 for s in sigma]
+
+    def lnprob(self, pos):
+        lnprob0 = -0.5*(self.cen[0]-pos[0])**2/self.sigma2[0]
+        lnprob1 = -0.5*(self.cen[1]-pos[1])**2/self.sigma2[1]
+        return lnprob0 + lnprob1
+
+
+def g1g2_to_e1e2(g1, g2):
+    """
+    This version without exceptions
+
+    returns e1,e2,okflag
+    """
+    g = math.sqrt(g1**2 + g2**2)
+    if g >= 1.:
+        return LOWVAL,LOWVAL,False
+
+    if g == 0:
+        return 0.,0.,True
+    e = math.tanh(2*math.atanh(g))
+    if e >= 1.:
+        return LOWVAL,LOWVAL,False
+
+    fac = e/g
+    e1, e2 = fac*g1, fac*g2
+    return e1,e2,True
 
 
