@@ -10,6 +10,25 @@ GMIX_EXP=3
 GMIX_DEV=4
 GMIX_COELLIP_TFRAC=5
 
+_gmix_type_dict={'full':    GMIX_FULL,
+                 'coellip': GMIX_COELLIP,
+                 'turb':    GMIX_TURB,
+                 'gexp':    GMIX_EXP,
+                 'gdev':    GMIX_DEV,
+                 'coellip-Tfrac': GMIX_COELLIP_TFRAC}
+
+def as_gmix_type(type_in):
+    if isinstance(type_in,basestring):
+        type_in=type_in.lower()
+        if type_in not in _gmix_type_dict:
+            raise ValueError("unknown gmixtype: '%s'" % type_in)
+        type_out = _gmix_type_dict[type_in]
+    else:
+        type_out = int(type_in)
+
+    return type_out
+
+
 def GMixCoellip(pars):
     """
     Generate a co-elliptical gaussian mixture.
@@ -123,9 +142,10 @@ class GMix(_render.GVec):
         get a copy of the type of the input parameters
     """
     def __init__(self, pars, type=GMIX_FULL):
-        type=int(type)
+        type=as_gmix_type(type)
 
         if type==GMIX_FULL: 
+            # we also want a pars array if list of dicts was sent
             pars_array=gmix2pars(pars)
         else:
             pars_array=array(pars,dtype='f8')
@@ -134,6 +154,8 @@ class GMix(_render.GVec):
         self._pars=pars_array
         self._type=type
 
+    def _print_type(self,t):
+        print 'type(type):',type(t)
 
     def convolve(self, psf):
         """

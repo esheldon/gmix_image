@@ -1,13 +1,18 @@
+from sys import stderr
+import pprint
+
 import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
         tanh, arctanh, cos, sin, exp
 from numpy.linalg import eig
 from fimage import model_image
-from sys import stderr
+
+from esutil.random import srandu
 
 from .gmix_em import gmix2image_em
 from .render import gmix2image
-from .util import total_moms, gmix2pars, print_pars
+from .util import total_moms, gmix2pars, print_pars, get_estyle_pars, \
+        randomize_e1e2, calculate_some_stats
 
 from . import _render
 
@@ -22,6 +27,234 @@ GMIXFIT_NEG_MCOV_DIAG   = 2**7 # the M sub-cov matrix not positive definite
 GMIXFIT_MCOV_NOTPOSDEF  = 2**8 # more strict checks on cholesky decomposition
 GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
 GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
+
+class GMixSimple:
+    def __init__(self, image, ivar, cen_guess, Tguess, model, psf=None):
+        self.image=image
+        self.ivar=ivar
+        self.model=model
+        self.npars=6
+
+        self.cen_guess=cen_guess
+        self.Tguess=Tguess
+        self.admom_max_try=10
+        self.lm_max_try=10
+
+        self._set_psf(psf)
+
+        self.counts=self.image.sum()
+
+        #self.run_admom()
+        #self.run_lm()
+
+    def get_result(self):
+        return self._result
+    def get_admom_result(self):
+        return self._admom_res
+
+    def _set_psf(self, psf):
+        if psf is not None:
+            self.psf_gmix = GMix(psf)
+            self.psf_pars = gmix2pars(self.psf_gmix)
+        else:
+            self.psf_gmix = None
+            self.psf_pars = None
+
+
+    def run_admom(self):
+        import admom
+
+        ntry=self.admom_max_try
+        for i in xrange(ntry):
+            admom_res = admom.admom(self.image,
+                                    self.cen_guess[0],
+                                    self.cen_guess[1],
+                                    sigsky=sqrt(1/self.ivar),
+                                    guess=self.Tguess/2,
+                                    nsub=1)
+            if admom_res['whyflag']==0:
+                break
+        if i==(ntry-1):
+            raise ValueError("admom failed %s times" % ntry)
+
+        self._admom_res=admom_res
+
+    def run_lm(self):
+        """
+        Do a levenberg-marquardt
+        """
+        from scipy.optimize import leastsq
+        if not hasattr(self,'_admom_res'):
+            self.run_admom()
+
+        npars=self.npars
+        ntot = self.image.size + npars
+
+
+        prior=zeros(npars)
+
+        width=zeros(npars) + 1.e6
+
+        self._maxlike_width=width
+
+        counts=self.counts
+        cen = [self._admom_res['row'],self._admom_res['col']]
+        T = self._admom_res['Irr'] + self._admom_res['Icc']
+
+        ntry=10
+        for i in xrange(ntry):
+
+            prior[0]=cen[0]*(1.+ .01*srandu())
+            prior[1]=cen[1]*(1.+ .01*srandu())
+            prior[2],prior[3] = randomize_e1e2(None,None)
+            #prior[2]=0.0649646903077
+            #prior[3]=0.0274282163951
+
+            prior[4] = T*(1. + .05*srandu())
+            prior[5] = counts*(1. + .01*srandu())
+            #print_pars(prior,front='prior:')
+
+            self._maxlike_prior=prior
+
+            # starting guess is the prior
+            lmres = leastsq(self._get_lm_ydiff, prior, full_output=1)
+
+            res=self._calc_lm_results(lmres)
+
+            if self._result['flags']==0:
+                break
+
+
+        if i == (ntry-1):
+            wlog("could not find maxlike after %s tries, returning None" % ntry)
+
+        pprint.pprint(self._result)
+
+        self._compare_model(self._gmix)
+        stop
+
+    def _get_lm_ydiff(self, pars):
+        """
+        pars are [cen1,cen2,g1,g2,T,counts]
+        """
+
+        ntot=self.image.size + self.npars
+        ydiff_tot = zeros(ntot, dtype='f8')
+
+        epars=get_estyle_pars(pars)
+        #print_pars(pars,front='pars: ',stream=stderr)
+        #print_pars(epars,front='epars:',stream=stderr)
+        if epars is None:
+            ydiff_tot[:] = numpy.inf
+            return ydiff_tot
+
+        gmix0=GMix(epars, type=self.model)
+        gmix=gmix0.convolve(self.psf_gmix)
+        self._gmix=gmix
+ 
+        """
+        mod=gmix2image(gmix, self.image.shape)
+        ydiff=(mod-self.image)*sqrt(self.ivar)
+        return ydiff.ravel()
+        """
+        """
+        _render.fill_ydiff_exp6(self.image, epars, self.psf_pars, ydiff_tot)
+        ydiff_tot[0:self.image.size] *= sqrt(self.ivar)
+        """
+        _render.fill_ydiff(self.image, self.ivar, gmix, ydiff_tot)
+        prior_diff = (self._maxlike_prior-epars)/self._maxlike_width
+        ydiff_tot[self.image.size:] = prior_diff
+
+        return ydiff_tot
+
+    def _compare_model(self,gmix):
+        import images
+        im=gmix2image(gmix, self.image.shape)
+        images.compare_images(self.image, im)
+
+    def _calc_lm_results(self, lmres):
+
+        res={'model':self.model,
+             'restype': 'lm'}
+
+        pars, pcov0, infodict, errmsg, ier = lmres
+        res['pars'] = pars
+        res['pcov0'] = pcov0
+        res['numiter'] = infodict['nfev']
+        res['errmsg'] = errmsg
+        res['ier'] = ier
+
+        s2n,loglike,chi2per,dof,prob=\
+                calculate_some_stats(self.image, self.ivar, self.model, pars,
+                                     psf_gmix=self.psf_gmix)
+        res['s2n_w']= s2n
+        res['loglike']=loglike
+        res['chi2per']=chi2per
+        res['dof']=dof
+        res['fit_prob']=prob
+
+
+        if ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(errmsg)
+
+        pcov=None
+        perr=None
+        if pcov0 is not None:
+            pcov = self._scale_leastsq_cov(pars, pcov0)
+
+            d=diag(pcov)
+            w,=where(d < 0)
+
+            if w.size == 0:
+                # only do if non negative
+                perr = sqrt(d)
+
+        flags = 0
+        if ier > 4:
+            flags = 2**(ier-5)
+
+        if pcov is None:
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(pcov)
+            weig,=where(e < 0)
+            if weig.size > 0:
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(pcov) < 0)
+            if wneg.size > 0:
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+
+        res['pcov']=pcov
+        res['perr']=perr
+        res['flags']=flags
+
+        if res['flags']==0:
+            res['g']=pars[2:2+2].copy()
+            res['gcov'] = pcov[2:2+2, 2:2+2]
+            # is this right?
+            res['gsens']=1.0
+            res['Tmean']=pars[4]
+            res['Terr'] =perr[4]
+            res['Ts2n']=res['Tmean']/res['Terr']
+            res['arate']=1.
+
+        self._result=res
+
+    def _scale_leastsq_cov(self, pars, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        imsize=self.image.size
+        ydiff=self._get_lm_ydiff(pars)
+        dof = (self.image.size-len(pars))
+
+        # 0:imsize to remove priors
+        s_sq = (ydiff[0:imsize]**2).sum()/dof
+        return pcov * s_sq 
 
 
 class GMixFitCoellip:
@@ -72,7 +305,7 @@ class GMixFitCoellip:
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
-        self.ivar = 1./pixerr
+        self.ierr = 1./pixerr
         self.prior=prior
         self.width=width
 
@@ -209,7 +442,7 @@ class GMixFitCoellip:
         else:
             raise ValueError("bad model: '%s'" % self.model)
 
-        ydiff_tot[0:self.image.size] *= self.ivar
+        ydiff_tot[0:self.image.size] *= self.ierr
 
         prior_diff = (self.prior-pars)/self.width
         ydiff_tot[self.image.size:] = prior_diff
@@ -292,6 +525,7 @@ class GMixFitCoellip:
         else:
             raise ValueError("bad model: '%s'" % self.model)
 
+    '''
     def scale_leastsq_cov(self, pars, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
@@ -300,6 +534,22 @@ class GMixFitCoellip:
         dof = (self.image.size-len(pars))
         s_sq = (self.get_ydiff(pars)**2).sum()/dof
         return pcov * s_sq 
+    '''
+
+    def scale_leastsq_cov(self, pars, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        imsize=self.image.size
+        ydiff=self.get_ydiff(pars)
+        dof = (self.image.size-len(pars))
+
+        # 0:imsize to remove priors
+        s_sq = (ydiff[0:imsize]**2).sum()/dof
+        return pcov * s_sq 
+
+
 
 
     def get_flags(self):
@@ -310,25 +560,25 @@ class GMixFitCoellip:
         This is a raw S/N including all pixels and
         no weighting
         """
-        if isinstance(self.ivar, numpy.ndarray):
+        if isinstance(self.ierr, numpy.ndarray):
             raise ValueError("Implement S/N for error image")
         model = self.get_model()
         msum = model.sum()
-        s2n = msum/sqrt(model.size)*self.ivar
+        s2n = msum/sqrt(model.size)*self.ierr
         return s2n
 
     def get_weighted_s2n(self):
         """
-        This is a raw S/N including all pixels
+        weighted S/N including all pixels
         """
-        if isinstance(self.ivar, numpy.ndarray):
+        if isinstance(self.ierr, numpy.ndarray):
             raise ValueError("Implement S/N for error image")
         model = self.get_model()
 
         w2sum=(model**2).sum()
         sum=(model*self.image).sum()
 
-        s2n = sum/sqrt(w2sum)*self.ivar
+        s2n = sum/sqrt(w2sum)*self.ierr
         return s2n
 
 

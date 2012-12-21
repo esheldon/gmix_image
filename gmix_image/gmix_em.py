@@ -32,9 +32,13 @@ total_moms_psf:
 """
 
 import copy
+import pprint
 import numpy
 from numpy import array, median, zeros, ogrid, exp, sqrt
 import _gmix_em
+
+import gmix_image
+from .gmix import GMix
 
 GMIXEM_ERROR_NEGATIVE_DET         = 0x1
 GMIXEM_ERROR_MAXIT                = 0x2
@@ -194,7 +198,7 @@ class GMixEM(_gmix_em.GMixEM):
         self._verbose=verbose
 
         if self._sky is None:
-            self._sky = median(im)
+            raise ValueError("send sky")
         if self._counts is None:
             self._counts = im.sum()
 
@@ -248,6 +252,134 @@ class GMixEM(_gmix_em.GMixEM):
                 p['col'] = -1
         return psf
 
+
+class GMixEMPSF:
+    def __init__(self, image, ivar, cen, ngauss):
+        self.image=image
+        self.ivar=ivar
+        self.cen_guess=cen
+        self.ngauss=ngauss
+
+        self.maxtry_admom=10
+        self.maxtry_em=10
+
+        self._run_em()
+
+    def get_result(self):
+        return self._result
+    def get_gmix(self):
+        return self._result['gmix']
+
+    def _run_admom(self):
+        import admom
+
+        ntry=self.maxtry_admom
+        for i in xrange(ntry):
+            ares = admom.admom(self.image,
+                                    self.cen_guess[0],
+                                    self.cen_guess[1],
+                                    sigsky=sqrt(1/self.ivar),
+                                    guess=2.,
+                                    nsub=1)
+            if ares['whyflag']==0:
+                break
+        if i==(ntry-1):
+            raise ValueError("admom failed %s times" % ntry)
+
+        self._ares=ares
+
+    def _run_em(self):
+        self._run_admom()
+
+        im,sky,guess=self._do_prep()
+
+        ntry=self.maxtry_em
+        for i in xrange(ntry):
+            gm = GMixEM(im, guess, sky=sky)
+            flags = gm.get_flags()
+            if flags==0:
+                break
+            else:
+                print 'em flags:'
+                gmix_image.printflags('em',flags)
+                pprint.pprint(gm.get_gmix())
+            guess = self._perturb_gmix(guess)
+
+        if i==(ntry-1):
+            raise ValueError("em failed %s times" % ntry)
+
+        self._fitter=gm
+        gmix=GMix(gm.get_gmix())
+        self._result={'gmix':gmix,
+                      'flags':gm.get_flags(),
+                      'numiter':gm.get_numiter(),
+                      'fdiff':gm.get_fdiff(),
+                      'ntry':i}
+
+    def _perturb_gmix(self, gmix_in):
+        gmix=copy.deepcopy(gmix_in) 
+        for i in xrange(len(gmix)):
+            # weirdness with references....
+            g=gmix[i]
+            g['p']   = g['p']*(1.0+0.01*srandu())
+            g['row'] = g['row']*(1.0+0.01*srandu())
+            g['col'] = g['col']*(1.0+0.01*srandu())
+            g['irr'] = g['irr']*(1.0+0.05*srandu())
+            g['irc'] = g['irc']*(1.0+0.05*srandu())
+            g['icc'] = g['icc']*(1.0+0.05*srandu())
+
+            gmix[i]=g
+
+        return gmix
+
+    def _do_prep(self):
+        ares=self._ares
+
+        if self.ngauss==3:
+            Texamp=array([0.46,5.95,2.52])
+            pexamp=array([0.1,0.7,0.22])
+        elif self.ngauss==2:
+            Texamp=array([12.6,3.8])
+            pexamp=array([0.30, 0.70])
+        else:
+            raise ValueError("ngauss==3 or 2 for now")
+
+        Tfrac=Texamp/Texamp.sum()
+        pfrac=pexamp/pexamp.sum()
+
+        row,col=ares['row'],ares['col']
+        guess=[]
+
+        Tadmom=ares['Irr']+ares['Icc']
+        for i in xrange(self.ngauss):
+            Ti=Tadmom*Tfrac[i]
+            pi=pfrac[i]
+            g={'p':pi,'row':row,'col':col,'irr':Ti/2,'irc':0.0,'icc':Ti/2}
+            guess.append(g)
+
+        im=self.image.copy()
+
+        # need no zero pixels and sky value
+        im_min = im.min()
+        if im_min==0:
+            sky=0.001
+            im += sky
+        elif im_min < 0:
+            sky=0.001
+            im += (sky-im_min)
+        else:
+            sky = im_min
+
+
+        return im,sky,guess
+
+    def _compare_model(self):
+        import images
+        from .render import gmix2image
+        gmix=self._result['gmix']
+        im=gmix2image(gmix, self.image.shape)
+        im *= self.image.sum()/im.sum()
+        images.compare_images(self.image, im)
 
 
 def gmix2image_em(gauss_list, dims, 
@@ -448,24 +580,5 @@ def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
     return image
 
 
-
-class GMix(object):
-    """
-    Gaussian mixture object
-
-    dlist: list of dicts, elements p, row, col, irr, irc, icc
-    pars: full pars
-        [p_1,cen1_1,cen2_1,irr_1,irc_1,icc_1,
-         p_2,cen1_2,cen2_2,irr_2,irc_2,icc_2,
-         ...]
-    coellip:  
-        [cen1,cen2,e1,e2,Tmax,Tfrac2,Tfrac3..,p1,p2,p3...]
-
-        Tmax was a bad choice but this does at least
-        reduce to 
-            [cen1,cen2,e1,e2,T,p] 
-        for models with just a scale and norm
-
-    """
-    def __init__(self, dict=None, coellip=None, full=None):
-        pass
+def srandu(n=1):
+    return 2*(numpy.random.random(n)-0.5)

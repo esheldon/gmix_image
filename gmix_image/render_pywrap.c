@@ -547,6 +547,67 @@ _fill_model_subgrid_bail:
 }
 
 
+/*
+   fill in (model-data)/err
+*/
+static int
+fill_ydiff(struct image *image, double ivar, struct gvec *gvec, struct image *diff_image)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    size_t i=0, col=0, row=0;
+
+    double ierr=0;
+
+    double model_val=0;
+    double *rowdata=NULL;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_ydiff_bail;
+    }
+
+    ierr=sqrt(ivar);
+    for (row=0; row<nrows; row++) {
+        rowdata=IM_ROW(image, row);
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+                u = row-gauss->row;
+                v = col-gauss->col;
+
+                chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
+                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                }
+
+                gauss++;
+            } // gvec
+
+            diff = model_val - (*rowdata);
+            diff *= ierr;
+
+            IM_SETFAST(diff_image, row, col, diff);
+
+            rowdata++;
+        } // cols
+    } // rows
+
+
+_fill_ydiff_bail:
+    return flags;
+
+}
+
+
+
 
 
 
@@ -1027,6 +1088,55 @@ PyGMixFit_coellip_fill_model_Tfrac(PyObject *self, PyObject *args)
 
     return PyInt_FromLong(flags);
 }
+
+
+/*
+
+   (model-data)/err
+
+   for use in the LM algorithm
+*/
+static PyObject *
+PyGMixFit_fill_ydiff(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    double ivar=0;
+    PyObject* diff_obj=NULL;
+    PyObject *gvec_pyobj=NULL;
+
+    struct PyGVecObject *gvec_obj=NULL;
+    struct image *image=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OdOO", 
+                &image_obj, &ivar, &gvec_pyobj, &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    diff = associate_image(diff_obj, dims[0], dims[1]);
+
+    flags=fill_ydiff(image, ivar, gvec_obj->gvec, diff);
+
+    // does not free underlying array
+    image = image_free(image);
+    diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+
+
 
 /* 
    new coellip
@@ -1636,6 +1746,7 @@ double randn()
 static PyMethodDef render_module_methods[] = {
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
+    {"fill_ydiff", (PyCFunction)PyGMixFit_fill_ydiff,  METH_VARARGS,  "fill diff from gmix"},
     {"fill_ydiff_coellip", (PyCFunction)PyGMixFit_fill_ydiff_coellip,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff_dev10", (PyCFunction)PyGMixFit_fill_ydiff_dev10,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_exp4", (PyCFunction)PyGMixFit_fill_ydiff_exp4,  METH_VARARGS,  "fill the exp model image"},

@@ -14,6 +14,8 @@ from . import util
 from . import render
 from .render import gmix2image
 
+from . import priors
+
 from . import gmix
 from .gmix import GMix
 from .gmix import GMixCoellip

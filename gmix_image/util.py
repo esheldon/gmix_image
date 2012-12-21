@@ -10,6 +10,7 @@ gmix_print:
 """
 
 from sys import stdout,stderr
+import math
 import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
         tanh, arctanh, cos, sin, exp
@@ -144,6 +145,33 @@ def pars2gmix(pars, coellip=False):
     return gmix
 
 
+def calculate_some_stats(image, ivar, model, pars, psf_gmix=None):
+    from . import render
+    import scipy.stats
+
+    e1,e2,ok=g1g2_to_e1e2(pars[2],pars[3])
+    if not ok:
+        raise ValueError("bad e1,e2")
+    pars[2],pars[3]=e1,e2
+
+    if psf_gmix is not None:
+        gmix0=GMix(pars, type=model)
+        gmix=gmix0.convolve(psf_gmix)
+    else:
+        gmix=GMix(pars, type=model)
+
+    loglike,s2n,flags=\
+        render._render.loglike(image, 
+                               gmix,
+                               ivar)
+    chi2=loglike/(-0.5)
+    dof=image.size-pars.size
+    chi2per = chi2/dof
+
+    prob = scipy.stats.chisqprob(chi2, dof)
+    return s2n, loglike, chi2per, dof, prob
+
+
 
 
 def _pars2gmix_coellip(pars):
@@ -234,6 +262,44 @@ def randomize_e1e2(e1start,e2start, width=0.1):
             e1rand,e2rand=randomize_e1e2(None,None)
 
     return e1rand, e2rand
+
+def get_estyle_pars(pars):
+    epars = pars.copy()
+
+    T=pars[4]
+    g1,g2=pars[2],pars[3]
+
+    e1,e2,ok = g1g2_to_e1e2(g1,g2)
+    if not ok:
+        return None
+
+    if T < 0:
+        return None
+
+    epars[2] = e1
+    epars[3] = e2
+
+    return epars
+
+def g1g2_to_e1e2(g1, g2):
+    """
+    This version without exceptions
+
+    returns e1,e2,okflag
+    """
+    g = math.sqrt(g1**2 + g2**2)
+    if g >= 1.:
+        return None,None,False
+
+    if g == 0:
+        return 0.,0.,True
+    e = math.tanh(2*math.atanh(g))
+    if e >= 1.:
+        return None,None,False
+
+    fac = e/g
+    e1, e2 = fac*g1, fac*g2
+    return e1,e2,True
 
 
 

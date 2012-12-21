@@ -569,6 +569,7 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size)
         return NULL;
     }
 
+    //fprintf(stderr,"doing exp6\n");
     // from Hogg & Lang, normalized
     static const double Fvals[6] = 
         {0.002467115141477932, 
