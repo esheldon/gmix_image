@@ -533,6 +533,15 @@ class MixMCStandAlone:
             For affine invariant chain, default 2
         iter: optional
             Iterate until acor is OK, default True
+
+        Looks bad, ideas:
+            - need more burn-in or better start
+                - for better start
+                    - could go back to using emcee fitter
+                    - draw randomly from gprior
+            - psf is wrong because tol is too crude
+                currently (T-Told)/Told < 1.e-6
+            - arate should be smaller -> mca_a should be larger
         """
         
         self.make_plots=False
@@ -552,6 +561,7 @@ class MixMCStandAlone:
         self.nwalkers=keys.get('nwalkers',20)
         self.nstep=keys.get('nstep',200)
         self.burnin=keys.get('burnin',400)
+        self.draw_gprior=keys.get('draw_gprior',True)
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
 
@@ -753,12 +763,16 @@ class MixMCStandAlone:
         guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
         guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
 
-        # (0,0) with some scatter
-        guess[:,2]=0.1*srandu(self.nwalkers)
-        guess[:,3]=0.1*srandu(self.nwalkers)
+        if self.draw_gprior:
+            g1rand,g2rand=self.gprior.sample(self.nwalkers)
+            guess[:,2] = g1rand
+            guess[:,3] = g2rand
+        else:
+            # (0,0) with some scatter
+            guess[:,2]=0.1*srandu(self.nwalkers)
+            guess[:,3]=0.1*srandu(self.nwalkers)
 
         guess[:,4] = Tadmom*(1 + 0.1*srandu(self.nwalkers))
-
         guess[:,5] = self.counts*(1 + 0.1*srandu(self.nwalkers))
 
         return guess
@@ -910,6 +924,7 @@ class MixMCStandAlone:
         key=raw_input('hit a key (q to quit): ')
         if key=='q':
             stop
+        print
 
 
 
