@@ -254,7 +254,7 @@ class GMixEM(_gmix_em.GMixEM):
 
 
 class GMixEMPSF:
-    def __init__(self, image, ivar, cen, ngauss):
+    def __init__(self, image, ivar, cen, ngauss, maxiter=5000, tol=1.e-7):
         self.image=image
         self.ivar=ivar
         self.cen_guess=cen
@@ -262,6 +262,9 @@ class GMixEMPSF:
 
         self.maxtry_admom=10
         self.maxtry_em=10
+
+        self.maxiter=maxiter
+        self.tol=tol
 
         self._run_em()
 
@@ -291,11 +294,13 @@ class GMixEMPSF:
     def _run_em(self):
         self._run_admom()
 
-        im,sky,guess=self._do_prep()
+        im,sky,guess0=self._do_prep()
 
         ntry=self.maxtry_em
         for i in xrange(ntry):
-            gm = GMixEM(im, guess, sky=sky)
+            guess = self._perturb_gmix(guess0)
+            gm = GMixEM(im, guess, sky=sky, 
+                        maxiter=self.maxiter, tol=self.tol)
             flags = gm.get_flags()
             if flags==0:
                 break
@@ -303,7 +308,6 @@ class GMixEMPSF:
                 print 'em flags:'
                 gmix_image.printflags('em',flags)
                 pprint.pprint(gm.get_gmix())
-            guess = self._perturb_gmix(guess)
 
         if i==(ntry-1):
             raise ValueError("em failed %s times" % ntry)
@@ -336,7 +340,9 @@ class GMixEMPSF:
         ares=self._ares
 
         if self.ngauss==3:
-            Texamp=array([0.46,5.95,2.52])
+            #Texamp=array([0.46,5.95,2.52])
+            #pexamp=array([0.1,0.7,0.22])
+            Texamp=array([0.3,1.0,.6])
             pexamp=array([0.1,0.7,0.22])
         elif self.ngauss==2:
             Texamp=array([12.6,3.8])
