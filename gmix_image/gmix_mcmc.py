@@ -13,19 +13,14 @@ import numpy
 from numpy import sqrt, log, log10, zeros, \
         where, array, diag, median
 from numpy.linalg import eig
-import esutil as eu
-from esutil.random import srandu
-from esutil.misc import wlog
-from esutil.random import LogNormal
 
 from .util import print_pars, randomize_e1e2, get_estyle_pars, \
-        calculate_some_stats
+        calculate_some_stats, srandu
 from .gmix import GMix, GMixExp, GMixDev, GMixCoellip, gmix2pars
 
 from . import render
 from .render import gmix2image
 
-from lensing.shear import Shear
 
 LOWVAL=-9999.9e9
 
@@ -48,7 +43,6 @@ class MixMC:
             The center prior object.
         T:
             Starting value for ixx+iyy of main component
-            or a LogNormal object
         gprior:
             The prior on the g1,g2 surface.
         model:
@@ -151,7 +145,7 @@ class MixMC:
                     acor=sampler.acor
                     tau = (sampler.acor/self.nstep).max()
                     if tau > 0.1:
-                        wlog("tau",tau,"greater than 0.1")
+                        print "tau",tau,"greater than 0.1"
                     else:
                         break
                 except:
@@ -286,18 +280,18 @@ class MixMC:
 
         ntry=10
         for i in xrange(ntry):
-            admom_res = admom.admom(self.image,
+            ares = admom.admom(self.image,
                                     self.cenprior.cen[0],
                                     self.cenprior.cen[1],
                                     sigsky=sqrt(1/self.ivar),
                                     guess=self.Tguess/2,
                                     nsub=1)
-            if admom_res['whyflag']==0:
+            if ares['whyflag']==0:
                 break
         if i==(ntry-1):
             raise ValueError("admom failed %s times" % ntry)
 
-        self._ares=admom_res
+        self._ares=ares
 
     def _get_guess(self):
         if self.start_pars is not None:
@@ -324,6 +318,7 @@ class MixMC:
 
 
     def _get_guess_from_start_pars():
+        from lensing.shear import Shear
         guess=zeros( (self.nwalkers,self.npars) )
 
         guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
@@ -358,6 +353,7 @@ class MixMC:
 
         import mcmc
         import biggles
+        import esutil as eu
         biggles.configure("default","fontsize_min",1.2)
         tab=biggles.Table(6,2)
 
@@ -606,7 +602,7 @@ class MixMCStandAlone:
                     acor=sampler.acor
                     tau = (sampler.acor/self.nstep).max()
                     if tau > 0.1:
-                        wlog("tau",tau,"greater than 0.1")
+                        print "tau",tau,"greater than 0.1"
                     else:
                         break
                 except:
@@ -733,18 +729,18 @@ class MixMCStandAlone:
 
         ntry=10
         for i in xrange(ntry):
-            admom_res = admom.admom(image,
+            ares = admom.admom(image,
                                     cen[0],
                                     cen[1],
                                     sigsky=sqrt(1/ivar),
                                     guess=Tguess/2,
                                     nsub=1)
-            if admom_res['whyflag']==0:
+            if ares['whyflag']==0:
                 break
         if i==(ntry-1):
             raise ValueError("admom failed %s times" % ntry)
 
-        return admom_res
+        return ares
 
 
     def _get_guess(self):
@@ -753,7 +749,7 @@ class MixMCStandAlone:
                                    self.cen_guess, 8.0)
 
         
-        cen=[self._ares['row'],self._ares['col']]
+        cen=[self._ares['wrow'],self._ares['wcol']]
         self.cenprior=CenPrior(cen, [1.]*2)
 
         Tadmom=self._ares['Irr'] + self._ares['Icc']
@@ -779,9 +775,10 @@ class MixMCStandAlone:
 
 
     def _doplots(self):
-
         import mcmc
         import biggles
+        import esutil as eu
+
         biggles.configure("default","fontsize_min",1.2)
         tab=biggles.Table(6,2)
 

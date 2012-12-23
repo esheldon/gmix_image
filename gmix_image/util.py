@@ -18,7 +18,8 @@ from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
 from .gmix import GMix
 from .gmix import gmix2pars
 
-from esutil.random import srandu
+def srandu(n=1):
+    return 2*(numpy.random.random(n)-0.5)
 
 def print_pars(pars, stream=stdout, front=None):
     """

@@ -39,10 +39,12 @@ import _gmix_em
 
 import gmix_image
 from .gmix import GMix
+from .util import srandu
 
-GMIXEM_ERROR_NEGATIVE_DET         = 0x1
-GMIXEM_ERROR_MAXIT                = 0x2
+GMIXEM_ERROR_NEGATIVE_DET          = 0x1
+GMIXEM_ERROR_MAXIT                 = 0x2
 GMIXEM_ERROR_NEGATIVE_DET_COCENTER = 0x4
+GMIXEM_ERROR_ADMOM_FAILED          = 0x8
 
 
 class GMixEM(_gmix_em.GMixEM):
@@ -254,7 +256,18 @@ class GMixEM(_gmix_em.GMixEM):
 
 
 class GMixEMPSF:
-    def __init__(self, image, ivar, cen, ngauss, maxiter=5000, tol=1.e-7):
+    """
+    Process the image as if it is a PSF
+
+    Send either cen= or ares= (adaptive moments output)
+
+    Note if the initial adaptive moments run fails, then
+    the result is simply {'flags':GMIXEM_ERROR_ADMOM_FAILED}
+    """
+    def __init__(self, image, ivar, ngauss, 
+                 cen=None,
+                 ares=None,
+                 maxiter=5000, tol=1.e-6):
         self.image=image
         self.ivar=ivar
         self.cen_guess=cen
@@ -266,12 +279,16 @@ class GMixEMPSF:
         self.maxiter=maxiter
         self.tol=tol
 
+        self.ares=ares
+
+        if cen is None and ares is None:
+            raise ValueError("send either cen= or ares=")
         self._run_em()
 
     def get_result(self):
-        return self._result
+        return self.result
     def get_gmix(self):
-        return self._result['gmix']
+        return self.result['gmix']
 
     def _run_admom(self):
         import admom
@@ -279,20 +296,26 @@ class GMixEMPSF:
         ntry=self.maxtry_admom
         for i in xrange(ntry):
             ares = admom.admom(self.image,
-                                    self.cen_guess[0],
-                                    self.cen_guess[1],
-                                    sigsky=sqrt(1/self.ivar),
-                                    guess=2.,
-                                    nsub=1)
+                               self.cen_guess[0],
+                               self.cen_guess[1],
+                               sigsky=sqrt(1/self.ivar),
+                               guess=2.,
+                               nsub=1)
             if ares['whyflag']==0:
                 break
-        if i==(ntry-1):
-            raise ValueError("admom failed %s times" % ntry)
 
-        self._ares=ares
+        if i==(ntry-1):
+            self.ares=None
+        else:
+            self.ares=ares
 
     def _run_em(self):
-        self._run_admom()
+        # only run admom if not sent
+        if self.ares is None:
+            self._run_admom()
+        if self.ares is None:
+            self.result={'flags':GMIXEM_ERROR_ADMOM_FAILED}
+            return
 
         im,sky,guess0=self._do_prep()
 
@@ -304,64 +327,86 @@ class GMixEMPSF:
             flags = gm.get_flags()
             if flags==0:
                 break
+            """
             else:
                 print 'em flags:'
                 gmix_image.printflags('em',flags)
                 pprint.pprint(gm.get_gmix())
+            """
 
         if i==(ntry-1):
-            raise ValueError("em failed %s times" % ntry)
+            print 'em flags:'
+            gmix_image.printflags('em',gm.get_flags())
+            #pprint.pprint(gm.get_gmix())
+
+
 
         self._fitter=gm
         gmix=GMix(gm.get_gmix())
-        self._result={'gmix':gmix,
-                      'flags':gm.get_flags(),
-                      'numiter':gm.get_numiter(),
-                      'fdiff':gm.get_fdiff(),
-                      'ntry':i}
+        self.result={'gmix':gmix,
+                     'flags':gm.get_flags(),
+                     'numiter':gm.get_numiter(),
+                     'fdiff':gm.get_fdiff(),
+                     'ntry':i+1}
 
     def _perturb_gmix(self, gmix_in):
         gmix=copy.deepcopy(gmix_in) 
         for i in xrange(len(gmix)):
             # weirdness with references....
             g=gmix[i]
-            g['p']   = g['p']*(1.0+0.01*srandu())
-            g['row'] = g['row']*(1.0+0.01*srandu())
-            g['col'] = g['col']*(1.0+0.01*srandu())
-            g['irr'] = g['irr']*(1.0+0.05*srandu())
-            g['irc'] = g['irc']*(1.0+0.05*srandu())
-            g['icc'] = g['icc']*(1.0+0.05*srandu())
+            g['p']   = g['p']*(1+0.01*srandu())
+            g['row'] = g['row']*(1+0.01*srandu())
+            g['col'] = g['col']*(1+0.01*srandu())
+            g['irr'] = g['irr']*(1+0.05*srandu())
+            g['irc'] = g['irc']*(1+0.05*srandu())
+            g['icc'] = g['icc']*(1+0.05*srandu())
 
             gmix[i]=g
 
         return gmix
 
     def _do_prep(self):
-        ares=self._ares
-
-        if self.ngauss==3:
-            #Texamp=array([0.46,5.95,2.52])
-            #pexamp=array([0.1,0.7,0.22])
-            Texamp=array([0.3,1.0,.6])
-            pexamp=array([0.1,0.7,0.22])
-        elif self.ngauss==2:
-            Texamp=array([12.6,3.8])
-            pexamp=array([0.30, 0.70])
-        else:
-            raise ValueError("ngauss==3 or 2 for now")
-
-        Tfrac=Texamp/Texamp.sum()
-        pfrac=pexamp/pexamp.sum()
-
-        row,col=ares['row'],ares['col']
-        guess=[]
-
+        ares=self.ares
+        row,col=ares['wrow'],ares['wcol']
         Tadmom=ares['Irr']+ares['Icc']
-        for i in xrange(self.ngauss):
-            Ti=Tadmom*Tfrac[i]
-            pi=pfrac[i]
-            g={'p':pi,'row':row,'col':col,'irr':Ti/2,'irc':0.0,'icc':Ti/2}
-            guess.append(g)
+        irr_admom=ares['Irr']
+        irc_admom=ares['Irc']
+        icc_admom=ares['Icc']
+
+        if self.ngauss==1:
+            guess=[{'p':1.0,'row':row,'col':col,
+                    'irr':ares['Irr'],
+                    'irc':ares['Irc'],
+                    'icc':ares['Icc']}]
+        else:
+            if self.ngauss==3:
+                #Texamp=array([0.46,5.95,2.52])
+                #pexamp=array([0.1,0.7,0.22])
+                Texamp=array([0.3,1.0,.6])
+                pexamp=array([0.1,0.7,0.22])
+            elif self.ngauss==2:
+                Texamp=array([12.6,3.8])
+                pexamp=array([0.30, 0.70])
+            else:
+                raise ValueError("ngauss==3 or 2 for now")
+
+            Tfrac=Texamp/Texamp.sum()
+            pfrac=pexamp/pexamp.sum()
+
+            guess=[]
+
+            for i in xrange(self.ngauss):
+                pi=pfrac[i]
+                """
+                Ti=Tadmom*Tfrac[i]
+                g={'p':pi,'row':row,
+                   'col':col,'irr':Ti/2,'irc':0.0,'icc':Ti/2}
+                """
+                g={'p':pi,'row':row, 'col':col,
+                   'irr':Tfrac[i]*irr_admom,
+                   'irc':Tfrac[i]*irc_admom,
+                   'icc':Tfrac[i]*icc_admom}
+                guess.append(g)
 
         im=self.image.copy()
 
@@ -379,10 +424,10 @@ class GMixEMPSF:
 
         return im,sky,guess
 
-    def _compare_model(self):
+    def compare_model(self):
         import images
         from .render import gmix2image
-        gmix=self._result['gmix']
+        gmix=self.result['gmix']
         im=gmix2image(gmix, self.image.shape)
         im *= self.image.sum()/im.sum()
         images.compare_images(self.image, im)
@@ -586,5 +631,3 @@ def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
     return image
 
 
-def srandu(n=1):
-    return 2*(numpy.random.random(n)-0.5)

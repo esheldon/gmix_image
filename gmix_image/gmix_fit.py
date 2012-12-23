@@ -7,7 +7,7 @@ from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
 from numpy.linalg import eig
 from fimage import model_image
 
-from esutil.random import srandu
+from .util import srandu
 
 from .gmix_em import gmix2image_em
 from .render import gmix2image
