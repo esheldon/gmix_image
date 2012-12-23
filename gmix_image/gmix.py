@@ -146,7 +146,10 @@ class GMix(_render.GVec):
 
         if type==GMIX_FULL: 
             # we also want a pars array if list of dicts was sent
-            pars_array=gmix2pars(pars)
+            if isinstance(pars,list) and isinstance(pars[0],dict):
+                pars_array=gmix2pars(pars)
+            else:
+                pars_array=array(pars, dtype='f8')
         else:
             pars_array=array(pars,dtype='f8')
 
