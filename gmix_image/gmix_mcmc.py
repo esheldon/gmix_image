@@ -24,7 +24,6 @@ from .render import gmix2image
 
 LOWVAL=-9999.9e9
 
-
 class MixMC:
     def __init__(self, image, ivar, psf, cenprior, T, gprior, model,
                  **keys):
@@ -708,7 +707,6 @@ class MixMCStandAlone:
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
         self._result={'model':self.model,
-                      'restype':'mcmc',
                       'g':g,
                       'gcov':gcov,
                       'gsens':gsens,
