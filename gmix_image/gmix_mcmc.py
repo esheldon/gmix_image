@@ -290,7 +290,7 @@ class MixMC:
         if i==(ntry-1):
             raise ValueError("admom failed %s times" % ntry)
 
-        self._ares=ares
+        self.ares=ares
 
     def _get_guess(self):
         if self.start_pars is not None:
@@ -298,7 +298,7 @@ class MixMC:
 
         self._run_admom()
 
-        Tadmom=self._ares['Irr'] + self._ares['Icc']
+        Tadmom=self.ares['Irr'] + self.ares['Icc']
 
         guess=zeros( (self.nwalkers,self.npars) )
 
@@ -499,9 +499,12 @@ class MixMC:
 
 
 class MixMCStandAlone:
-    def __init__(self, image, ivar, cen, psf, gprior, model, **keys):
+    def __init__(self, image, ivar, psf, gprior, model, **keys):
         """
         mcmc sampling of posterior.
+
+        Two modes of operation - send a center guess and admom will
+        be run internally, or send ares=, with wrow,wcol,Irr,Irc,Icc
 
         parameters
         ----------
@@ -512,7 +515,7 @@ class MixMCStandAlone:
         psf:
             The psf gaussian mixture as a GMix object
         cen:
-            The center guess.
+            The center guess.  Ignored if ares= is sent.
         gprior:
             The prior on the g1,g2 surface.
         model:
@@ -528,6 +531,9 @@ class MixMCStandAlone:
             For affine invariant chain, default 2
         iter: optional
             Iterate until acor is OK, default True
+        ares: optional
+            The output from a run of admom.  The whyflag
+            field must be zero.
 
         Looks bad, ideas:
             - need more burn-in or better start
@@ -546,7 +552,6 @@ class MixMCStandAlone:
 
         self.image=image
         self.ivar=float(ivar)
-        self.cen_guess=array(cen)
         self.model=model
 
         self.psf_gmix=psf
@@ -559,6 +564,15 @@ class MixMCStandAlone:
         self.draw_gprior=keys.get('draw_gprior',True)
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
+        
+        self.cen_guess=keys.get('cen',None)
+        self.ares=keys.get('ares',None)
+
+        if self.cen_guess is None and self.ares is None:
+            raise ValueError("send cen= or ares=")
+        if self.ares is not None and self.ares['whyflag']!=0:
+            raise ValueError("If you enter ares it must have "
+                             "whyflag==0")
 
         self.counts=self.image.sum()
 
@@ -743,14 +757,15 @@ class MixMCStandAlone:
 
     def _get_guess(self):
 
-        self._ares=self._run_admom(self.image, self.ivar, 
-                                   self.cen_guess, 8.0)
+        if self.ares is None:
+            self.ares=self._run_admom(self.image, self.ivar, 
+                                      self.cen_guess, 8.0)
 
         
-        cen=[self._ares['wrow'],self._ares['wcol']]
+        cen=[self.ares['wrow'],self.ares['wcol']]
         self.cenprior=CenPrior(cen, [1.]*2)
 
-        Tadmom=self._ares['Irr'] + self._ares['Icc']
+        Tadmom=self.ares['Irr'] + self.ares['Icc']
 
         guess=zeros( (self.nwalkers,self.npars) )
 
