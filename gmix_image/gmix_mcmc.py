@@ -195,7 +195,7 @@ class MixMC:
 
     def _get_lngprior(self, g1, g2):
         g=sqrt(g1**2 + g2**2)
-        gp = self.gprior.prior_gabs_scalar(g)
+        gp = self.gprior.prior2d_gabs_scalar(g)
         if gp > 0:
             gp = log(gp)
         else:
@@ -658,7 +658,7 @@ class MixMCStandAlone:
 
     def _get_lngprior(self, g1, g2):
         g=sqrt(g1**2 + g2**2)
-        gp = self.gprior.prior_gabs_scalar(g)
+        gp = self.gprior.prior2d_gabs_scalar(g)
         if gp > 0:
             gp = log(gp)
         else:
@@ -773,7 +773,7 @@ class MixMCStandAlone:
         guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
 
         if self.draw_gprior:
-            g1rand,g2rand=self.gprior.sample(self.nwalkers)
+            g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
             guess[:,2] = g1rand
             guess[:,3] = g2rand
         else:

@@ -67,10 +67,13 @@ class GPrior:
             prior[w] = self.A * cos(g[w]*pi/2)*exp( - ( 2*g[w] / self.B / (1 + g[w]**self.D) )**self.C )
         return prior
 
-    def prior_gabs_scalar(self, g):
+    def prior2d_gabs_scalar(self, g):
+        """
+        Get the 2d prior for the input |g| value(s)
+        """
         return self.A * math.cos(g*pi/2)*math.exp( - ( 2*g / self.B / (1 + g**self.D) )**self.C )
 
-    def sample(self, nrand, as_shear=False):
+    def sample2d(self, nrand, as_shear=False):
         """
         Get random g1,g2 values
 
@@ -200,7 +203,7 @@ def test_shear_mean():
               D= 13.)
     n=100000
     e1=zeros(n)
-    g1true,g2true=gp.sample(n)
+    g1true,g2true=gp.sample2d(n)
     shear=Shear(g1=0.04,g2=0.0)
 
     g1meas=zeros(n)
