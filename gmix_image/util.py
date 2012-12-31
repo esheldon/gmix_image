@@ -147,6 +147,10 @@ def pars2gmix(pars, coellip=False):
 
 
 def calculate_some_stats(image, ivar, model, pars, psf_gmix=None):
+    """
+    Note likelihoods here are pure likelihood, no priors
+    """
+    from math import log
     from . import render
     import scipy.stats
 
@@ -170,7 +174,18 @@ def calculate_some_stats(image, ivar, model, pars, psf_gmix=None):
     chi2per = chi2/dof
 
     prob = scipy.stats.chisqprob(chi2, dof)
-    return s2n, loglike, chi2per, dof, prob
+
+    aic = -2*loglike + 2*pars.size
+    bic = -2*loglike + pars.size*log(image.size)
+
+    return {'s2n':s2n,
+            'loglike':loglike,
+            'chi2per':chi2per,
+            'dof':dof,
+            'fit_prob':prob,
+            'aic':aic,
+            'bic':bic}
+    #return s2n, loglike, chi2per, dof, prob
 
 
 

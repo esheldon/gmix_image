@@ -184,14 +184,10 @@ class GMixSimple:
         res['errmsg'] = errmsg
         res['ier'] = ier
 
-        s2n,loglike,chi2per,dof,prob=\
-                calculate_some_stats(self.image, self.ivar, self.model, pars,
-                                     psf_gmix=self.psf_gmix)
-        res['s2n_w']= s2n
-        res['loglike']=loglike
-        res['chi2per']=chi2per
-        res['dof']=dof
-        res['fit_prob']=prob
+        stats=calculate_some_stats(self.image, self.ivar, self.model, pars,
+                                   psf_gmix=self.psf_gmix)
+        for k in stats:
+            res[k] = stats[k]
 
 
         if ier == 0:

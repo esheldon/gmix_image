@@ -12,7 +12,7 @@ GMIX_COELLIP_TFRAC=5
 
 _gmix_type_dict={'full':    GMIX_FULL,
                  'coellip': GMIX_COELLIP,
-                 'turb':    GMIX_TURB,
+                 'gturb':   GMIX_TURB,
                  'gexp':    GMIX_EXP,
                  'gdev':    GMIX_DEV,
                  'coellip-Tfrac': GMIX_COELLIP_TFRAC}

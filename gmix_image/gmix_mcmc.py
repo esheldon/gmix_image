@@ -89,26 +89,16 @@ class MixMC:
     def get_result(self):
         return self._result
 
-    def get_best_model(self):
+    def _get_gmix(self, pars):
         """
-        Get the model representing the maximum likelihood point in the chain
-        Is this useful?
+        pars must be in e1,e2 space
         """
-        w=self.lnprobs.argmax()
-        pars = self.trials[w,:].copy()
-
-        e1,e2,ok=g1g2_to_e1e2(pars[2],pars[3])
-        if not ok:
-            raise ValueError("bad e1,e2")
-
-        pars[2],pars[3]=e1,e2
-
-        gmix0=GMix(pars, type=self.model)
-        gmix=gmix0.convolve(self.psf_gmix)
-
-        model=gmix2image(gmix, self.image.shape)
-        return model
-
+        if self.psf_gmix is not None:
+            gmix0=GMix(pars, type=self.model)
+            gmix=gmix0.convolve(self.psf_gmix)
+        else:
+            gmix=GMix(pars, type=self.model)
+        return gmix
 
     def _go(self):
         import emcee
@@ -181,8 +171,7 @@ class MixMC:
         These pars are in e space
         """
 
-        gmix0=GMix(pars, type=self.model)
-        gmix=gmix0.convolve(self.psf_gmix)
+        gmix=self._get_gmix(pars)
 
         loglike,s2n,flags=\
             render._render.loglike(self.image, 
@@ -249,9 +238,9 @@ class MixMC:
         wmax=self.lnprobs.argmax()
         max_pars = self.trials[w,:].copy()
 
-        s2n,loglike,chi2per,dof,prob=\
-                calculate_some_stats(self.image, self.ivar, self.model, pars,
-                                     psf_gmix=self.psf_gmix)
+        #s2n,loglike,chi2per,dof,prob=\
+        stats=calculate_some_stats(self.image, self.ivar, self.model, pars,
+                                   psf_gmix=self.psf_gmix)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -267,12 +256,9 @@ class MixMC:
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
-                      'arate':arate,
-                      's2n_w':s2n,
-                      'loglike':loglike,
-                      'chi2per':chi2per,
-                      'dof':dof,
-                      'fit_prob':prob}
+                      'arate':arate}
+        for k in stats:
+            self._result[k] = stats[k]
 
     def _run_admom(self):
         import admom
@@ -581,6 +567,18 @@ class MixMCStandAlone:
     def get_result(self):
         return self._result
 
+    def _get_gmix(self, pars):
+        """
+        pars must be in e1,e2 space
+        """
+        if self.psf_gmix is not None:
+            gmix0=GMix(pars, type=self.model)
+            gmix=gmix0.convolve(self.psf_gmix)
+        else:
+            gmix=GMix(pars, type=self.model)
+        return gmix
+
+
     def _go(self):
         import emcee
 
@@ -646,8 +644,7 @@ class MixMCStandAlone:
         These pars are in e space
         """
 
-        gmix0=GMix(pars, type=self.model)
-        gmix=gmix0.convolve(self.psf_gmix)
+        gmix=self._get_gmix(pars)
 
         loglike,s2n,flags=\
             render._render.loglike(self.image, gmix, self.ivar)
@@ -708,13 +705,11 @@ class MixMCStandAlone:
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
 
-        # weighted s/n based on the most likely point
         wmax=self.lnprobs.argmax()
-        max_pars = self.trials[w,:].copy()
+        max_pars = self.trials[wmax,:].copy()
 
-        s2n,loglike,chi2per,dof,prob=\
-                calculate_some_stats(self.image, self.ivar, self.model, pars,
-                                     psf_gmix=self.psf_gmix)
+        stats=calculate_some_stats(self.image, self.ivar, self.model, max_pars,
+                                   psf_gmix=self.psf_gmix)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -729,12 +724,10 @@ class MixMCStandAlone:
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
-                      'arate':arate,
-                      's2n_w':s2n,
-                      'loglike':loglike,
-                      'chi2per':chi2per,
-                      'dof':dof,
-                      'fit_prob':prob}
+                      'arate':arate}
+
+        for k in stats:
+            self._result[k] = stats[k]
 
     def _run_admom(self, image, ivar, cen, Tguess):
         import admom

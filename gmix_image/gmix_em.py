@@ -269,6 +269,7 @@ class GMixEMPSF:
                  ares=None,
                  maxiter=5000, tol=1.e-6):
         self.image=image
+        self.counts=image.sum()
         self.ivar=ivar
         self.cen_guess=cen
         self.ngauss=ngauss
@@ -349,6 +350,7 @@ class GMixEMPSF:
                      'fdiff':gm.get_fdiff(),
                      'ntry':i+1}
 
+
     def _perturb_gmix(self, gmix_in):
         gmix=copy.deepcopy(gmix_in) 
         for i in xrange(len(gmix)):
@@ -364,6 +366,8 @@ class GMixEMPSF:
             gmix[i]=g
 
         return gmix
+
+
 
     def _do_prep(self):
         ares=self.ares
@@ -424,13 +428,183 @@ class GMixEMPSF:
 
         return im,sky,guess
 
+    def get_model(self):
+        """
+        Model is normalized to equal the counts in the image
+        """
+        from .render import gmix2image
+
+        if not hasattr(self,'_model'):
+            gmix=self.result['gmix']
+            model=gmix2image(gmix, self.image.shape)
+            model *= self.counts/model.sum()
+            self._model = model
+
+        return self._model.copy()
+
+    def get_loglike(self):
+        """
+        Get the log likelihood assuming counts of model==counts of image
+        """
+
+        model=self.get_model()
+        diff=(model-self.image)*sqrt(self.ivar)
+        loglike = -0.5*(diff**2).sum()
+        return loglike
+
+    def get_stats(self):
+        """
+        Get some stats on goodness of fit and bayesian information
+        """
+        import copy
+        from math import log
+        import scipy.stats
+
+        if not hasattr(self, '_stats'):
+            loglike=self.get_loglike()
+
+            npars=self.ngauss*6
+            ndata=self.image.size
+
+            chi2=loglike/(-0.5)
+            dof=ndata-npars
+            chi2per = chi2/dof
+
+            prob = scipy.stats.chisqprob(chi2, dof)
+
+            aic = -2*loglike + 2*npars
+            bic = -2*loglike + npars*log(ndata)
+
+            self._stats={'loglike':loglike,
+                         'chi2per':chi2per,
+                         'dof':dof,
+                         'fit_prob':prob,
+                         'aic':aic,
+                         'bic':bic}
+
+        return copy.deepcopy(self._stats)
+
+
     def compare_model(self):
         import images
-        from .render import gmix2image
-        gmix=self.result['gmix']
-        im=gmix2image(gmix, self.image.shape)
-        im *= self.image.sum()/im.sum()
+        model=self.get_model()
+        dof=self.image.size - self.ngauss*6
+        images.compare_images(self.image, model,
+                              label1='image',
+                              label2='model',
+                              skysig=sqrt(1/self.ivar),
+                              dof=dof)
+
+    def compare_normalized_model(self):
+        """
+        don't use this
+        """
+        import images
+        im = self.get_normalized_model()
         images.compare_images(self.image, im)
+
+    def get_normalized_gmix(self):
+        """
+        don't use this
+        Get the gmix with the best normalization
+
+        Note EM does not give this normalization, a separate
+        fitter is used.
+        """
+
+        # only runs if norm not already found
+        self.find_norm()
+        return GMix(self._normalized_gmix.get_pars())
+
+    def get_normalized_model(self):
+        """
+        don't use this
+        Get a model with the best normalization
+
+        Note EM does not give this normalization, a separate
+        fitter is used.
+        """
+        from .render import gmix2image
+        # only runs if norm not already found
+        self.find_norm()
+        return gmix2image(self._normalized_gmix, self.image.shape)
+
+    def get_normalized_loglike(self):
+        """
+        don't use this
+        Get the log likelihood
+
+        Note EM does not give a normalization.  The norm is
+        derived using a maximum likelihood fitter.
+        """
+
+        # only runs if norm not already found
+        self.find_norm()
+
+        ydiff=self._eval_normalized_ydiff([self._norm])
+        return (ydiff**2).sum()
+
+
+    def _eval_normalized_pars(self, counts):
+        pars=self.result['gmix'].get_pars()
+        psum=0
+        ppos=0
+        for i in xrange(self.ngauss):
+            psum+=pars[ppos]
+            ppos += 6
+
+        ppos=0
+        for i in xrange(self.ngauss):
+            pars[ppos] *= counts/psum
+        return pars
+
+    def _eval_normalized_model(self, counts):
+        from .render import gmix2image
+        pars=self._eval_normalized_pars(counts)
+
+        gmix=GMix(pars)
+        mod=gmix2image(gmix, self.image.shape)
+        return mod
+
+    def _eval_normalized_ydiff(self, pars):
+        counts=pars[0]
+        mod=self._eval_normalized_model(counts)
+        diff=(mod-self.image)*sqrt(self.ivar)
+        return diff.ravel()
+
+    def find_norm(self):
+        """
+        don't use this, just match the total counts
+        Use least squares to find the best normalization
+
+        only runs if norm not already found
+        """
+        from scipy.optimize import leastsq
+
+        if hasattr(self, '_norm'):
+            return
+
+        guess=[self.counts]
+        lmres = leastsq(self._eval_normalized_ydiff, guess, full_output=1)
+
+        pars, pcov0, infodict, errmsg, ier = lmres
+
+        if ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(errmsg)
+
+        if pcov0 is None:
+            raise ValueError("bad cov: %s" % errmsg)
+        if ier > 4:
+            raise ValueError("error: %s" % errmsg)
+
+        norm=pars[0]
+        allpars=self._eval_normalized_pars(norm)
+
+        self._normalized_gmix = GMix(allpars)
+        self._norm = norm
+
+        #print 'found norm:',norm,"  image sum is:",self.counts
 
 
 def gmix2image_em(gauss_list, dims, 
