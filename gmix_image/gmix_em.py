@@ -467,7 +467,10 @@ class GMixEMPSF:
         if not hasattr(self, '_stats'):
             loglike=self.get_loglike()
 
-            npars=self.ngauss*6
+            if self.cocenter:
+                npars = self.ngauss*4+2
+            else:
+                npars=self.ngauss*6
             ndata=self.image.size
 
             chi2=loglike/(-0.5)

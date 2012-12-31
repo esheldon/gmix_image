@@ -146,39 +146,27 @@ def pars2gmix(pars, coellip=False):
     return gmix
 
 
-def calculate_some_stats(image, ivar, model, pars, psf_gmix=None):
+def calculate_some_stats(image, ivar, gmix, npars):
     """
+    pars are in g space
+
     Note likelihoods here are pure likelihood, no priors
     """
     from math import log
     from . import render
     import scipy.stats
 
-    e1,e2,ok=g1g2_to_e1e2(pars[2],pars[3])
-    if not ok:
-        raise ValueError("bad e1,e2")
-    pars[2],pars[3]=e1,e2
-
-    if psf_gmix is not None:
-        gmix0=GMix(pars, type=model)
-        gmix=gmix0.convolve(psf_gmix)
-    else:
-        gmix=GMix(pars, type=model)
-
-    loglike,s2n,flags=\
-        render._render.loglike(image, 
-                               gmix,
-                               ivar)
+    loglike,s2n,flags=render._render.loglike(image, gmix, ivar)
     chi2=loglike/(-0.5)
-    dof=image.size-pars.size
+    dof=image.size-npars
     chi2per = chi2/dof
 
     prob = scipy.stats.chisqprob(chi2, dof)
 
-    aic = -2*loglike + 2*pars.size
-    bic = -2*loglike + pars.size*log(image.size)
+    aic = -2*loglike + 2*npars
+    bic = -2*loglike + npars*log(image.size)
 
-    return {'s2n':s2n,
+    return {'s2n_w':s2n,
             'loglike':loglike,
             'chi2per':chi2per,
             'dof':dof,
