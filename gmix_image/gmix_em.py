@@ -267,7 +267,9 @@ class GMixEMPSF:
     def __init__(self, image, ivar, ngauss, 
                  cen=None,
                  ares=None,
-                 maxiter=5000, tol=1.e-6):
+                 maxiter=5000, 
+                 tol=1.e-6,
+                 cocenter=False):
         self.image=image
         self.counts=image.sum()
         self.ivar=ivar
@@ -279,6 +281,7 @@ class GMixEMPSF:
 
         self.maxiter=maxiter
         self.tol=tol
+        self.cocenter=cocenter
 
         self.ares=ares
 
@@ -324,7 +327,8 @@ class GMixEMPSF:
         for i in xrange(ntry):
             guess = self._perturb_gmix(guess0)
             gm = GMixEM(im, guess, sky=sky, 
-                        maxiter=self.maxiter, tol=self.tol)
+                        maxiter=self.maxiter, tol=self.tol,
+                        cocenter=self.cocenter)
             flags = gm.get_flags()
             if flags==0:
                 break
