@@ -227,12 +227,12 @@ struct gvec *gvec_from_pars(double *pars, int size)
         gauss = &gvec->data[i];
 
         gauss_set(gauss,
-                  pars[beg+0],
-                  pars[beg+1],
-                  pars[beg+2],
-                  pars[beg+3],
-                  pars[beg+4],
-                  pars[beg+5]);
+                  pars[beg+0],  // p
+                  pars[beg+1],  // row
+                  pars[beg+2],  // col
+                  pars[beg+3],  // irr
+                  pars[beg+4],  // irc
+                  pars[beg+5]); // icc
     }
 
     return gvec;

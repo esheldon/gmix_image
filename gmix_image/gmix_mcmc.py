@@ -572,14 +572,9 @@ class MixMCStandAlone:
 
 
     def _go(self):
-        import emcee
 
-        self.sampler = emcee.EnsembleSampler(self.nwalkers, 
-                                             self.npars, 
-                                             self._calc_lnprob,
-                                             a=self.mca_a)
         
-        self._do_trials()
+        self.sampler=self._do_trials()
 
         self.trials  = self.sampler.flatchain
 
@@ -592,7 +587,47 @@ class MixMCStandAlone:
         if self.make_plots:
             self._doplots()
 
+    def _get_sampler(self):
+        import emcee
+        sampler = emcee.EnsembleSampler(self.nwalkers, 
+                                        self.npars, 
+                                        self._calc_lnprob,
+                                        a=self.mca_a)
+        return sampler
+
     def _do_trials(self):
+
+        tau_max=0.10
+        if not self.doiter:
+            sampler = self._get_sampler()
+            guess=self._get_guess()
+            pos, prob, state = sampler.run_mcmc(guess, self.burnin)
+            sampler.reset()
+            pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+
+        else:
+            while True:
+                sampler = self._get_sampler()
+                guess=self._get_guess()
+                pos, prob, state = sampler.run_mcmc(guess, self.burnin)
+                sampler.reset()
+                pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+
+                try:
+                    acor=sampler.acor
+                    tau = (sampler.acor/self.nstep).max()
+                    if tau > tau_max:
+                        print "tau",tau,"greater than",tau_max
+                        self.nwalkers = self.nwalkers*2
+                        sampler = self._get_sampler()
+                    else:
+                        break
+                except:
+                    # something went wrong with acor, run some more
+                    pass
+            self._tau=tau
+        return sampler
+        """
         sampler=self.sampler
         guess=self._get_guess()
 
@@ -604,15 +639,17 @@ class MixMCStandAlone:
                 try:
                     acor=sampler.acor
                     tau = (sampler.acor/self.nstep).max()
-                    if tau > 0.1:
-                        print "tau",tau,"greater than 0.1"
+                    print '** TAU:',tau
+                    if tau > 0.08:
+                        print "tau",tau,"greater than 0.08"
                     else:
                         break
                 except:
                     # something went wrong with acor, run some more
                     pass
+                sampler.reset()
                 pos, prob, state = sampler.run_mcmc(pos, self.nstep)
-
+        """
 
     def _calc_lnprob(self, pars):
         epars=get_estyle_pars(pars)
@@ -836,7 +873,7 @@ class MixMCStandAlone:
 
         res=self.get_result()
         print 's2n weighted:',res['s2n_w']
-        print 'acceptance rate:',res['arate']
+        print 'acceptance rate:',res['arate'],'mca_a',self.mca_a
         print 'T:  %.16g +/- %.16g' % (Tvals.mean(), Tvals.std())
 
         print_pars(self._result['pars'])
