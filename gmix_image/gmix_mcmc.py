@@ -515,18 +515,9 @@ class MixMCStandAlone:
         ares: optional
             The output from a run of admom.  The whyflag
             field must be zero.
-
-        Looks bad, ideas:
-            - need more burn-in or better start
-                - for better start
-                    - could go back to using emcee fitter
-                    - draw randomly from gprior
-            - psf is wrong because tol is too crude
-                currently (T-Told)/Told < 1.e-6
-            - arate should be smaller -> mca_a should be larger
         """
         
-        self.make_plots=False
+        self.make_plots=keys.get('make_plots',False)
 
         # cen1,cen2,e1,e2,T,p
         self.npars=6
@@ -734,9 +725,7 @@ class MixMCStandAlone:
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
 
-        wmax=self.lnprobs.argmax()
-        max_pars = self.trials[wmax,:].copy()
-        max_epars=get_estyle_pars(max_pars)
+        max_epars=self.get_maxprob_epars()
         gmix=self._get_convolved_gmix(max_epars)
 
         stats=calculate_some_stats(self.image, 
@@ -761,6 +750,18 @@ class MixMCStandAlone:
 
         for k in stats:
             self._result[k] = stats[k]
+
+    def get_maxprob_epars(self):
+        wmax=self.lnprobs.argmax()
+        max_pars = self.trials[wmax,:].copy()
+        max_epars=get_estyle_pars(max_pars)
+        return max_epars
+
+    def get_maxprob_model(self):
+        max_epars=self.get_maxprob_epars()
+        gmix=self._get_convolved_gmix(max_epars)
+        model=gmix2image(gmix,self.image.shape)
+        return model
 
     def _run_admom(self, image, ivar, cen, Tguess):
         import admom
@@ -942,20 +943,12 @@ class MixMCStandAlone:
         tab[5,0] = likep
         tab.show()
 
-        if False: 
+        if True: 
             import images
-            nx = ny = 40
-            levels=8
-            h2d = eu.stat.histogram2d(Tvals, g1vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g1', levels=levels)
-            h2d = eu.stat.histogram2d(Tvals, g2vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g2', levels=levels)
+            model=self.get_maxprob_model()
+            images.compare_images(self.image,model,
+                                  label1='image [%d,%d]' % self.image.shape,
+                                  label2='model')
 
         key=raw_input('hit a key (q to quit): ')
         if key=='q':

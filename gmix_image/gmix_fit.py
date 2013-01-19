@@ -605,6 +605,107 @@ class GMixFitCoellip:
 
 
 
+def quick_fit_psf_coellip(image, cen, skysig, ngauss):
+    """
+    Quick fit using GMixFitCoellip.  Guesses look somewhat like turbulent for
+    ngauss > 1
+    """
+    import admom
+    counts=image.sum()
+    psfres = admom.admom(image,
+                         cen[0],
+                         cen[1],
+                         sigsky=skysig,
+                         guess=2.,
+                         nsub=1)
+
+    npars=2*ngauss+4
+
+    if ngauss==1:
+        psf0=[{'p':1,
+               'row':psfres['row'],
+               'col':psfres['col'],
+               'irr':psfres['Irr'],
+               'irc':psfres['Irc'],
+               'icc':psfres['Icc']}]
+        psf=GMix(psf0)
+    elif ngauss==2:
+
+        Texamp=array([12.6,3.8])
+        pexamp=array([0.30, 0.70])
+
+        Tfrac=Texamp/Texamp.sum()
+        pfrac=pexamp/pexamp.sum()
+
+        prior=zeros(npars)
+        width=zeros(npars) + 100
+
+        Tpsf=psfres['Irr']+psfres['Icc']
+
+        prior[0]=psfres['row']
+        prior[1]=psfres['col']
+        prior[2]=psfres['e1']
+        prior[3]=psfres['e2']
+        prior[4:4+2] = Tpsf*Tfrac
+        prior[6:6+2] = counts*pfrac
+
+        # randomize
+        prior[0] += 0.01*srandu()
+        prior[1] += 0.01*srandu()
+
+        e1start=prior[2]
+        e2start=prior[3]
+        prior[2],prior[3] = randomize_e1e2(e1start,e2start)
+
+        prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
+
+        gm = GMixFitCoellip(image, skysig, prior,width, Tpositive=True)
+        psf=gm.get_gmix()
+
+    elif ngauss==3:
+        # these are good for guessing, but the final answer is
+        # often a bit off from here
+        Texamp=array([0.46,5.95,2.52])
+        pexamp=array([0.1,0.7,0.22])
+
+        Tfrac=Texamp/Texamp.sum()
+        pfrac=pexamp/pexamp.sum()
+
+
+        prior=zeros(npars)
+        width=zeros(npars) + 100
+
+        Tpsf=psfres['Irr']+psfres['Icc']
+
+        prior[0]=psfres['row']
+        prior[1]=psfres['col']
+        prior[2]=psfres['e1']
+        prior[3]=psfres['e2']
+
+        prior[4:4+3] = Tpsf*Tfrac
+        prior[7:7+3] = counts*pfrac
+
+        # randomize
+        prior[0] += 0.01*srandu()
+        prior[1] += 0.01*srandu()
+        e1start=prior[2]
+        e2start=prior[3]
+        prior[2],prior[3] = randomize_e1e2(e1start,e2start)
+
+
+        prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
+
+        gm = gmix_image.GMixFitCoellip(image, skysig, prior,width,
+                                       Tpositive=True)
+        psf=gm.get_gmix()
+    else:
+        raise ValueError("bad ngauss: %s" % ngauss)
+
+    return psf
+
+
+
+
 def pars2gmix_coellip_Tfrac(pars):
     """
     Convert a parameter array as used for the LM code into a gaussian mixture
