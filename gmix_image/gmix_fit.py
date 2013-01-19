@@ -5,7 +5,6 @@ import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
         tanh, arctanh, cos, sin, exp
 from numpy.linalg import eig
-from fimage import model_image
 
 from .util import srandu
 
@@ -548,6 +547,12 @@ class GMixFitCoellip:
 
 
 
+    def get_stats(self):
+        gmix=self.get_gmix()
+        ivar=self.ierr**2
+        stats=calculate_some_stats(self.image, ivar, gmix, len(self.pars))
+        return stats
+
     def get_flags(self):
         return self.flags
 
@@ -605,30 +610,53 @@ class GMixFitCoellip:
 
 
 
-def quick_fit_psf_coellip(image, cen, skysig, ngauss):
+def quick_fit_psf_coellip(image, skysig, ngauss, ares=None, cen=None):
     """
     Quick fit using GMixFitCoellip.  Guesses look somewhat like turbulent for
     ngauss > 1
     """
-    import admom
-    counts=image.sum()
-    psfres = admom.admom(image,
-                         cen[0],
-                         cen[1],
-                         sigsky=skysig,
-                         guess=2.,
-                         nsub=1)
 
+    if cen is None and ares is None:
+        raise ValueError("send ares= or cen=")
+    if ares is None:
+        import admom
+        ares = admom.admom(image,
+                             cen[0],
+                             cen[1],
+                             sigsky=skysig,
+                             guess=2.,
+                             nsub=1)
+
+    counts=image.sum()
     npars=2*ngauss+4
 
     if ngauss==1:
-        psf0=[{'p':1,
-               'row':psfres['row'],
-               'col':psfres['col'],
-               'irr':psfres['Irr'],
-               'irc':psfres['Irc'],
-               'icc':psfres['Icc']}]
-        psf=GMix(psf0)
+
+        prior=zeros(npars)
+        width=zeros(npars) + 100
+
+        Tpsf=ares['Irr']+ares['Icc']
+
+        prior[0]=ares['wrow']
+        prior[1]=ares['wcol']
+        prior[2]=ares['e1']
+        prior[3]=ares['e2']
+        prior[4]=ares['Irr'] + ares['Icc']
+        prior[5]=counts
+
+        # randomize
+        prior[0] += 0.01*srandu()
+        prior[1] += 0.01*srandu()
+
+        e1start=prior[2]
+        e2start=prior[3]
+        prior[2],prior[3] = randomize_e1e2(e1start,e2start)
+
+        prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
+
+        gm = GMixFitCoellip(image, skysig, prior,width, Tpositive=True)
+
+
     elif ngauss==2:
 
         Texamp=array([12.6,3.8])
@@ -640,12 +668,12 @@ def quick_fit_psf_coellip(image, cen, skysig, ngauss):
         prior=zeros(npars)
         width=zeros(npars) + 100
 
-        Tpsf=psfres['Irr']+psfres['Icc']
+        Tpsf=ares['Irr']+ares['Icc']
 
-        prior[0]=psfres['row']
-        prior[1]=psfres['col']
-        prior[2]=psfres['e1']
-        prior[3]=psfres['e2']
+        prior[0]=ares['wrow']
+        prior[1]=ares['wcol']
+        prior[2]=ares['e1']
+        prior[3]=ares['e2']
         prior[4:4+2] = Tpsf*Tfrac
         prior[6:6+2] = counts*pfrac
 
@@ -660,7 +688,6 @@ def quick_fit_psf_coellip(image, cen, skysig, ngauss):
         prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
 
         gm = GMixFitCoellip(image, skysig, prior,width, Tpositive=True)
-        psf=gm.get_gmix()
 
     elif ngauss==3:
         # these are good for guessing, but the final answer is
@@ -675,12 +702,12 @@ def quick_fit_psf_coellip(image, cen, skysig, ngauss):
         prior=zeros(npars)
         width=zeros(npars) + 100
 
-        Tpsf=psfres['Irr']+psfres['Icc']
+        Tpsf=ares['Irr']+ares['Icc']
 
-        prior[0]=psfres['row']
-        prior[1]=psfres['col']
-        prior[2]=psfres['e1']
-        prior[3]=psfres['e2']
+        prior[0]=ares['wrow']
+        prior[1]=ares['wcol']
+        prior[2]=ares['e1']
+        prior[3]=ares['e2']
 
         prior[4:4+3] = Tpsf*Tfrac
         prior[7:7+3] = counts*pfrac
@@ -695,13 +722,11 @@ def quick_fit_psf_coellip(image, cen, skysig, ngauss):
 
         prior[4:npars] = prior[4:npars]*(1+0.05*srandu(2*ngauss))
 
-        gm = gmix_image.GMixFitCoellip(image, skysig, prior,width,
-                                       Tpositive=True)
-        psf=gm.get_gmix()
+        gm = GMixFitCoellip(image, skysig, prior,width, Tpositive=True)
     else:
         raise ValueError("bad ngauss: %s" % ngauss)
 
-    return psf
+    return gm
 
 
 
