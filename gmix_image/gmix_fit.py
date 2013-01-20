@@ -627,6 +627,9 @@ def quick_fit_psf_coellip(image, skysig, ngauss, ares=None, cen=None):
                              guess=2.,
                              nsub=1)
 
+    if ares['whyflag'] != 0:
+        return None
+
     counts=image.sum()
     npars=2*ngauss+4
 

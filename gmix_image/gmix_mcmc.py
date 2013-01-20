@@ -515,6 +515,10 @@ class MixMCStandAlone:
         ares: optional
             The output from a run of admom.  The whyflag
             field must be zero.
+        cen_width: bool
+            Use this as a width on the prior,
+            with the center set the adaptive moments solution.
+            Default is broad, 1.0
         """
         
         self.make_plots=keys.get('make_plots',False)
@@ -540,6 +544,8 @@ class MixMCStandAlone:
         self.cen_guess=keys.get('cen',None)
         self.ares=keys.get('ares',None)
 
+        self.cen_width=keys.get('cen_width',1.0)
+
         if self.cen_guess is None and self.ares is None:
             raise ValueError("send cen= or ares=")
         if self.ares is not None and self.ares['whyflag']!=0:
@@ -563,8 +569,6 @@ class MixMCStandAlone:
 
 
     def _go(self):
-
-        
         self.sampler=self._do_trials()
 
         self.trials  = self.sampler.flatchain
@@ -717,6 +721,13 @@ class MixMCStandAlone:
 
         w,=where(prior > 0)
         if w.size == 0:
+            print self.psf_gmix
+            print_pars(pars,front='pars:')
+            for i in xrange(self.nwalkers):
+                print_pars(self._guess[i,:], front=' guess:')
+            print 'median g1:',median(g1vals)
+            print self.image.min(), self.image.max()
+            print 'image counts:',self.counts
             raise ValueError("no prior values > 0!")
 
         gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
@@ -790,7 +801,7 @@ class MixMCStandAlone:
 
         
         cen=[self.ares['wrow'],self.ares['wcol']]
-        self.cenprior=CenPrior(cen, [1.]*2)
+        self.cenprior=CenPrior(cen, [self.cen_width]*2)
 
         Tadmom=self.ares['Irr'] + self.ares['Icc']
 
@@ -811,6 +822,7 @@ class MixMCStandAlone:
         guess[:,4] = Tadmom*(1 + 0.1*srandu(self.nwalkers))
         guess[:,5] = self.counts*(1 + 0.1*srandu(self.nwalkers))
 
+        self._guess=guess
         return guess
 
 
