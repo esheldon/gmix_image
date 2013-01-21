@@ -146,7 +146,7 @@ def pars2gmix(pars, coellip=False):
     return gmix
 
 
-def calculate_some_stats(image, ivar, gmix, npars):
+def calculate_some_stats(image, ivar, gmix, npars, nsub=None):
     """
     pars are in g space
 
@@ -156,7 +156,11 @@ def calculate_some_stats(image, ivar, gmix, npars):
     from . import render
     import scipy.stats
 
-    loglike,s2n,flags=render._render.loglike(image, gmix, ivar)
+    if nsub is not None:
+        loglike,s2n,flags=render._render.loglike_subgrid(image, gmix, ivar,
+                                                        int(nsub))
+    else:
+        loglike,s2n,flags=render._render.loglike(image, gmix, ivar)
     chi2=loglike/(-0.5)
     dof=image.size-npars
     chi2per = chi2/dof
@@ -176,6 +180,50 @@ def calculate_some_stats(image, ivar, gmix, npars):
     #return s2n, loglike, chi2per, dof, prob
 
 
+def calculate_some_stats_thresh(image, ivar, gmix, npars, nsigma, nsub=1):
+    """
+    pars are in g space
+
+    Note likelihoods here are pure likelihood, no priors
+    """
+    from math import log
+    from . import render
+    import scipy.stats
+
+    if nsub is None:
+        nsub=1
+    model=render.gmix2image(gmix, image.shape, nsub=nsub)
+
+    skysig=sqrt(1./ivar)
+    thresh=skysig*nsigma
+    w=where(model > thresh)
+    if w[0].size==0:
+        raise ValueError("no values > %f*noise=%f" % (nsigma,thresh))
+
+    npix=w[0].size
+
+    loglike=-0.5*ivar*( ((model[w]-image[w])**2).sum() )
+
+    sm=(model[w]*image[w]).sum()
+    w2sum=(model[w]*model[w]).sum()
+    s2n = sm/sqrt(w2sum)*sqrt(ivar);
+
+    chi2=loglike/(-0.5)
+    dof=npix-npars
+    chi2per = chi2/dof
+
+    prob = scipy.stats.chisqprob(chi2, dof)
+
+    aic = -2*loglike + 2*npars
+    bic = -2*loglike + npars*log(npix)
+
+    return {'s2n_w':s2n,
+            'loglike':loglike,
+            'chi2per':chi2per,
+            'dof':dof,
+            'fit_prob':prob,
+            'aic':aic,
+            'bic':bic}
 
 
 def _pars2gmix_coellip(pars):

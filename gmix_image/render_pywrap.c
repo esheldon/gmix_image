@@ -495,8 +495,8 @@ fill_model_subgrid(struct image *image,
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _fill_model_subgrid_bail;
     }
-    if (nsub < 1)
-        nsub=1;
+    if (nsub < 1) nsub=1;
+
     stepsize = 1./nsub;
     offset = (nsub-1)*stepsize/2.;
 
@@ -797,11 +797,11 @@ _calculate_loglike_bail:
     return flags;
 }
 
-int calculate_loglike(struct image *image, 
-                      struct gvec *gvec, 
-                      double ivar,
-                      double *s2n,
-                      double *loglike)
+static int calculate_loglike(struct image *image, 
+                             struct gvec *gvec, 
+                             double ivar,
+                             double *s2n,
+                             double *loglike)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
@@ -857,6 +857,91 @@ int calculate_loglike(struct image *image,
 
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
+    return flags;
+}
+
+
+static int calculate_loglike_subgrid(struct image *image, 
+                                     struct gvec *gvec, 
+                                     double ivar, 
+                                     int nsub,
+                                     double *s2n,
+                                     double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;;
+
+    double model_val=0, tval=0, nsub_fac=0;
+    double stepsize=0, offset=0, trow=0, tcol=0;
+
+    double *rowdata=NULL;
+    double sum=0, w2sum=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        *s2n=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_subgrid_bail;
+    }
+
+    if (nsub < 1) nsub=1;
+    stepsize = 1./nsub;
+    offset = (nsub-1)*stepsize/2.;
+    nsub_fac=1./(nsub*nsub);
+
+    (*loglike)=0;
+    for (row=0; row<nrows; row++) {
+        rowdata=IM_ROW(image, row);
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+
+                // work over the subgrid
+                tval=0;
+                trow = row-offset;
+                for (irowsub=0; irowsub<nsub; irowsub++) {
+                    tcol = col-offset;
+                    for (icolsub=0; icolsub<nsub; icolsub++) {
+
+                        u = trow-gauss->row;
+                        v = tcol-gauss->col;
+
+                        chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
+                        if (chi2 < EXP_MAX_CHI2) {
+                            tval += expd( -0.5*chi2 );
+                        }
+                        tcol += stepsize;
+                    }
+                    trow += stepsize;
+                }
+
+                model_val += nsub_fac*gauss->norm*gauss->p*tval;
+
+                gauss++;
+            } // gvec
+
+            diff = model_val -(*rowdata);
+            (*loglike) += diff*diff*ivar;
+
+            sum += (*rowdata)*model_val;
+            w2sum += model_val*model_val;
+
+            rowdata++;
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+    (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+
+    //fprintf(stderr,"OK faster\n");
+_calculate_loglike_subgrid_bail:
     return flags;
 }
 
@@ -1563,6 +1648,52 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 }
 
 
+static PyObject *
+PyGMixFit_loglike_subgrid(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* gvec_pyobj=NULL;
+    struct PyGVecObject *gvec_obj=NULL;
+    double ivar=0;
+
+    double loglike=0, s2n=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    npy_intp *dims=NULL;
+
+    int nsub=0;
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOdi", 
+                                &image_obj, &gvec_pyobj, &ivar, &nsub)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    flags=calculate_loglike_subgrid(image, gvec_obj->gvec, ivar, nsub, &s2n, &loglike);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    tup = PyTuple_New(3);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n));
+    PyTuple_SetItem(tup, 2, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
+
 
 
 
@@ -1758,7 +1889,9 @@ static PyMethodDef render_module_methods[] = {
     {"loglike_old", (PyCFunction)PyGMixFit_loglike_old,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
     {"loglike_margamp", (PyCFunction)PyGMixFit_loglike_margamp,  METH_VARARGS,  "calc logl, analytically marginalized over amplitude"},
 
+
     {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc full log likelihood"},
+    {"loglike_subgrid", (PyCFunction)PyGMixFit_loglike_subgrid,  METH_VARARGS,  "calc full log likelihood"},
     {NULL}  /* Sentinel */
 };
 
