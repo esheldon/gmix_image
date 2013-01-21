@@ -13,6 +13,8 @@ from .render import gmix2image
 from .util import total_moms, gmix2pars, print_pars, get_estyle_pars, \
         randomize_e1e2, calculate_some_stats
 
+from .gmix_mcmc import CenPrior
+
 from . import _render
 
 from . import gmix
@@ -28,143 +30,104 @@ GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
 GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
 class GMixSimple:
-    def __init__(self, image, ivar, cen_guess, Tguess, model, psf=None):
-        self.image=image
-        self.ivar=ivar
-        self.model=model
+    """
+    This works in g1,g2 space
+    """
+    def __init__(self, image, ivar, psf, model, ares, **keys):
+        # cen1,cen2,e1,e2,T,p
         self.npars=6
 
-        self.cen_guess=cen_guess
-        self.Tguess=Tguess
-        self.admom_max_try=10
-        self.lm_max_try=10
+        self.image=image
+        self.ivar=float(ivar)
+        self.psf_gmix=psf
+        self.model=model
+        self.ares=ares
+        self.cen_width=keys.get('cen_width',1.0)
 
-        self._set_psf(psf)
+        if self.ares['whyflag']!=0:
+            raise ValueError("ares must have whyflag==0")
+
 
         self.counts=self.image.sum()
+        self.lm_max_try=10
 
-        #self.run_admom()
-        #self.run_lm()
+        self._go()
 
     def get_result(self):
         return self._result
-    def get_admom_result(self):
-        return self._admom_res
-
-    def _set_psf(self, psf):
-        if psf is not None:
-            self.psf_gmix = GMix(psf)
-            self.psf_pars = gmix2pars(self.psf_gmix)
-        else:
-            self.psf_gmix = None
-            self.psf_pars = None
 
 
-    def run_admom(self):
-        import admom
-
-        ntry=self.admom_max_try
-        for i in xrange(ntry):
-            admom_res = admom.admom(self.image,
-                                    self.cen_guess[0],
-                                    self.cen_guess[1],
-                                    sigsky=sqrt(1/self.ivar),
-                                    guess=self.Tguess/2,
-                                    nsub=1)
-            if admom_res['whyflag']==0:
-                break
-        if i==(ntry-1):
-            raise ValueError("admom failed %s times" % ntry)
-
-        self._admom_res=admom_res
-
-    def run_lm(self):
+    def _go(self):
         """
         Do a levenberg-marquardt
         """
         from scipy.optimize import leastsq
-        if not hasattr(self,'_admom_res'):
-            self.run_admom()
 
         npars=self.npars
-        ntot = self.image.size + npars
-
-
-        prior=zeros(npars)
-
-        width=zeros(npars) + 1.e6
-
-        self._maxlike_width=width
 
         counts=self.counts
-        cen = [self._admom_res['row'],self._admom_res['col']]
-        T = self._admom_res['Irr'] + self._admom_res['Icc']
+        cen = [self.ares['row'],self.ares['col']]
+        T = self.ares['Irr'] + self.ares['Icc']
 
-        ntry=10
-        for i in xrange(ntry):
+        ntry=self.lm_max_try
+        for i in xrange(1,ntry=1):
 
-            prior[0]=cen[0]*(1.+ .01*srandu())
-            prior[1]=cen[1]*(1.+ .01*srandu())
-            prior[2],prior[3] = randomize_e1e2(None,None)
-            #prior[2]=0.0649646903077
-            #prior[3]=0.0274282163951
+            guess=self._get_guess()
 
-            prior[4] = T*(1. + .05*srandu())
-            prior[5] = counts*(1. + .01*srandu())
-            #print_pars(prior,front='prior:')
-
-            self._maxlike_prior=prior
-
-            # starting guess is the prior
-            lmres = leastsq(self._get_lm_ydiff, prior, full_output=1)
+            lmres = leastsq(self._get_lm_ydiff, guess, full_output=1)
 
             res=self._calc_lm_results(lmres)
 
             if self._result['flags']==0:
                 break
 
+        if i == ntry:
+            print "could not find maxlike after",ntry,"tries"
 
-        if i == (ntry-1):
-            wlog("could not find maxlike after %s tries, returning None" % ntry)
+        self._result=lmres
 
-        pprint.pprint(self._result)
+    def _get_guess(self):
+        guess=zeros(self.npars)
+        
+        Tadmom=self.ares['Irr'] + self.ares['Icc']
 
-        self._compare_model(self._gmix)
-        stop
+        guess[0]=self.ares['wrow'] + 0.01*srandu()
+        guess[1]=self.ares['wcol'] + 0.01*srandu()
+
+        guess[2]=0.1*srandu()
+        guess[3]=0.1*srandu()
+
+        guess[4] = Tadmom*(1 + 0.1*srandu())
+        guess[5] = self.counts*(1 + 0.1*srandu())
+
+        return guess
+
 
     def _get_lm_ydiff(self, pars):
         """
         pars are [cen1,cen2,g1,g2,T,counts]
         """
 
-        ntot=self.image.size + self.npars
-        ydiff_tot = zeros(ntot, dtype='f8')
+        ydiff = zeros(self.image.size, dtype='f8')
 
         epars=get_estyle_pars(pars)
-        #print_pars(pars,front='pars: ',stream=stderr)
-        #print_pars(epars,front='epars:',stream=stderr)
         if epars is None:
-            ydiff_tot[:] = numpy.inf
-            return ydiff_tot
+            ydiff[:] = numpy.inf
+            return ydiff
 
+        gmix=self._get_convolved_gmix(epars)
+ 
+        _render.fill_ydiff(self.image, self.ivar, gmix, ydiff)
+
+        return ydiff
+
+    def _get_convolved_gmix(self, epars):
+        """
+        epars must be in e1,e2 space
+        """
         gmix0=GMix(epars, type=self.model)
         gmix=gmix0.convolve(self.psf_gmix)
-        self._gmix=gmix
- 
-        """
-        mod=gmix2image(gmix, self.image.shape)
-        ydiff=(mod-self.image)*sqrt(self.ivar)
-        return ydiff.ravel()
-        """
-        """
-        _render.fill_ydiff_exp6(self.image, epars, self.psf_pars, ydiff_tot)
-        ydiff_tot[0:self.image.size] *= sqrt(self.ivar)
-        """
-        _render.fill_ydiff(self.image, self.ivar, gmix, ydiff_tot)
-        prior_diff = (self._maxlike_prior-epars)/self._maxlike_width
-        ydiff_tot[self.image.size:] = prior_diff
-
-        return ydiff_tot
+        return gmix
 
     def _compare_model(self,gmix):
         import images
