@@ -14,6 +14,7 @@ from numpy import sqrt, log, log10, zeros, \
         where, array, diag, median
 from numpy.linalg import eig
 
+from . import util
 from .util import print_pars, randomize_e1e2, get_estyle_pars, \
         calculate_some_stats, srandu
 from .gmix import GMix, GMixExp, GMixDev, GMixCoellip, gmix2pars
@@ -81,6 +82,10 @@ class MixMC:
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
         self.start_pars=keys.get('start_pars',None)
+
+        self.nsub=keys.get("nsub",None)
+        if self.nsub is not None:
+            self.nsub=int(self.nsub)
 
         self.counts=self.image.sum()
 
@@ -170,10 +175,15 @@ class MixMC:
 
         gmix=self._get_convolved_gmix(epars)
 
-        loglike,s2n,flags=\
-            render._render.loglike(self.image, 
-                                   gmix,
-                                   self.ivar)
+        if self.nsub is not None:
+            loglike,s2n,flags=\
+                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
+                                               self.nsub)
+        else:
+            loglike,s2n,flags=\
+                render._render.loglike(self.image, gmix, self.ivar)
+
+
 
         if flags != 0:
             return LOWVAL
@@ -233,7 +243,7 @@ class MixMC:
 
         # weighted s/n based on the most likely point
         wmax=self.lnprobs.argmax()
-        max_pars = self.trials[w,:].copy()
+        max_pars = self.trials[wmax,:].copy()
         max_epars=get_estyle_pars(max_pars)
         gmix=self._get_convolved_gmix(max_epars)
 
@@ -241,7 +251,8 @@ class MixMC:
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars)
+                                   self.npars,
+                                   nsub=self.nsub)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -554,6 +565,10 @@ class MixMCStandAlone:
 
         self.counts=self.image.sum()
 
+        self.nsub=keys.get("nsub",None)
+        if self.nsub is not None:
+            self.nsub=int(self.nsub)
+
         self._go()
 
     def get_result(self):
@@ -670,8 +685,13 @@ class MixMCStandAlone:
 
         gmix=self._get_convolved_gmix(epars)
 
-        loglike,s2n,flags=\
-            render._render.loglike(self.image, gmix, self.ivar)
+        if self.nsub is not None:
+            loglike,s2n,flags=\
+                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
+                                               self.nsub)
+        else:
+            loglike,s2n,flags=\
+                render._render.loglike(self.image, gmix, self.ivar)
 
         if flags != 0:
             return LOWVAL
@@ -739,10 +759,21 @@ class MixMCStandAlone:
         max_epars=self.get_maxprob_epars()
         gmix=self._get_convolved_gmix(max_epars)
 
+        """
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars)
+                                   self.npars,
+                                   nsub=self.nsub)
+        """
+        nsigma=1
+        stats=util.calculate_some_stats_thresh(self.image, 
+                                          self.ivar, 
+                                          gmix,
+                                          self.npars,
+                                          nsigma,
+                                          nsub=self.nsub)
+
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -1030,6 +1061,11 @@ class MixMCPSF:
 
         self.counts=self.image.sum()
 
+        self.nsub=keys.get("nsub",None)
+        if self.nsub is not None:
+            self.nsub=int(self.nsub)
+
+
         self._go()
 
     def get_result(self):
@@ -1102,8 +1138,15 @@ class MixMCPSF:
 
         gmix=self._get_gmix(epars)
 
-        loglike,s2n,flags=\
-            render._render.loglike(self.image, gmix, self.ivar)
+        if self.nsub is not None:
+            loglike,s2n,flags=\
+                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
+                                               self.nsub)
+        else:
+            loglike,s2n,flags=\
+                render._render.loglike(self.image, gmix, self.ivar)
+
+
 
         if flags != 0:
             return LOWVAL
@@ -1129,7 +1172,8 @@ class MixMCPSF:
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars)
+                                   self.npars,
+                                   nsub=self.nsub)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
