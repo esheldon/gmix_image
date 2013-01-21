@@ -29,7 +29,7 @@ GMIXFIT_MCOV_NOTPOSDEF  = 2**8 # more strict checks on cholesky decomposition
 GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
 GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
-class GMixSimple:
+class GMixFitSimple:
     """
     This works in g1,g2 space
     """
@@ -51,11 +51,12 @@ class GMixSimple:
         self.counts=self.image.sum()
         self.lm_max_try=10
 
+        self.highval=9.999e9
+
         self._go()
 
     def get_result(self):
         return self._result
-
 
     def _go(self):
         """
@@ -63,14 +64,8 @@ class GMixSimple:
         """
         from scipy.optimize import leastsq
 
-        npars=self.npars
-
-        counts=self.counts
-        cen = [self.ares['row'],self.ares['col']]
-        T = self.ares['Irr'] + self.ares['Icc']
-
         ntry=self.lm_max_try
-        for i in xrange(1,ntry=1):
+        for i in xrange(1,ntry+1):
 
             guess=self._get_guess()
 
@@ -78,13 +73,13 @@ class GMixSimple:
 
             res=self._calc_lm_results(lmres)
 
-            if self._result['flags']==0:
+            if res['flags']==0:
                 break
 
         if i == ntry:
             print "could not find maxlike after",ntry,"tries"
 
-        self._result=lmres
+        self._result=res
 
     def _get_guess(self):
         guess=zeros(self.npars)
@@ -112,7 +107,7 @@ class GMixSimple:
 
         epars=get_estyle_pars(pars)
         if epars is None:
-            ydiff[:] = numpy.inf
+            ydiff[:] = self.highval
             return ydiff
 
         gmix=self._get_convolved_gmix(epars)
@@ -140,21 +135,27 @@ class GMixSimple:
              'restype': 'lm'}
 
         pars, pcov0, infodict, errmsg, ier = lmres
+
+        if ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(errmsg)
+
         res['pars'] = pars
         res['pcov0'] = pcov0
         res['numiter'] = infodict['nfev']
         res['errmsg'] = errmsg
         res['ier'] = ier
 
-        stats=calculate_some_stats(self.image, self.ivar, self.model, pars,
-                                   psf_gmix=self.psf_gmix)
+        res['g']=pars[2:2+2].copy()
+
+        epars=get_estyle_pars(pars)
+        gmix=self._get_convolved_gmix(epars)
+        stats=calculate_some_stats(self.image, 
+                                   self.ivar, 
+                                   gmix,
+                                   self.npars)
         for k in stats:
             res[k] = stats[k]
-
-
-        if ier == 0:
-            # wrong args, this is a bug
-            raise ValueError(errmsg)
 
         pcov=None
         perr=None
@@ -190,7 +191,6 @@ class GMixSimple:
         res['flags']=flags
 
         if res['flags']==0:
-            res['g']=pars[2:2+2].copy()
             res['gcov'] = pcov[2:2+2, 2:2+2]
             # is this right?
             res['gsens']=1.0
@@ -199,7 +199,7 @@ class GMixSimple:
             res['Ts2n']=res['Tmean']/res['Terr']
             res['arate']=1.
 
-        self._result=res
+        return res
 
     def _scale_leastsq_cov(self, pars, pcov):
         """
