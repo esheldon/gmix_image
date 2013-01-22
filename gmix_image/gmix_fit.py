@@ -3,7 +3,7 @@ import pprint
 
 import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
-        tanh, arctanh, cos, sin, exp
+        tanh, arctanh, cos, sin, exp, log
 from numpy.linalg import eig
 
 from .util import srandu
@@ -53,6 +53,9 @@ class GMixFitSimple:
 
         self.highval=9.999e9
 
+        self.gprior=keys.get('gprior',None)
+        self.gprior_like=keys.get('gprior_like',False)
+
         self._go()
 
     def get_result(self):
@@ -69,7 +72,10 @@ class GMixFitSimple:
 
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_lm_ydiff, guess, full_output=1)
+            if self.gprior is None or not self.gprior_like:
+                lmres = leastsq(self._get_lm_ydiff, guess, full_output=1)
+            else:
+                lmres = leastsq(self._get_lm_ydiff_prior, guess, full_output=1)
 
             res=self._calc_lm_results(lmres)
 
@@ -89,8 +95,13 @@ class GMixFitSimple:
         guess[0]=self.ares['wrow'] + 0.01*srandu()
         guess[1]=self.ares['wcol'] + 0.01*srandu()
 
-        guess[2]=0.1*srandu()
-        guess[3]=0.1*srandu()
+        if self.gprior is not None:
+            g1rand,g2rand=self.gprior.sample2d(1)
+        else:
+            g1rand=0.1*srandu()
+            g2rand=0.1*srandu()
+        guess[2]=g1rand
+        guess[3]=g2rand
 
         guess[4] = Tadmom*(1 + 0.1*srandu())
         guess[5] = self.counts*(1 + 0.1*srandu())
@@ -115,6 +126,37 @@ class GMixFitSimple:
         _render.fill_ydiff(self.image, self.ivar, gmix, ydiff)
 
         return ydiff
+
+    def _get_lm_ydiff_prior(self, pars):
+        """
+        pars are [cen1,cen2,g1,g2,T,counts]
+        """
+
+        ydiff = zeros(self.image.size+1, dtype='f8')
+
+        g=sqrt(pars[2]**2 + pars[3]**2)
+        gp = self.gprior.prior2d_gabs_scalar(g)
+
+        if gp > 0:
+            gp = log(gp)
+        else:
+            ydiff[:] = self.highval
+            return ydiff
+
+        epars=get_estyle_pars(pars)
+        if epars is None:
+            ydiff[:] = self.highval
+            return ydiff
+
+        gmix=self._get_convolved_gmix(epars)
+ 
+        _render.fill_ydiff(self.image, self.ivar, gmix, ydiff)
+
+        ydiff[-1] = gp
+
+        return ydiff
+
+
 
     def _get_convolved_gmix(self, epars):
         """
@@ -190,11 +232,15 @@ class GMixFitSimple:
         res['perr']=perr
         res['flags']=flags
 
+        res['gciv']=None
+        res['gsens']=1.0
+        res['Tmean']=pars[4]
+        res['Terr']=9999.
+        res['Ts2n']=0.0
+        res['arate']=1.0
         if res['flags']==0:
             res['gcov'] = pcov[2:2+2, 2:2+2]
             # is this right?
-            res['gsens']=1.0
-            res['Tmean']=pars[4]
             res['Terr'] =perr[4]
             res['Ts2n']=res['Tmean']/res['Terr']
             res['arate']=1.
