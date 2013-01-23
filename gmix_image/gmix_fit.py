@@ -75,7 +75,7 @@ class GMixFitSimple:
             if self.gprior is None or not self.gprior_like:
                 lmres = leastsq(self._get_lm_ydiff, guess, full_output=1)
             else:
-                lmres = leastsq(self._get_lm_ydiff_prior, guess, full_output=1)
+                lmres = leastsq(self._get_lm_ydiff_gprior, guess, full_output=1)
 
             res=self._calc_lm_results(lmres)
 
@@ -127,7 +127,7 @@ class GMixFitSimple:
 
         return ydiff
 
-    def _get_lm_ydiff_prior(self, pars):
+    def _get_lm_ydiff_gprior(self, pars):
         """
         pars are [cen1,cen2,g1,g2,T,counts]
         """
