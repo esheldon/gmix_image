@@ -759,7 +759,6 @@ class MixMCStandAlone:
         max_epars=self.get_maxprob_epars()
         gmix=self._get_convolved_gmix(max_epars)
 
-        """
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
@@ -773,7 +772,7 @@ class MixMCStandAlone:
                                           self.npars,
                                           nsigma,
                                           nsub=self.nsub)
-
+        """
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
