@@ -545,6 +545,8 @@ class MixMCStandAlone:
 
         self.gprior=gprior
 
+        self.Tprior=keys.get('Tprior',None)
+
         self.nwalkers=keys.get('nwalkers',20)
         self.nstep=keys.get('nstep',200)
         self.burnin=keys.get('burnin',400)
@@ -674,6 +676,10 @@ class MixMCStandAlone:
 
         cp = self.cenprior.lnprob(pars[0:2])
         logprob += cp
+
+        if self.Tprior is not None:
+            Tp = self.Tprior.lnprob(pars[4])
+            logprob += Tp
 
         return logprob
 
