@@ -457,7 +457,7 @@ class GMixFitCoellip:
         wbad,=where(isfinite(pars) == False)
         if wbad.size > 0:
             if self.verbose:
-                print >>stderr,'NaN in pars'
+                print >>stderr,'NaN in pars',pars
             return False
 
         e1=pars[2]
@@ -486,7 +486,7 @@ class GMixFitCoellip:
                 T = g['irr']+g['icc']
                 if T <= 0:
                     if self.verbose:
-                        print_pars(Tfvals,front='bad T or Tfrac: ')
+                        print 'bad T or Tfrac: ',T
                     return False
             det=g['irr']*g['icc']-g['irc']**2
             if det <= 0:
@@ -495,7 +495,7 @@ class GMixFitCoellip:
                 return False
             if g['p'] <= 0:
                 if self.verbose:
-                    print_pars(pvals,front='bad p: ')
+                    print 'bad p: ',g['p']
                 return False
 
         """
@@ -614,6 +614,14 @@ class GMixFitCoellip:
         return self.perr
     def get_pcov(self):
         return self.pcov
+
+    def get_result(self):
+        return {'pars':self.pars,
+                'pcov':self.pcov,
+                'perr':self.perr,
+                'flags':self.flags,
+                'chi2per':self.get_chi2per()}
+
     gmix = property(get_gmix)
 
 
