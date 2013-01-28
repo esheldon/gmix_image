@@ -639,29 +639,6 @@ class MixMCStandAlone:
                     pass
             self._tau=tau
         return sampler
-        """
-        sampler=self.sampler
-        guess=self._get_guess()
-
-        pos, prob, state = sampler.run_mcmc(guess, self.burnin)
-        sampler.reset()
-        pos, prob, state = sampler.run_mcmc(pos, self.nstep)
-        if self.doiter:
-            while True:
-                try:
-                    acor=sampler.acor
-                    tau = (sampler.acor/self.nstep).max()
-                    print '** TAU:',tau
-                    if tau > 0.08:
-                        print "tau",tau,"greater than 0.08"
-                    else:
-                        break
-                except:
-                    # something went wrong with acor, run some more
-                    pass
-                sampler.reset()
-                pos, prob, state = sampler.run_mcmc(pos, self.nstep)
-        """
 
     def _calc_lnprob(self, pars):
         epars=get_estyle_pars(pars)
