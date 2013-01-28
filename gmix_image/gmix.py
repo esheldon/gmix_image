@@ -142,20 +142,26 @@ class GMix(_render.GVec):
         get a copy of the type of the input parameters
     """
     def __init__(self, pars, type=GMIX_FULL):
-        type=as_gmix_type(type)
 
-        if type==GMIX_FULL: 
-            # we also want a pars array if list of dicts was sent
-            if isinstance(pars,list) and isinstance(pars[0],dict):
-                pars_array=gmix2pars(pars)
-            else:
-                pars_array=array(pars, dtype='f8')
+        if isinstance(pars, GMix):
+            self._pars=pars.get_pars()
+            super(GMix,self).__init__(GMIX_FULL, self._pars)
+            self._type=GMIX_FULL
         else:
-            pars_array=array(pars,dtype='f8')
+            type=as_gmix_type(type)
 
-        super(GMix,self).__init__(type, pars_array)
-        self._pars=pars_array
-        self._type=type
+            if type==GMIX_FULL: 
+                # we also want a pars array if list of dicts was sent
+                if isinstance(pars,list) and isinstance(pars[0],dict):
+                    pars_array=gmix2pars(pars)
+                else:
+                    pars_array=array(pars, dtype='f8')
+            else:
+                pars_array=array(pars,dtype='f8')
+
+            super(GMix,self).__init__(type, pars_array)
+            self._pars=pars_array
+            self._type=type
 
     def _print_type(self,t):
         print 'type(type):',type(t)
