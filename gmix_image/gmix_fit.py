@@ -166,6 +166,11 @@ class GMixFitSimple:
         gmix=gmix0.convolve(self.psf_gmix)
         return gmix
 
+    def get_model(self):
+        epars=get_estyle_pars(self._result['pars'])
+        gmix=self._get_convolved_gmix(epars)
+        return gmix2image(gmix, self.image.shape)
+
     def _compare_model(self,gmix):
         import images
         im=gmix2image(gmix, self.image.shape)
@@ -283,8 +288,8 @@ class GMixFitCoellip:
     prior:
         The guess and the middle of the prior for each parameter.
 
-            [cen1,cen2,e1,e2,Tmax,Tri,pi]
-            Ti = Tmax*Tri
+        for coellip
+            [cen1,cen2,e1,e2,T1,T2,..,p1,p2..]
 
         There are ngauss-1 fi values
     width:
@@ -442,7 +447,16 @@ class GMixFitCoellip:
         elif self.model=='coellip-Tfrac':
             _render.fill_model_coellip_Tfrac(self.image, pars, self.psf_pars, ydiff_tot)
         elif self.model=='coellip':
-            _render.fill_ydiff_coellip(self.image, pars, self.psf_pars, ydiff_tot)
+            #_render.fill_ydiff_coellip(self.image, pars, self.psf_pars, ydiff_tot)
+            #print pars
+            gmix=self._get_gmix(pars)
+            model=gmix2image(gmix, self.image.shape)
+            if self.verbose:
+                import images
+                images.multiview(model)
+                images.multiview(self.image)
+                stop
+            ydiff_tot[0:self.image.size] = (self.image-model).ravel()
         else:
             raise ValueError("bad model: '%s'" % self.model)
 
@@ -451,6 +465,22 @@ class GMixFitCoellip:
         prior_diff = (self.prior-pars)/self.width
         ydiff_tot[self.image.size:] = prior_diff
         return ydiff_tot
+
+    def _get_gmix(self, epars):
+        if self.psf_gmix is not None:
+            gmix=self._get_convolved_gmix(epars)
+        else:
+            gmix=self.pars2gmix(epars)
+        return gmix
+
+    def _get_convolved_gmix(self, epars):
+        """
+        epars must be in e1,e2 space
+        """
+        gmix0=GMix(epars, type=self.model)
+        gmix=gmix0.convolve(self.psf_gmix)
+        return gmix
+
 
 
     def check_hard_priors(self, pars):

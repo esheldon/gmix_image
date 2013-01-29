@@ -144,9 +144,7 @@ class GMix(_render.GVec):
     def __init__(self, pars, type=GMIX_FULL):
 
         if isinstance(pars, GMix):
-            self._pars=pars.get_pars()
-            super(GMix,self).__init__(GMIX_FULL, self._pars)
-            self._type=GMIX_FULL
+            self.__init__(pars.get_pars())
         else:
             type=as_gmix_type(type)
 
@@ -160,11 +158,9 @@ class GMix(_render.GVec):
                 pars_array=array(pars,dtype='f8')
 
             super(GMix,self).__init__(type, pars_array)
-            self._pars=pars_array
-            self._type=type
 
-    def _print_type(self,t):
-        print 'type(type):',type(t)
+    #def _print_type(self,t):
+    #    print 'type(type):',type(t)
 
     def convolve(self, psf):
         """
@@ -177,22 +173,17 @@ class GMix(_render.GVec):
         if not isinstance(psf, GMix):
             raise ValueError("Can only convolve with another GMix object")
 
-        gmix = GMix(self._pars, type=self._type)
+        gmix = GMix(self.get_pars())
         gmix._convolve_replace(psf)
         return gmix
 
-    def get_pars(self):
-        """
-        Get a copy of the parameter array used to initialize the GMix
-        """
-        return self._pars.copy()
-
+    '''
     def get_type(self):
         """
         Get a copy of the type of the input parameters
         """
         return copy.copy(self._type)
-
+    '''
 
     def __repr__(self):
         import pprint

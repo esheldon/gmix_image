@@ -198,6 +198,38 @@ static PyObject *PyGVecObject_get_size(struct PyGVecObject* self)
 {
     return PyLong_FromLong((long)self->gvec->size);
 }
+static PyObject *PyGVecObject_get_pars(struct PyGVecObject* self)
+{
+    PyObject *pars_array=NULL;
+    npy_intp dims[1];
+    int npy_dtype=NPY_FLOAT64;
+    double *pars=NULL;
+    struct gauss *gauss=NULL;
+    int i=0, ii=0, ngauss=0;
+
+    ngauss=self->gvec->size;
+    dims[0] = 6*ngauss;
+
+    pars_array=PyArray_ZEROS(1, dims, npy_dtype, 0);
+    pars=PyArray_DATA(pars_array);
+
+    gauss=self->gvec->data;
+    for (i=0; i<self->gvec->size; i++) {
+        ii=i*6;
+
+        pars[ii+0] = gauss->p;
+        pars[ii+1] = gauss->row;
+        pars[ii+2] = gauss->col;
+        pars[ii+3] = gauss->irr;
+        pars[ii+4] = gauss->irc;
+        pars[ii+5] = gauss->icc;
+
+        gauss++;
+    }
+
+    return pars_array;
+}
+
 static PyObject *PyGVecObject_get_dlist(struct PyGVecObject* self)
 {
     PyObject *list=NULL;
@@ -223,6 +255,8 @@ static PyObject *PyGVecObject_get_dlist(struct PyGVecObject* self)
 
     return list;
 }
+
+
 static PyObject *PyGVecObject_get_T(struct PyGVecObject* self)
 {
     double T=0;
@@ -360,6 +394,7 @@ static PyMethodDef PyGVecObject_methods[] = {
     {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_NOARGS, "get_dlist\n\nreturn list of dicts."},
     {"get_e1e2T", (PyCFunction)PyGVecObject_get_e1e2T, METH_NOARGS, "get_e1e2T\n\nreturn stats based on average moments val=sum(val_i*p)/sum(p)."},
     {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
+    {"get_pars", (PyCFunction)PyGVecObject_get_pars, METH_NOARGS, "get_pars\n\nreturn full pars."},
     {"get_cen", (PyCFunction)PyGVecObject_get_cen, METH_NOARGS, "get_cen\n\nreturn cen=sum(cen_i*p)/sum(p)."},
     {"set_cen", (PyCFunction)PyGVecObject_set_cen, METH_VARARGS, "set_cen\n\nSet all centers to the input row,col"},
     {"_convolve_replace", (PyCFunction)PyGVecObject_convolve_replace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
