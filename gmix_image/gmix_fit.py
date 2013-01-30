@@ -315,6 +315,7 @@ class GMixFitCoellip:
         self.image=image
         self.pixerr=pixerr
         self.ierr = 1./pixerr
+        self.ivar=self.ierr**2
         self.prior=prior
         self.width=width
 
@@ -646,11 +647,19 @@ class GMixFitCoellip:
         return self.pcov
 
     def get_result(self):
-        return {'pars':self.pars,
-                'pcov':self.pcov,
-                'perr':self.perr,
-                'flags':self.flags,
-                'chi2per':self.get_chi2per()}
+        gmix=self.get_gmix()
+        npars=len(self.prior)
+        stats=calculate_some_stats(self.image, 
+                                   self.ivar, 
+                                   gmix,
+                                   npars)
+
+        res={'pars':self.pars,
+             'pcov':self.pcov,
+             'perr':self.perr,
+             'flags':self.flags}
+        res.update(stats)
+        return res
 
     gmix = property(get_gmix)
 
