@@ -21,7 +21,7 @@ from .gmix import gmix2pars
 def srandu(n=1):
     return 2*(numpy.random.random(n)-0.5)
 
-def print_pars(pars, stream=stdout, front=None):
+def print_pars(pars, stream=stdout, fmt='%10.6g',front=None):
     """
     print the parameters with a uniform width
     """
@@ -31,7 +31,7 @@ def print_pars(pars, stream=stdout, front=None):
     if pars is None:
         stream.write('%s\n' % None)
     else:
-        fmt = ' '.join( ['%10.6g ']*len(pars) )
+        fmt = ' '.join( [fmt+' ']*len(pars) )
         stream.write(fmt % tuple(pars))
         stream.write('\n')
 

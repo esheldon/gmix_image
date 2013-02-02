@@ -311,6 +311,7 @@ class GMixFitCoellip:
                  psf=None, 
                  Tpositive=True,
                  model='coellip',
+                 nsub=1,
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
@@ -325,7 +326,7 @@ class GMixFitCoellip:
         self.set_psf(psf)
 
         self.ngauss=(len(prior)-4)/2
-        self.nsub=1
+        self.nsub=nsub
 
         self.Tpositive=Tpositive
 
@@ -435,53 +436,15 @@ class GMixFitCoellip:
             return zeros(ntot, dtype='f8') + numpy.inf
 
         ydiff_tot = zeros(ntot, dtype='f8')
-
-        # this is an old renderer that can also fill in a diff image
-        if self.model=='gdev':
-            if self.psf_pars is None:
-                raise ValueError("for dev you must send the psf")
-            _render.fill_ydiff_dev10(self.image, pars, self.psf_pars, ydiff_tot)
-        elif self.model=='gexp':
-            if self.psf_pars is None:
-                raise ValueError("for exp you must send the psf")
-            _render.fill_ydiff_exp6(self.image, pars, self.psf_pars, ydiff_tot)
-        elif self.model=='coellip-Tfrac':
-            _render.fill_model_coellip_Tfrac(self.image, pars, self.psf_pars, ydiff_tot)
-        elif self.model=='coellip':
-            #_render.fill_ydiff_coellip(self.image, pars, self.psf_pars, ydiff_tot)
-            #print pars
-            gmix=self._get_gmix(pars)
-            model=gmix2image(gmix, self.image.shape)
-            if self.verbose:
-                import images
-                images.multiview(model)
-                images.multiview(self.image)
-                stop
-            ydiff_tot[0:self.image.size] = (self.image-model).ravel()
-        else:
-            raise ValueError("bad model: '%s'" % self.model)
+        
+        model=self._get_model(pars)
+        ydiff_tot[0:self.image.size] = (self.image-model).ravel()
 
         ydiff_tot[0:self.image.size] *= self.ierr
 
         prior_diff = (self.prior-pars)/self.width
         ydiff_tot[self.image.size:] = prior_diff
         return ydiff_tot
-
-    def _get_gmix(self, epars):
-        if self.psf_gmix is not None:
-            gmix=self._get_convolved_gmix(epars)
-        else:
-            gmix=self.pars2gmix(epars)
-        return gmix
-
-    def _get_convolved_gmix(self, epars):
-        """
-        epars must be in e1,e2 space
-        """
-        gmix0=GMix(epars, type=self.model)
-        gmix=gmix0.convolve(self.psf_gmix)
-        return gmix
-
 
 
     def check_hard_priors(self, pars):
@@ -543,9 +506,28 @@ class GMixFitCoellip:
 
         return True
 
-    def get_model(self):
-        gmix=self.pars2gmix(self.pars)
-        return gmix2image(gmix, self.image.shape, psf=self.psf_gmix)
+    def _get_model(self, epars):
+        gmix=self._get_gmix(epars)
+        model=gmix2image(gmix, self.image.shape, nsub=self.nsub)
+        return model
+
+    def _get_gmix(self, epars):
+        if self.psf_gmix is not None:
+            gmix=self._get_convolved_gmix(epars)
+        else:
+            gmix=self.pars2gmix(epars)
+        return gmix
+
+    def _get_convolved_gmix(self, epars):
+        """
+        epars must be in e1,e2 space
+        """
+        gmix0=GMix(epars, type=self.model)
+        gmix=gmix0.convolve(self.psf_gmix)
+        return gmix
+
+
+
 
     def pars2gmix(self, pars):
         from . import gmix
@@ -586,6 +568,8 @@ class GMixFitCoellip:
 
 
 
+    def get_model(self):
+        return self._get_model(self.pars)
 
     def get_stats(self):
         gmix=self.get_gmix()
@@ -657,7 +641,8 @@ class GMixFitCoellip:
         res={'pars':self.pars,
              'pcov':self.pcov,
              'perr':self.perr,
-             'flags':self.flags}
+             'flags':self.flags,
+             'numiter':self.numiter}
         res.update(stats)
         return res
 

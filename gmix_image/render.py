@@ -33,7 +33,7 @@ def gmix2image(gmix, dims, psf=None,
         The dimensions of the result.  This matters since
         the gaussian centers are in this coordinate syste.
     psf: optional
-        An optional gaussian mixture PSf model. Must be a generic mixture
+        Convolve with this gaussian mixture PSf model.
     coellip:
         If True, and the input are parameter arrays, then the model
         represents coelliptical gaussians.

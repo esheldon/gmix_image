@@ -94,6 +94,11 @@ class MixMC:
     def get_result(self):
         return self._result
 
+    def get_gmix(self):
+        epars=get_estyle_pars(self._result['pars'])
+        return self._get_convolved_gmix(epars)
+
+
     def _get_convolved_gmix(self, epars):
         """
         epars must be in e1,e2 space
@@ -264,6 +269,7 @@ class MixMC:
                       'gcov':gcov,
                       'gsens':gsens,
                       'pars':pars,
+                      'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
                       'Tmean':Tmean,
                       'Terr':Terr,
@@ -576,6 +582,10 @@ class MixMCStandAlone:
     def get_result(self):
         return self._result
 
+    def get_gmix(self):
+        epars=get_estyle_pars(self._result['pars'])
+        return self._get_convolved_gmix(epars)
+
     def _get_convolved_gmix(self, epars):
         """
         epars must be in e1,e2 space
@@ -766,6 +776,7 @@ class MixMCStandAlone:
                       'gcov':gcov,
                       'gsens':gsens,
                       'pars':pars,
+                      'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
                       'Tmean':Tmean,
                       'Terr':Terr,
@@ -1053,11 +1064,19 @@ class MixMCPSF:
     def get_result(self):
         return self._result
 
+    def get_gmix(self):
+        # these are not maxlike pars, but expectation value pars
+        return self._get_gmix(self._result['pars'])
+
     def _get_gmix(self, epars):
         """
         epars must be in e1,e2 space
         """
-        gmix=GMix(epars, type=self.model)
+        if self.model=='gauss':
+            type='coellip'
+        else:
+            type=self.model
+        gmix=GMix(epars, type=type)
         return gmix
 
 
@@ -1163,6 +1182,7 @@ class MixMCPSF:
 
         self._result={'model':self.model,
                       'pars':pars,
+                      'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
                       'Tmean':Tmean,
                       'Terr':Terr,
