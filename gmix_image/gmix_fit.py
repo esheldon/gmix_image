@@ -246,9 +246,16 @@ class GMixFitSimple:
         if res['flags']==0:
             res['gcov'] = pcov[2:2+2, 2:2+2]
             # is this right?
-            res['Terr'] =perr[4]
-            res['Ts2n']=res['Tmean']/res['Terr']
-            res['arate']=1.
+            res['Terr']  = perr[4]
+            res['Ts2n']  = res['Tmean']/res['Terr']
+            res['arate'] = 1.
+
+            stats=calculate_some_stats(self.image, 
+                                       self.ivar, 
+                                       gmix,
+                                       self.npars)
+
+            res.update(stats)
 
         return res
 
