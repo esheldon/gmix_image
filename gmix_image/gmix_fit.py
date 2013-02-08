@@ -646,9 +646,11 @@ class GMixFitCoellip:
                                    gmix,
                                    npars)
 
+        Tmean=gmix.get_T()
         res={'pars':self.pars,
              'pcov':self.pcov,
              'perr':self.perr,
+             'Tmean':Tmean,
              'flags':self.flags,
              'numiter':self.numiter}
         res.update(stats)
