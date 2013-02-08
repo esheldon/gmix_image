@@ -244,8 +244,9 @@ class GMixFitSimple:
         res['Ts2n']=0.0
         res['arate']=1.0
         if res['flags']==0:
-            res['gcov'] = pcov[2:2+2, 2:2+2]
-            # is this right?
+            gcov=pcov[2:2+2, 2:2+2]
+            res['gcov'] = gcov
+            res['gerr'] = sqrt(diag(gcov))
             res['Terr']  = perr[4]
             res['Ts2n']  = res['Tmean']/res['Terr']
             res['arate'] = 1.

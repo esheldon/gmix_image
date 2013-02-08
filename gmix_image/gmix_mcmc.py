@@ -267,6 +267,7 @@ class MixMC:
                       'restype':'mcmc',
                       'g':g,
                       'gcov':gcov,
+                      'gerr': sqrt(diag(gcov)),
                       'gsens':gsens,
                       'pars':pars,
                       'perr':sqrt(diag(pcov)),
