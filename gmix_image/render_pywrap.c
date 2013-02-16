@@ -509,6 +509,8 @@ struct image *associate_image(PyObject* image_obj, size_t nrows, size_t ncols)
    fill a model with a gaussian mixture.  The model can be
    on a sub-grid (n > 1)
 
+   Simply add to the existing pixel values!
+
  */
 static int
 fill_model_subgrid(struct image *image, 
@@ -538,7 +540,94 @@ fill_model_subgrid(struct image *image,
     for (row=0; row<nrows; row++) {
         for (col=0; col<ncols; col++) {
 
-            model_val=0;
+            // start with existing value!
+            model_val=IM_GET(image, row, col);
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+
+                // work over the subgrid
+                tval=0;
+                trow = row-offset;
+                for (irowsub=0; irowsub<nsub; irowsub++) {
+                    tcol = col-offset;
+                    for (icolsub=0; icolsub<nsub; icolsub++) {
+
+                        u = trow-gauss->row;
+                        v = tcol-gauss->col;
+
+                        u2 = u*u; v2 = v*v; uv = u*v;
+
+                        chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                        chi2 /= gauss->det;
+                        if (chi2 < EXP_MAX_CHI2) {
+                            tval += gauss->p*expd( -0.5*chi2 );
+                        }
+
+                        tcol += stepsize;
+                    }
+                    trow += stepsize;
+                }
+
+                b = M_TWO_PI*sqrt(gauss->det);
+                tval /= (b*nsub*nsub);
+                model_val += tval;
+
+                gauss++;
+            } // gvec
+
+            IM_SETFAST(image, row, col, model_val);
+
+        } // cols
+    } // rows
+
+_fill_model_subgrid_bail:
+    return flags;
+}
+
+/*
+   fill a model with a gaussian mixture.  The model can be
+   on a sub-grid (n > 1)
+
+   Simply add to the existing pixel values!
+
+ */
+static int
+fill_model_subgrid_bbox(struct image *image, 
+                        struct gvec *gvec, 
+                        int nsub,
+                        int row_low, int row_high,
+                        int col_low, int col_high)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0, uv=0, u2=0, v2=0;
+    double chi2=0, b=0;
+    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;
+
+    double model_val=0, tval=0;
+    double stepsize=0, offset=0, trow=0, tcol=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_model_subgrid_bail;
+    }
+    if (nsub < 1) nsub=1;
+
+    stepsize = 1./nsub;
+    offset = (nsub-1)*stepsize/2.;
+
+    for (row=0; row<nrows; row++) {
+        if (row < row_low || row > row_high)
+            continue;
+
+        for (col=0; col<ncols; col++) {
+            if (col < col_low || col > col_high)
+                continue;
+
+            // start with existing value!
+            model_val=IM_GET(image, row, col);
             gauss=gvec->data;
             for (i=0; i<gvec->size; i++) {
 
@@ -1850,6 +1939,8 @@ PyGMixFit_fill_model_old(PyObject *self, PyObject *args)
    This one can work on a subgrid.  There is not separate psf gmix, 
    you are expected to send a convolved GMix object in that case
 
+   Simply add to the existing pixel values, so make sure you initialize
+
    No error checking on the gvec object is performed, do it in python!
 */
 
@@ -1883,6 +1974,44 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
     return PyInt_FromLong(flags);
 }
 
+static PyObject *
+PyGMixFit_fill_model_bbox(PyObject *self, PyObject *args) 
+{
+    PyObject *image_obj=NULL;
+    PyObject *gvec_pyobj=NULL;
+    struct PyGVecObject *gvec_obj=NULL;
+
+    int nsub=0;
+    int row_low=0, row_high=0, col_low=0, col_high=0;
+
+    struct image *image=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOiiiii", 
+                &image_obj, &gvec_pyobj, &nsub, 
+                &row_low,&row_high,
+                &col_low,&col_high)) {
+        return NULL;
+    }
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    flags=fill_model_subgrid_bbox(
+            image, gvec_obj->gvec, nsub,
+            row_low,row_high,col_low,col_high);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    return PyInt_FromLong(flags);
+}
+
+
+
 /* 
  * Generate gaussian random numbers mean 0 sigma 1
  *
@@ -1911,6 +2040,7 @@ double randn()
 
 static PyMethodDef render_module_methods[] = {
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
+    {"fill_model_bbox", (PyCFunction)PyGMixFit_fill_model_bbox,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff", (PyCFunction)PyGMixFit_fill_ydiff,  METH_VARARGS,  "fill diff from gmix"},
     {"fill_ydiff_coellip", (PyCFunction)PyGMixFit_fill_ydiff_coellip,  METH_VARARGS,  "fill the model image"},

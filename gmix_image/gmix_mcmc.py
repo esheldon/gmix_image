@@ -263,7 +263,8 @@ class MixMC:
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
-        self._result={'model':self.model,
+        self._result={'flags':0,
+                      'model':self.model,
                       'restype':'mcmc',
                       'g':g,
                       'gcov':gcov,
@@ -772,7 +773,8 @@ class MixMCStandAlone:
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
-        self._result={'model':self.model,
+        self._result={'flags':0,
+                      'model':self.model,
                       'g':g,
                       'gcov':gcov,
                       'gsens':gsens,
@@ -1181,7 +1183,8 @@ class MixMCPSF:
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
-        self._result={'model':self.model,
+        self._result={'flags':0,
+                      'model':self.model,
                       'pars':pars,
                       'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
