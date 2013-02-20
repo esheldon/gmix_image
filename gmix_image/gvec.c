@@ -384,7 +384,7 @@ struct gvec *gvec_from_coellip(double *pars, int size)
     return gvec;
 }
 
-/* helper function */
+/* helper function, only works for 3 gauss models */
 static struct gvec *_gapprox_pars_to_gvec_old(double *pars, 
                                           const double *Fvals, 
                                           const double *pvals)
