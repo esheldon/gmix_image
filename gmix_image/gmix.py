@@ -13,8 +13,11 @@ GMIX_COELLIP_TFRAC=5
 _gmix_type_dict={'full':    GMIX_FULL,
                  'coellip': GMIX_COELLIP,
                  'gturb':   GMIX_TURB,
+                 'turb':    GMIX_TURB,
                  'gexp':    GMIX_EXP,
+                 'exp':     GMIX_EXP,
                  'gdev':    GMIX_DEV,
+                 'dev':     GMIX_DEV,
                  'coellip-Tfrac': GMIX_COELLIP_TFRAC}
 
 def as_gmix_type(type_in):
