@@ -987,37 +987,23 @@ _calculate_loglike_bail:
     return flags;
 }
 
-static
-void set_uvcen(const struct gvec *gvec,
-               const struct jacobian *jacob,
-               double *ucen, double *vcen)
-{
-    int i=0;
-    double u=0,v=0;
-    for (i=0; i<gvec->size; i++) {
-        const struct gauss *gauss=&gvec->data[i];
-
-        ucen[i]=JACOB_PIX2U(jacob, gauss->row, gauss->col);
-        vcen[i]=JACOB_PIX2V(jacob, gauss->row, gauss->col);
-    }
-}
 
 // using a weight image and jacobian.  Not tested.
+// row0,col0 is center of coordinate system
 static 
 int calculate_loglike_wt_jacob(struct image *image, 
                                struct image *weight,
                                struct jacobian *jacob,
+                               double row0, double col0,
                                struct gvec *gvec, 
                                double *s2n,
                                double *loglike)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    struct gauss *gauss=NULL;
     double u=0, v=0, ud=0, vd=0;
-    double *ucen=NULL, *vcen=NULL;
     double chi2=0, diff=0;
-    size_t i=0, col=0, row=0;
+    ssize_t col=0, row=0;
 
     double model_val=0;
     double s2n_numer=0, s2n_denom=0, pixval=0, ivar=0;
@@ -1027,33 +1013,16 @@ int calculate_loglike_wt_jacob(struct image *image,
         *loglike=-9999.9e9;
         *s2n=-9999.9e9;
         flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_bail;
+        goto _calculate_loglike_wt_jacob_bail;
     }
 
-    ucen = alloca(gvec->size*sizeof(double));
-    vcen = alloca(gvec->size*sizeof(double));
-    set_uvcen(gvec, jacob, ucen, vcen);
-
     (*loglike)=0;
-    u=JACOB_PIX2U(jacob, 0, 0);
-    v=JACOB_PIX2V(jacob, 0, 0);
     for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
         for (col=0; col<ncols; col++) {
 
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-                ud = u-ucen[i];
-                vd = v-vcen[i];
-
-                // drr stading in for duu, dcc standing in for dvv
-                chi2=gauss->dcc*ud*ud + gauss->drr*vd*vd - 2.0*gauss->drc*ud*vd;
-                if (chi2 < EXP_MAX_CHI2) {
-                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
-                }
-
-                gauss++;
-            } // gvec
+            model_val=GVEC_EVAL(gvec, u, v);
 
             pixval=IM_GET(image, row, col);
             ivar=IM_GET(weight, row, col);
@@ -1065,6 +1034,7 @@ int calculate_loglike_wt_jacob(struct image *image,
             s2n_numer += pixval*model_val*ivar;
             s2n_denom += model_val*model_val*ivar;
 
+            u += jacob->dudcol; v += jacob->dvdcol;
         } // cols
     } // rows
 
@@ -1072,7 +1042,7 @@ int calculate_loglike_wt_jacob(struct image *image,
     (*s2n) = s2n_numer/sqrt(s2n_denom);
 
     //fprintf(stderr,"OK faster\n");
-_calculate_loglike_bail:
+_calculate_loglike_wt_jacob_bail:
     return flags;
 }
 
@@ -1100,7 +1070,7 @@ int calculate_loglike_wt(struct image *image,
         *loglike=-9999.9e9;
         *s2n=-9999.9e9;
         flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_bail;
+        goto _calculate_loglike_wt_bail;
     }
 
     (*loglike)=0;
@@ -1139,7 +1109,7 @@ int calculate_loglike_wt(struct image *image,
     (*s2n) = s2n_numer/sqrt(s2n_denom);
 
     //fprintf(stderr,"OK faster\n");
-_calculate_loglike_bail:
+_calculate_loglike_wt_bail:
     return flags;
 }
 

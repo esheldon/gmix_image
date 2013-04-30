@@ -30,6 +30,37 @@ struct gvec {
     double total_icc;
 };
 
+#define GAUSS_EVAL(gauss, rowval, colval) ({                   \
+    double _u = (rowval)-(gauss)->row;                         \
+    double _v = (colval)-(gauss)->col;                         \
+                                                               \
+    double _chi2 =                                             \
+        (gauss)->dcc*_u*_u                                     \
+        + (gauss)->drr*_v*_v                                   \
+        - 2.0*(gauss)->drc*_u*_v;                              \
+                                                               \
+    double _val=0.0;                                           \
+    if (_chi2 < EXP_MAX_CHI2) {                                \
+        _val = (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
+    }                                                          \
+                                                               \
+    _val;                                                      \
+})
+
+
+#define GVEC_EVAL(gmix, rowval, colval) ({                     \
+    int _i=0;                                                  \
+    double _val=0.0;                                           \
+    struct gauss *_gauss=(gmix)->data;                         \
+    for (_i=0; _i<(gmix)->size; _i++) {                        \
+        _val += GAUSS_EVAL(_gauss, (rowval), (colval));        \
+        _gauss++;                                              \
+    }                                                          \
+    _val;                                                      \
+})
+
+
+
 enum gapprox {
     GAPPROX_EXP,
     GAPPROX_DEV
