@@ -1,7 +1,9 @@
 #include <Python.h>
 #include <numpy/arrayobject.h> 
+#include <alloca.h>
 
 #include "gvec.h"
+#include "jacobian.h"
 #include "image.h"
 #include "bound.h"
 #include "defs.h"
@@ -957,6 +959,7 @@ static int calculate_loglike(struct image *image,
                 u = row-gauss->row;
                 v = col-gauss->col;
 
+                // u is rowdiff, v is coldiff
                 chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
                 //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
                 if (chi2 < EXP_MAX_CHI2) {
@@ -978,6 +981,162 @@ static int calculate_loglike(struct image *image,
 
     (*loglike) *= (-0.5);
     (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+
+    //fprintf(stderr,"OK faster\n");
+_calculate_loglike_bail:
+    return flags;
+}
+
+static
+void set_uvcen(const struct gvec *gvec,
+               const struct jacobian *jacob,
+               double *ucen, double *vcen)
+{
+    int i=0;
+    double u=0,v=0;
+    for (i=0; i<gvec->size; i++) {
+        const struct gauss *gauss=&gvec->data[i];
+
+        ucen[i]=JACOB_PIX2U(jacob, gauss->row, gauss->col);
+        vcen[i]=JACOB_PIX2V(jacob, gauss->row, gauss->col);
+    }
+}
+
+// using a weight image and jacobian.  Not tested.
+static 
+int calculate_loglike_wt_jacob(struct image *image, 
+                               struct image *weight,
+                               struct jacobian *jacob,
+                               struct gvec *gvec, 
+                               double *s2n,
+                               double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0, ud=0, vd=0;
+    double *ucen=NULL, *vcen=NULL;
+    double chi2=0, diff=0;
+    size_t i=0, col=0, row=0;
+
+    double model_val=0;
+    double s2n_numer=0, s2n_denom=0, pixval=0, ivar=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        *s2n=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_bail;
+    }
+
+    ucen = alloca(gvec->size*sizeof(double));
+    vcen = alloca(gvec->size*sizeof(double));
+    set_uvcen(gvec, jacob, ucen, vcen);
+
+    (*loglike)=0;
+    u=JACOB_PIX2U(jacob, 0, 0);
+    v=JACOB_PIX2V(jacob, 0, 0);
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+                ud = u-ucen[i];
+                vd = v-vcen[i];
+
+                // drr stading in for duu, dcc standing in for dvv
+                chi2=gauss->dcc*ud*ud + gauss->drr*vd*vd - 2.0*gauss->drc*ud*vd;
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                }
+
+                gauss++;
+            } // gvec
+
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            (*loglike) += diff*diff*ivar;
+
+            s2n_numer += pixval*model_val*ivar;
+            s2n_denom += model_val*model_val*ivar;
+
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+    (*s2n) = s2n_numer/sqrt(s2n_denom);
+
+    //fprintf(stderr,"OK faster\n");
+_calculate_loglike_bail:
+    return flags;
+}
+
+
+// using a weight image.  Not tested.
+static 
+int calculate_loglike_wt(struct image *image, 
+                         struct image *weight,
+                         struct gvec *gvec, 
+                         double *s2n,
+                         double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0, rd=0, cd=0;
+    double chi2=0, diff=0;
+    size_t i=0, col=0, row=0;
+
+    double model_val=0;
+    double s2n_numer=0, s2n_denom=0, pixval=0, ivar=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        *s2n=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_bail;
+    }
+
+    (*loglike)=0;
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            model_val=0;
+            gauss=gvec->data;
+            for (i=0; i<gvec->size; i++) {
+                rd = row-gauss->row;
+                cd = col-gauss->col;
+
+                chi2=gauss->dcc*rd*rd + gauss->drr*cd*cd - 2.0*gauss->drc*rd*cd;
+                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
+                if (chi2 < EXP_MAX_CHI2) {
+                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
+                }
+
+                gauss++;
+            } // gvec
+
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            (*loglike) += diff*diff*ivar;
+
+            s2n_numer += pixval*model_val*ivar;
+            s2n_denom += model_val*model_val*ivar;
+
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+    (*s2n) = s2n_numer/sqrt(s2n_denom);
 
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:

@@ -134,6 +134,26 @@ double gvec_wmomsum(struct gvec* gvec)
     return wmom;
 }
 
+void gvec_centroid(struct gvec *self, double *row, double *col)
+{
+    int i=0;
+    struct gauss *gauss=NULL;
+    double psum=0;
+    (*row)=0;
+    (*col)=0;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[0];
+
+        psum += gauss->p;
+        (*row) += gauss->p*gauss->row;
+        (*col) += gauss->p*gauss->col;
+    }
+
+    (*row) /= psum;
+    (*col) /= psum;
+}
+
 void gvec_set_total_moms(struct gvec *self)
 {
     size_t i=0;

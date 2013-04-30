@@ -62,6 +62,8 @@ void gvec_print(struct gvec *self, FILE* fptr);
 //  sum_gi( p*(irr + icc )
 double gvec_wmomsum(struct gvec* gvec);
 
+void gvec_centroid(struct gvec *gvec, double *row, double *col);
+
 // 0 returned if a zero determinant is found somewhere, else 1
 //int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
 
