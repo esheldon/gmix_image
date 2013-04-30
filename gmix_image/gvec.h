@@ -30,36 +30,6 @@ struct gvec {
     double total_icc;
 };
 
-#define GAUSS_EVAL(gauss, rowval, colval) ({                   \
-    double _u = (rowval)-(gauss)->row;                         \
-    double _v = (colval)-(gauss)->col;                         \
-                                                               \
-    double _chi2 =                                             \
-        (gauss)->dcc*_u*_u                                     \
-        + (gauss)->drr*_v*_v                                   \
-        - 2.0*(gauss)->drc*_u*_v;                              \
-                                                               \
-    double _val=0.0;                                           \
-    if (_chi2 < EXP_MAX_CHI2) {                                \
-        _val = (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
-    }                                                          \
-                                                               \
-    _val;                                                      \
-})
-
-
-#define GVEC_EVAL(gmix, rowval, colval) ({                     \
-    int _i=0;                                                  \
-    double _val=0.0;                                           \
-    struct gauss *_gauss=(gmix)->data;                         \
-    for (_i=0; _i<(gmix)->size; _i++) {                        \
-        _val += GAUSS_EVAL(_gauss, (rowval), (colval));        \
-        _gauss++;                                              \
-    }                                                          \
-    _val;                                                      \
-})
-
-
 
 enum gapprox {
     GAPPROX_EXP,
@@ -71,7 +41,7 @@ struct gvec *gvec_free(struct gvec *self);
 void gvec_set_dets(struct gvec *self);
 
 // make sure pointer not null and det>0 for all gauss
-int gvec_verify(struct gvec *self);
+int gvec_verify(const struct gvec *self);
 
 // only makes sense for same center, e.g. psf
 void gvec_set_total_moms(struct gvec *self);
@@ -86,14 +56,14 @@ void gauss_set(struct gauss* self,
                double irc,
                double icc);
 
-int gvec_copy(struct gvec *self, struct gvec* dest);
-void gvec_print(struct gvec *self, FILE* fptr);
+int gvec_copy(const struct gvec *self, struct gvec* dest);
+void gvec_print(const struct gvec *self, FILE* fptr);
 
 // calculate the weighted sum of the moments
 //  sum_gi( p*(irr + icc )
-double gvec_wmomsum(struct gvec* gvec);
+double gvec_wmomsum(const struct gvec* gvec);
 
-void gvec_centroid(struct gvec *gvec, double *row, double *col);
+void gvec_centroid(const struct gvec *gvec, double *row, double *col);
 
 // 0 returned if a zero determinant is found somewhere, else 1
 //int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
@@ -142,5 +112,37 @@ struct gvec *gvec_from_pars_dev10(double *pars, int size);
 
 /* similar to above but for a turbulent psf */
 struct gvec *gvec_from_pars_turb(double *pars, int size);
+
+
+#define GAUSS_EVAL(gauss, rowval, colval) ({                   \
+    double _u = (rowval)-(gauss)->row;                         \
+    double _v = (colval)-(gauss)->col;                         \
+                                                               \
+    double _chi2 =                                             \
+        (gauss)->dcc*_u*_u                                     \
+        + (gauss)->drr*_v*_v                                   \
+        - 2.0*(gauss)->drc*_u*_v;                              \
+                                                               \
+    double _val=0.0;                                           \
+    if (_chi2 < EXP_MAX_CHI2) {                                \
+        _val = (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
+    }                                                          \
+                                                               \
+    _val;                                                      \
+})
+
+
+#define GVEC_EVAL(gmix, rowval, colval) ({                     \
+    int _i=0;                                                  \
+    double _val=0.0;                                           \
+    struct gauss *_gauss=(gmix)->data;                         \
+    for (_i=0; _i<(gmix)->size; _i++) {                        \
+        _val += GAUSS_EVAL(_gauss, (rowval), (colval));        \
+        _gauss++;                                              \
+    }                                                          \
+    _val;                                                      \
+})
+
+
 
 #endif

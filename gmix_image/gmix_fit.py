@@ -31,7 +31,7 @@ GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
 
 class GMixFitSimple:
     """
-    This works in g1,g2 space
+    6 parameter models.  works in g1,g2 space
     """
     def __init__(self, image, ivar, psf, model, ares, **keys):
         # cen1,cen2,e1,e2,T,p

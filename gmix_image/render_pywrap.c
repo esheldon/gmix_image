@@ -732,6 +732,55 @@ _fill_ydiff_bail:
 
 }
 
+// fill in (model-data)/err
+// gvec centers should be in the u,v plane
+static int
+fill_ydiff_wt_jacob(const struct image *image,
+                    const struct image *weight,
+                    const struct jacobian *jacob,
+                    double row0, double col0,
+                    const struct gvec *gvec,
+                    struct image *diff_image)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    ssize_t col=0, row=0;
+
+    double model_val=0, pixval=0, ivar=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_ydiff_wt_jacob_bail;
+    }
+
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            diff *= sqrt(ivar);
+
+            IM_SETFAST(diff_image, row, col, diff);
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+        } // cols
+    } // rows
+
+
+_fill_ydiff_wt_jacob_bail:
+    return flags;
+
+}
+
 
 
 
@@ -990,12 +1039,13 @@ _calculate_loglike_bail:
 
 // using a weight image and jacobian.  Not tested.
 // row0,col0 is center of coordinate system
+// gvec centers should be in the u,v plane
 static 
-int calculate_loglike_wt_jacob(struct image *image, 
-                               struct image *weight,
-                               struct jacobian *jacob,
+int calculate_loglike_wt_jacob(const struct image *image, 
+                               const struct image *weight,
+                               const struct jacobian *jacob,
                                double row0, double col0,
-                               struct gvec *gvec, 
+                               const struct gvec *gvec, 
                                double *s2n,
                                double *loglike)
 {
@@ -1041,7 +1091,6 @@ int calculate_loglike_wt_jacob(struct image *image,
     (*loglike) *= (-0.5);
     (*s2n) = s2n_numer/sqrt(s2n_denom);
 
-    //fprintf(stderr,"OK faster\n");
 _calculate_loglike_wt_jacob_bail:
     return flags;
 }
@@ -1049,9 +1098,9 @@ _calculate_loglike_wt_jacob_bail:
 
 // using a weight image.  Not tested.
 static 
-int calculate_loglike_wt(struct image *image, 
-                         struct image *weight,
-                         struct gvec *gvec, 
+int calculate_loglike_wt(const struct image *image, 
+                         const struct image *weight,
+                         const struct gvec *gvec, 
                          double *s2n,
                          double *loglike)
 {
@@ -1060,10 +1109,9 @@ int calculate_loglike_wt(struct image *image,
     struct gauss *gauss=NULL;
     double u=0, v=0, rd=0, cd=0;
     double chi2=0, diff=0;
-    size_t i=0, col=0, row=0;
+    size_t col=0, row=0;
 
-    double model_val=0;
-    double s2n_numer=0, s2n_denom=0, pixval=0, ivar=0;
+    double model_val=0, s2n_numer=0, s2n_denom=0, pixval=0, ivar=0;
     int flags=0;
 
     if (!gvec_verify(gvec)) {
@@ -1077,20 +1125,7 @@ int calculate_loglike_wt(struct image *image,
     for (row=0; row<nrows; row++) {
         for (col=0; col<ncols; col++) {
 
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-                rd = row-gauss->row;
-                cd = col-gauss->col;
-
-                chi2=gauss->dcc*rd*rd + gauss->drr*cd*cd - 2.0*gauss->drc*rd*cd;
-                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-                if (chi2 < EXP_MAX_CHI2) {
-                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
-                }
-
-                gauss++;
-            } // gvec
+            model_val=GVEC_EVAL(gvec, u, v);
 
             pixval=IM_GET(image, row, col);
             ivar=IM_GET(weight, row, col);
@@ -1108,7 +1143,6 @@ int calculate_loglike_wt(struct image *image,
     (*loglike) *= (-0.5);
     (*s2n) = s2n_numer/sqrt(s2n_denom);
 
-    //fprintf(stderr,"OK faster\n");
 _calculate_loglike_wt_bail:
     return flags;
 }
@@ -1469,6 +1503,76 @@ PyGMixFit_fill_ydiff(PyObject *self, PyObject *args)
     // does not free underlying array
     image = image_free(image);
     diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+/*
+
+   (model-data)/err
+
+   for use in the LM algorithm
+
+   using jacobian in u,v space and weight image
+*/
+static PyObject *
+PyGMixFit_fill_ydiff_wt_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* weight_obj=NULL;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    PyObject *gvec_pyobj=NULL;
+    PyObject* diff_obj=NULL;
+
+    struct PyGVecObject *gvec_obj=NULL;
+    struct image *image=NULL, *weight=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    struct jacobian jacob;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOOddddddOO", 
+                &image_obj,
+                &weight_obj,
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &gvec_pyobj,
+                &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+    if (!check_numpy_image(weight_obj)) {
+        PyErr_SetString(PyExc_IOError,
+                "weight image must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    weight = associate_image(weight_obj, dims[0], dims[1]);
+    diff = associate_image(diff_obj, dims[0], dims[1]);
+
+    jacob.dudrow=dudrow;
+    jacob.dudcol=dudcol;
+    jacob.dvdrow=dvdrow;
+    jacob.dvdcol=dvdcol;
+
+    flags=fill_ydiff_wt_jacob(image, weight, &jacob, row0, col0,
+                              gvec_obj->gvec, diff);
+
+    // does not free underlying array
+    image  = image_free(image);
+    weight = image_free(weight);
+    diff   = image_free(diff);
 
     return PyInt_FromLong(flags);
 }
@@ -2172,6 +2276,7 @@ static PyMethodDef render_module_methods[] = {
     {"fill_model_bbox", (PyCFunction)PyGMixFit_fill_model_bbox,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff", (PyCFunction)PyGMixFit_fill_ydiff,  METH_VARARGS,  "fill diff from gmix"},
+    {"fill_ydiff_wt_jacob", (PyCFunction)PyGMixFit_fill_ydiff_wt_jacob,  METH_VARARGS,  "fill diff with weight image and jacobian"},
     {"fill_ydiff_coellip", (PyCFunction)PyGMixFit_fill_ydiff_coellip,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff_dev10", (PyCFunction)PyGMixFit_fill_ydiff_dev10,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_exp4", (PyCFunction)PyGMixFit_fill_ydiff_exp4,  METH_VARARGS,  "fill the exp model image"},
