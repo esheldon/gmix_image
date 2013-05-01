@@ -1695,7 +1695,10 @@ def test_multi_color(s2n=100.,
                      counts2=250.,
                      model='gexp',
                      nimages=3,
-                     scale=0.27):
+                     scale=0.27,
+                     sigratio=0.9,
+                     eratio=0.9,
+                     eoffset=0.01):
     """
     psf is fit in pixel space, so need in future
     to transform the gaussian moments into uv space before
@@ -1708,16 +1711,24 @@ def test_multi_color(s2n=100.,
 
     s2n_per=s2n/sqrt(nimages)
 
+    sigma_2 = sigratio*sigma
+
     # for simulation, in pixels
     Tpsf0_pix=2*(psf_sigma/scale)**2
     Tpix=2*(sigma/scale)**2
     counts1_pix=counts1/(scale*scale)
     counts2_pix=counts2/(scale*scale)
 
+    Tpix_2 = 2*(sigma_2/scale)**2
+
+    g1_2 = eratio*g1+eoffset
+    g2_2 = eratio*g2-eoffset
+
     # centers are actually ignored when creating the convolved
     # image
     pars1=numpy.array([-1., -1., g1, g2, Tpix, counts1_pix])
-    pars2=numpy.array([-1., -1., g1, g2, Tpix, counts2_pix])
+    pars2=numpy.array([-1., -1., g1_2, g2_2, Tpix_2, counts2_pix])
+
     epars1=get_estyle_pars(pars1)
     epars2=get_estyle_pars(pars2)
     gmix1=GMix(epars1,type=model)
@@ -1765,22 +1776,20 @@ def test_multi_color(s2n=100.,
     s2n_uw15 = s2n_uw_sum/nimages
     # starting guess in pixel coords, origin in uv space
     # all are the same for this simple test
-    cen0=cen1
     gm1=GMixFitSimpleMulti(imlist1,
                            wtlist1,
                            jacoblist1,
                            psflist1,
-                           cen0,
+                           cen1,
                            model)
     res1=gm1.get_result()
     pars1=res1['pars']
 
-    cen0_flux=pars1[0:0+2]
     gm2=GMixFitFluxMulti(imlist2,
                          wtlist2,
                          jacoblist2,
                          psflist2,
-                         cen0,
+                         cen2,
                          model,
                          pars1)
     res2=gm2.get_result()
