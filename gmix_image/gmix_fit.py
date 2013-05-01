@@ -20,6 +20,8 @@ from . import _render
 from . import gmix
 from .gmix import GMix, GMixCoellip
 
+HIGHVAL=9.999e9
+
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
 GMIXFIT_NEG_COV_EIG     = 2**5
@@ -53,8 +55,6 @@ class GMixFitSimple:
 
         self.counts=self.image.sum()
         self.lm_max_try=10
-
-        self.highval=9.999e9
 
         self.gprior=keys.get('gprior',None)
         self.gprior_like=keys.get('gprior_like',False)
@@ -121,7 +121,7 @@ class GMixFitSimple:
 
         epars=get_estyle_pars(pars)
         if epars is None:
-            ydiff[:] = self.highval
+            ydiff[:] = HIGHVAL
             return ydiff
 
         gmix=self._get_convolved_gmix(epars)
@@ -143,12 +143,12 @@ class GMixFitSimple:
         if gp > 0:
             gp = log(gp)
         else:
-            ydiff[:] = self.highval
+            ydiff[:] = HIGHVAL
             return ydiff
 
         epars=get_estyle_pars(pars)
         if epars is None:
-            ydiff[:] = self.highval
+            ydiff[:] = HIGHVAL
             return ydiff
 
         gmix=self._get_convolved_gmix(epars)
@@ -268,6 +268,9 @@ class GMixFitSimpleMulti:
     """
     6 parameter models.  works in g1,g2 space.
     Work in sky coords
+
+    Note the starting center will at the same location in each of the
+    images and equal cen0.
     """
     def __init__(self, imlist, wtlist, jacoblist, psflist, cen0, model,
                  **keys):
@@ -282,7 +285,6 @@ class GMixFitSimpleMulti:
 
         self._set_counts()
         self.lm_max_try=10
-        self.highval=9.999e9
 
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
@@ -298,6 +300,9 @@ class GMixFitSimpleMulti:
         return self._result
 
     def get_gmix(self):
+        """
+        Get the best fit gmix, not convolved
+        """
         pars=self._result['pars']
         epars=get_estyle_pars(pars)
         gmix=GMix(epars, type=self.model)
@@ -380,22 +385,24 @@ class GMixFitSimpleMulti:
         """
 
         epars=self._pars2convert(pars2)
-        gmix_list=self._get_gmix_list(epars)
-        return self._get_lm_ydiff_generic(gmix_list)
+        return self._get_lm_ydiff_generic_epars(epars)
 
     def _get_lm_ydiff_full(self, pars):
         """
         pars are [T,counts]
         """
         epars=get_estyle_pars(pars)
+        return self._get_lm_ydiff_generic_epars(epars)
+    
+    def _get_lm_ydiff_generic_epars(self, epars):
         if epars is None:
             ydiffall = zeros(self.totpix, dtype='f8')
-            ydiffall[:] = self.highval
+            ydiffall[:] = HIGHVAL
             return ydiffall
 
         gmix_list=self._get_gmix_list(epars)
         return self._get_lm_ydiff_generic(gmix_list)
-    
+
     def _get_lm_ydiff_generic(self, gmix_list):
         """
         Take in a list of full gmix objects and calculate
@@ -572,7 +579,7 @@ class GMixFitSimpleMulti:
         from . import render
         import scipy.stats
 
-        npars=self.npars
+        npars=len(pars)
 
         s2n_numer=0.
         s2n_denom=0.
@@ -626,8 +633,162 @@ class GMixFitSimpleMulti:
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
         """
-        ydiff = self._get_lm_ydiff_full(pars)
-        dof   = self.totpix-self.npars
+        epars=get_estyle_pars(pars)
+        ydiff = self._get_lm_ydiff_generic_epars(epars)
+        dof   = self.totpix-len(pars)
+
+        s_sq = (ydiff**2).sum()/dof
+        return pcov * s_sq 
+
+class GMixFitFluxMulti(GMixFitSimpleMulti):
+    """
+    6 parameter model, only letting the total flux vary.  The center of the
+    model should be relative the (0,0) coordinate center in uv space, which
+    corresponds to cen0, the coord system center in pixel coords.  Make sure
+    cen0 is the same as used for the reference fit!
+
+    Note the center of the coord system will be at the same location in each
+    of the images and equal cen0.  The center in the uv plan will be taken
+    from pars0 and will not change
+    """
+    def __init__(self, imlist, wtlist, jacoblist, psflist, cen0, model, pars0,
+                 **keys):
+        self.npars=1
+        self.imlist=self._get_imlist(imlist)
+        self.wtlist=self._get_imlist(wtlist)
+
+        self.jacoblist=jacoblist
+        self.psflist=psflist
+        self.cen0=cen0  # starting center and center of coord system
+        self.pars0=numpy.array(pars0,dtype='f8')
+
+        epars0=get_estyle_pars(pars0)
+        if epars0 is None:
+            raise ValueError("input pars are not valid")
+        self.epars0=epars0
+
+        self.model=model
+
+        self._set_counts()
+        self.lm_max_try=10
+
+        self.nimage=len(self.imlist)
+        self.imsize=self.imlist[0].size
+        self.totpix=self.nimage*self.imsize
+
+        self._dofit()
+
+    def _dofit(self):
+        """
+        Do a levenberg-marquardt
+        """
+        from scipy.optimize import leastsq
+
+        ntry=self.lm_max_try
+        for i in xrange(1,ntry+1):
+
+            guess=self._get_guess()
+
+            lmres = leastsq(self._get_lm_ydiff_flux, guess, full_output=1)
+
+            res=self._calc_lm_results(lmres)
+
+            if res['flags']==0:
+                break
+
+        if i == ntry:
+            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+
+        self._result=res
+
+    def _get_lm_ydiff_flux(self, pars1):
+        """
+        pars1 are [counts]
+        """
+
+        epars=self._pars1convert(pars1)
+        return self._get_lm_ydiff_generic_epars(epars)
+
+    def _pars1convert(self, pars1):
+        epars=self.epars0.copy()
+        epars[-1] = pars1[0]
+        return epars
+
+    def _get_guess(self):
+        guess=numpy.array([self.pars0[-1]],dtype='f8')
+        guess[0] = guess[0]*(1.+0.05*srandu())
+        return guess
+
+    def _calc_lm_results(self, lmres):
+
+        res={'model':self.model, 'restype': 'lm'}
+
+        pars, pcov0, infodict, errmsg, ier = lmres
+
+        if ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(errmsg)
+
+        res['pars'] = pars
+        res['pcov0'] = pcov0
+        res['numiter'] = infodict['nfev']
+        res['errmsg'] = errmsg
+        res['ier'] = ier
+        res['Fmean']=pars[0]
+
+        pcov=None
+        perr=None
+        if pcov0 is not None:
+            pcov = self._scale_leastsq_cov_1par(pars, pcov0)
+
+            d=diag(pcov)
+            w,=where(d < 0)
+
+            if w.size == 0:
+                # only do if non negative
+                perr = sqrt(d)
+
+        flags = 0
+        if ier > 4:
+            flags = 2**(ier-5)
+
+        if pcov is None:
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(pcov)
+            weig,=where(e < 0)
+            if weig.size > 0:
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(pcov) < 0)
+            if wneg.size > 0:
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+
+        res['flags']=flags
+
+        res['Ferr']=9999.
+        res['allpars'] = None
+        if res['flags']==0:
+            res['Ferr']  = perr[0]
+
+            allpars=self.pars0.copy()
+            allpars[-1] = pars[0]
+            res['allpars'] = allpars
+
+            stats=self._get_stats(allpars)
+            res.update(stats)
+
+        return res
+
+    def _scale_leastsq_cov_1par(self, pars1, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        epars=self._pars1convert(pars1)
+        ydiff = self._get_lm_ydiff_generic_epars(epars)
+        dof   = self.totpix-len(pars1)
 
         s_sq = (ydiff**2).sum()/dof
         return pcov * s_sq 
@@ -661,7 +822,6 @@ class GMixFitPSFJacob(GMixFitSimpleMulti):
         self.counts=self.image.sum()
 
         self.lm_max_try=10
-        self.highval=9.999e9
 
         self._fit_round_fixcen()
         self._fit_full()
@@ -672,22 +832,24 @@ class GMixFitPSFJacob(GMixFitSimpleMulti):
         """
 
         epars=self._pars2convert(pars2)
-        gmix=GMixCoellip(epars)
-        return self._get_lm_ydiff_generic(gmix)
+        return self._get_lm_ydiff_generic_epars(epars)
 
     def _get_lm_ydiff_full(self, pars):
         """
         pars are [T,counts]
         """
         epars=get_estyle_pars(pars)
+        return self._get_lm_ydiff_generic_epars(epars)
+ 
+    def _get_lm_ydiff_generic_epars(self, epars):
         if epars is None:
             ydiff = zeros(self.totpix, dtype='f8')
-            ydiff[:] = self.highval
+            ydiff[:] = HIGHVAL
             return ydiff
 
         gmix=GMixCoellip(epars)
         return self._get_lm_ydiff_generic(gmix)
- 
+
     def _get_lm_ydiff_generic(self, gmix):
         """
         Take in a list of full gmix objects and calculate
@@ -1358,96 +1520,6 @@ def ellip2eta(ellip):
 def get_ngauss_coellip(pars):
     return (len(pars)-4)/2
 
-
-def test_multi(s2n=100.,
-               sigma=4.0,
-               psf_s2n=1.e8,
-               psf_sigma=2.0,
-               psf_ngauss_fit=2,
-               counts=100., 
-               model='gexp',
-               nimages=3,
-               scale=0.27,
-               randpsf=False):
-    """
-    psf is fit in pixel space, so need in future
-    to transform the gaussian moments into uv space before
-    sending to the multi-fitter
-
-    get around this for now using an identity jacobian
-
-    """
-    import fimage
-
-    s2n_per=s2n/sqrt(nimages)
-
-    # for simulation, in pixels
-    Tpsf0_pix=2*(psf_sigma/scale)**2
-    Tpix=2*(sigma/scale)**2
-    counts_pix=counts/(scale*scale)
-
-    g1=0.0
-    g2=0.0
-
-    # centers are actually ignored when creating the convolved
-    # image
-    pars=numpy.array([-1., -1., g1, g2, Tpix, counts_pix])
-    epars=get_estyle_pars(pars)
-    gmix=GMix(epars,type=model)
-
-    imlist=[]
-    wtlist=[]
-    psflist=[]
-    jacoblist=[]
-    s2n_uw_sum=0.
-    for i in xrange(nimages):
-        jacob={'dudrow':scale, 'dudcol':0.0,
-               'dvdrow':0.0,   'dvdcol':scale}
-        if randpsf:
-            e1psf=0.1*srandu()
-            e2psf=0.1*srandu()
-            Tpsf=Tpsf0_pix*(1.+0.1*srandu())
-            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
-        else:
-            e1psf=-0.05
-            e2psf=-0.07
-            Tpsf=Tpsf0_pix
-            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
-
-        ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
-        cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
-                                                   s2n_method='admom')
-        aperture=1.5/scale # 1.5 arcsec
-        rad=aperture/2.
-        s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
-                                                       ci['cen'], rad)
-
-        # fit to PSF in pixel coords
-        psf_ivar=1./cin['skysig_psf']**2
-        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
-        gmix_psf=gm_psf.get_gmix()
-
-        wt=cin.image.copy()
-        wt = 0.0*wt + 1./cin['skysig']**2
-
-        imlist.append(cin.image) 
-        wtlist.append(wt)
-        # using exact psf
-        psflist.append(gmix_psf)
-        jacoblist.append(jacob)
-        
-    s2n_uw = s2n_uw_sum/nimages
-    # starting guess in pixel coords, origin in uv space
-    cen0=ci['cen']
-    gm=GMixFitSimpleMulti(imlist,
-                          wtlist,
-                          jacoblist,
-                          psflist,
-                          cen0,
-                          model)
-    #return gm._round_fixcen_pars
-    return gm.get_result(), s2n_uw
-
 def test_simple(s2n=100.,
                 psf_sigma=2.0,
                 sigma=4.0,
@@ -1501,3 +1573,218 @@ def test_simple(s2n=100.,
                      model,
                      ares)
     return gm.get_result()
+
+def test_multi(s2n=100.,
+               sigma=4.0,
+               psf_s2n=1.e8,
+               psf_sigma=2.0,
+               psf_ngauss_fit=2,
+               g1=0.0,
+               g2=0.0,
+               counts=100., 
+               model='gexp',
+               nimages=3,
+               scale=0.27,
+               randpsf=False):
+    """
+    psf is fit in pixel space, so need in future
+    to transform the gaussian moments into uv space before
+    sending to the multi-fitter
+
+    get around this for now using an identity jacobian
+
+    """
+    import fimage
+
+    s2n_per=s2n/sqrt(nimages)
+
+    # for simulation, in pixels
+    Tpsf0_pix=2*(psf_sigma/scale)**2
+    Tpix=2*(sigma/scale)**2
+    counts_pix=counts/(scale*scale)
+
+    # centers are actually ignored when creating the convolved
+    # image
+    pars=numpy.array([-1., -1., g1, g2, Tpix, counts_pix])
+    epars=get_estyle_pars(pars)
+    gmix=GMix(epars,type=model)
+
+    imlist=[]
+    wtlist=[]
+    psflist=[]
+    jacoblist=[]
+
+    s2n_uw_sum=0.
+    aperture=1.5/scale # 1.5 arcsec diameter
+    rad=aperture/2.
+    for i in xrange(nimages):
+        jacob={'dudrow':scale, 'dudcol':0.0,
+               'dvdrow':0.0,   'dvdcol':scale}
+        if randpsf:
+            e1psf=0.1*srandu()
+            e2psf=0.1*srandu()
+            Tpsf=Tpsf0_pix*(1.+0.1*srandu())
+            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
+        else:
+            e1psf=-0.05
+            e2psf=-0.07
+            Tpsf=Tpsf0_pix
+            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
+
+        ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
+        cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
+                                                   s2n_method='admom')
+        s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
+                                                       ci['cen'], rad)
+
+        psf_ivar=1./cin['skysig_psf']**2
+        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
+        gmix_psf=gm_psf.get_gmix()
+
+        wt=cin.image.copy()
+        wt = 0.0*wt + 1./cin['skysig']**2
+
+        imlist.append(cin.image) 
+        wtlist.append(wt)
+        psflist.append(gmix_psf)
+        jacoblist.append(jacob)
+        
+    s2n_uw15 = s2n_uw_sum/nimages
+    # starting guess in pixel coords, origin in uv space
+    cen0=ci['cen']
+    gm=GMixFitSimpleMulti(imlist,
+                          wtlist,
+                          jacoblist,
+                          psflist,
+                          cen0,
+                          model)
+    #return gm._round_fixcen_pars
+    return gm.get_result(), s2n_uw15
+
+def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad):
+    import fimage
+    e1psf=0.1*srandu()
+    e2psf=0.1*srandu()
+    Tpsf=Tpsf0_pix*(1.+0.1*srandu())
+    gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
+
+    ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
+    cin = fimage.convolved.NoisyConvolvedImage(ci, s2n, psf_s2n,
+                                                s2n_method='admom')
+    s2n_uw = fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
+                                              ci['cen'], rad)
+
+    psf_ivar=1./cin['skysig_psf']**2
+    gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
+    gmix_psf=gm_psf.get_gmix()
+
+    wt=cin.image.copy()
+    wt = 0.0*wt + 1./cin['skysig']**2
+
+    return cin.image, wt, gmix_psf, s2n_uw, cin['cen']
+
+                
+def test_multi_color(s2n=100.,
+                     sigma=4.0,
+                     psf_s2n=1.e8,
+                     psf_sigma=2.0,
+                     psf_ngauss_fit=2,
+                     g1=0.0,
+                     g2=0.0,
+                     counts1=100., 
+                     counts2=250.,
+                     model='gexp',
+                     nimages=3,
+                     scale=0.27):
+    """
+    psf is fit in pixel space, so need in future
+    to transform the gaussian moments into uv space before
+    sending to the multi-fitter
+
+    get around this for now using an identity jacobian
+
+    """
+    import fimage
+
+    s2n_per=s2n/sqrt(nimages)
+
+    # for simulation, in pixels
+    Tpsf0_pix=2*(psf_sigma/scale)**2
+    Tpix=2*(sigma/scale)**2
+    counts1_pix=counts1/(scale*scale)
+    counts2_pix=counts2/(scale*scale)
+
+    # centers are actually ignored when creating the convolved
+    # image
+    pars1=numpy.array([-1., -1., g1, g2, Tpix, counts1_pix])
+    pars2=numpy.array([-1., -1., g1, g2, Tpix, counts2_pix])
+    epars1=get_estyle_pars(pars1)
+    epars2=get_estyle_pars(pars2)
+    gmix1=GMix(epars1,type=model)
+    gmix2=GMix(epars2,type=model)
+
+    imlist1=[]
+    wtlist1=[]
+    psflist1=[]
+    jacoblist1=[]
+
+    imlist2=[]
+    wtlist2=[]
+    psflist2=[]
+    jacoblist2=[]
+
+    s2n_uw_sum=0.
+    aperture=1.5/scale # 1.5 arcsec diameter
+    rad=aperture/2.
+    for i in xrange(nimages):
+
+        # image 1
+        jacob1={'dudrow':scale, 'dudcol':0.0,
+                'dvdrow':0.0,   'dvdcol':scale}
+        im1, wt1, gmix_psf1,s2n_uw1,cen1=\
+                _make_data(jacob1,gmix1,Tpsf0_pix, s2n_per,psf_s2n,
+                           psf_ngauss_fit,rad)
+        jacob2={'dudrow':scale, 'dudcol':0.0,
+                'dvdrow':0.0,   'dvdcol':scale}
+        im2, wt2, gmix_psf2,s2n_uw2,cen2=\
+                _make_data(jacob2,gmix2,Tpsf0_pix, s2n_per,psf_s2n,
+                           psf_ngauss_fit,rad)
+
+        s2n_uw_sum += s2n_uw1
+
+        imlist1.append(im1) 
+        wtlist1.append(wt1)
+        psflist1.append(gmix_psf1)
+        jacoblist1.append(jacob1)
+
+        imlist2.append(im2) 
+        wtlist2.append(wt2)
+        psflist2.append(gmix_psf2)
+        jacoblist2.append(jacob2)
+
+    s2n_uw15 = s2n_uw_sum/nimages
+    # starting guess in pixel coords, origin in uv space
+    # all are the same for this simple test
+    cen0=cen1
+    gm1=GMixFitSimpleMulti(imlist1,
+                           wtlist1,
+                           jacoblist1,
+                           psflist1,
+                           cen0,
+                           model)
+    res1=gm1.get_result()
+    pars1=res1['pars']
+
+    cen0_flux=pars1[0:0+2]
+    gm2=GMixFitFluxMulti(imlist2,
+                         wtlist2,
+                         jacoblist2,
+                         psflist2,
+                         cen0,
+                         model,
+                         pars1)
+    res2=gm2.get_result()
+    #return gm._round_fixcen_pars
+    return res1,res2,s2n_uw15
+
+
