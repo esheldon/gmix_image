@@ -1386,6 +1386,8 @@ def test_multi(s2n=100.,
     """
     import fimage
 
+    s2n_per=s2n/sqrt(nimages)
+
     # for simulation, in pixels
     Tpsf0_pix=2*(psf_sigma/scale)**2
     Tpix=2*(sigma/scale)**2
@@ -1419,7 +1421,7 @@ def test_multi(s2n=100.,
             gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
 
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
-        cin = fimage.convolved.NoisyConvolvedImage(ci, s2n, psf_s2n,
+        cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
                                                    s2n_method='admom')
 
         # fit to PSF in pixel coords
