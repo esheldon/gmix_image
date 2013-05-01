@@ -1399,6 +1399,7 @@ def test_multi(s2n=100.,
     wtlist=[]
     psflist=[]
     jacoblist=[]
+    s2n_uw_sum=0.
     for i in xrange(nimages):
         jacob={'dudrow':scale, 'dudcol':0.0,
                'dvdrow':0.0,   'dvdcol':scale}
@@ -1416,6 +1417,10 @@ def test_multi(s2n=100.,
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
                                                    s2n_method='admom')
+        aperture=1.5/scale # 1.5 arcsec
+        rad=aperture/2.
+        s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
+                                                       ci['cen'], rad)
 
         # fit to PSF in pixel coords
         psf_ivar=1./cin['skysig_psf']**2
@@ -1431,6 +1436,7 @@ def test_multi(s2n=100.,
         psflist.append(gmix_psf)
         jacoblist.append(jacob)
         
+    s2n_uw = s2n_uw_sum/nimages
     # starting guess in pixel coords, origin in uv space
     cen0=ci['cen']
     gm=GMixFitSimpleMulti(imlist,
@@ -1440,7 +1446,7 @@ def test_multi(s2n=100.,
                           cen0,
                           model)
     #return gm._round_fixcen_pars
-    return gm.get_result()
+    return gm.get_result(), s2n_uw
 
 def test_simple(s2n=100.,
                 psf_sigma=2.0,
