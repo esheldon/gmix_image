@@ -320,6 +320,7 @@ class GMixFitCoellip:
                  Tpositive=True,
                  model='coellip',
                  nsub=1,
+                 estyle='e',
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
@@ -327,6 +328,7 @@ class GMixFitCoellip:
         self.ivar=self.ierr**2
         self.prior=prior
         self.width=width
+        self.estyle=estyle
 
         self.verbose=verbose
 
@@ -514,52 +516,43 @@ class GMixFitCoellip:
 
         return True
 
-    def _get_model(self, epars):
-        gmix=self._get_gmix(epars)
+    def _get_model(self, pars):
+        gmix=self._get_gmix(pars)
         model=gmix2image(gmix, self.image.shape, nsub=self.nsub)
         return model
 
-    def _get_gmix(self, epars):
+    def _get_gmix(self, pars):
         if self.psf_gmix is not None:
-            gmix=self._get_convolved_gmix(epars)
+            gmix=self._get_convolved_gmix(pars)
         else:
-            gmix=self.pars2gmix(epars)
+            gmix=self.pars2gmix(pars)
         return gmix
 
-    def _get_convolved_gmix(self, epars):
-        """
-        epars must be in e1,e2 space
-        """
-        gmix0=GMix(epars, type=self.model)
+    def _get_convolved_gmix(self, pars):
+        gmix0=self.pars2gmix(pars)
         gmix=gmix0.convolve(self.psf_gmix)
         return gmix
 
 
-
-
     def pars2gmix(self, pars):
         from . import gmix
+
+        if self.estyle=='g':
+            epars=get_estyle_pars(pars)
+        else:
+            epars=pars
+
         if self.model=='gdev':
-            return gmix.GMixDev(pars)
+            return gmix.GMixDev(epars)
         elif self.model=='gexp':
-            return gmix.GMixExp(pars)
+            return gmix.GMixExp(epars)
         elif self.model=='coellip-Tfrac':
-            return gmix.GMix(pars, type=gmix.GMIX_COELLIP_TFRAC)
+            return gmix.GMix(epars, type=gmix.GMIX_COELLIP_TFRAC)
         elif self.model=='coellip':
-            return gmix.GMixCoellip(pars)
+            return gmix.GMixCoellip(epars)
         else:
             raise ValueError("bad model: '%s'" % self.model)
 
-    '''
-    def scale_leastsq_cov(self, pars, pcov):
-        """
-        Scale the covariance matrix returned from leastsq; this will
-        recover the covariance of the parameters in the right units.
-        """
-        dof = (self.image.size-len(pars))
-        s_sq = (self.get_ydiff(pars)**2).sum()/dof
-        return pcov * s_sq 
-    '''
 
     def scale_leastsq_cov(self, pars, pcov):
         """
