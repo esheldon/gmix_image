@@ -1,7 +1,9 @@
 #include <Python.h>
 #include <numpy/arrayobject.h> 
+#include <alloca.h>
 
 #include "gvec.h"
+#include "jacobian.h"
 #include "image.h"
 #include "bound.h"
 #include "defs.h"
@@ -325,6 +327,35 @@ static PyObject *PyGVecObject_set_cen(struct PyGVecObject* self, PyObject *args)
     Py_XINCREF(Py_None);
     return Py_None;
 }
+
+// apply the jacobian.  irr becomes iuu and icc becomes ivv
+static
+PyObject *PyGVecObject_apply_jacobian(struct PyGVecObject* self,PyObject *args)
+{
+    double dudrow,dudcol,dvdrow,dvdcol;
+    size_t i=0;
+    struct gauss *g=NULL;
+    double A=0,B=0,C=0,D=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"dddd", 
+                &dudrow, &dudcol, &dvdrow, &dvdcol)) {
+        return NULL;
+    }
+
+    for (i=0; i<self->gvec->size; i++) {
+        g=&self->gvec->data[i];
+
+        A=g->irr*dudrow + g->irc*dvdrow;
+        B=g->irr*dudcol + g->irc*dvdcol;
+        C=g->irc*dudrow + g->icc*dvdrow;
+        D=g->irc*dudcol + g->icc*dvdcol;
+
+    }
+
+    Py_XINCREF(Py_None);
+    return Py_None;
+}
+
 
 static PyObject *PyGVecObject_get_e1e2T(struct PyGVecObject* self)
 {
@@ -730,6 +761,104 @@ _fill_ydiff_bail:
 
 }
 
+// fill in (model-data)/err
+// gvec centers should be in the u,v plane
+static int
+fill_ydiff_jacob(const struct image *image,
+                 double ivar,
+                 const struct jacobian *jacob,
+                 double row0, double col0,
+                 const struct gvec *gvec,
+                 struct image *diff_image)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    ssize_t col=0, row=0;
+    double ierr=0;
+
+    double model_val=0, pixval=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_ydiff_jacob_bail;
+    }
+
+    ierr=sqrt(ivar);
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+            pixval=IM_GET(image, row, col);
+
+            diff = model_val - pixval;
+            diff *= ierr;
+
+            IM_SETFAST(diff_image, row, col, diff);
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+        } // cols
+    } // rows
+
+_fill_ydiff_jacob_bail:
+    return flags;
+
+}
+
+
+// fill in (model-data)/err
+// gvec centers should be in the u,v plane
+static int
+fill_ydiff_wt_jacob(const struct image *image,
+                    const struct image *weight,
+                    const struct jacobian *jacob,
+                    double row0, double col0,
+                    const struct gvec *gvec,
+                    struct image *diff_image)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0;
+    double chi2=0, diff=0;
+    ssize_t col=0, row=0;
+
+    double model_val=0, pixval=0, ivar=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_ydiff_wt_jacob_bail;
+    }
+
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            diff *= sqrt(ivar);
+
+            IM_SETFAST(diff_image, row, col, diff);
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+        } // cols
+    } // rows
+
+
+_fill_ydiff_wt_jacob_bail:
+    return flags;
+
+}
+
 
 
 
@@ -957,6 +1086,7 @@ static int calculate_loglike(struct image *image,
                 u = row-gauss->row;
                 v = col-gauss->col;
 
+                // u is rowdiff, v is coldiff
                 chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
                 //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
                 if (chi2 < EXP_MAX_CHI2) {
@@ -981,6 +1111,186 @@ static int calculate_loglike(struct image *image,
 
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
+    return flags;
+}
+
+
+// using a weight image and jacobian.  Not tested.
+// row0,col0 is center of coordinate system
+// gvec centers should be in the u,v plane
+// combine s2n_numer and s2n_denom as below
+// can sum over multiple images
+//s2n = s2n_numer/sqrt(s2n_denom);
+
+static 
+int calculate_loglike_wt_jacob(const struct image *image, 
+                               const struct image *weight,
+                               const struct jacobian *jacob,
+                               double row0, double col0,
+                               const struct gvec *gvec, 
+                               double *s2n_numer,
+                               double *s2n_denom,
+                               double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0, ud=0, vd=0;
+    double chi2=0, diff=0;
+    ssize_t col=0, row=0;
+
+    double model_val=0;
+    double pixval=0, ivar=0;
+    int flags=0;
+
+    (*s2n_numer)=0;
+    (*s2n_denom)=0;
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_wt_jacob_bail;
+    }
+
+    (*loglike)=0;
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            (*loglike) += diff*diff*ivar;
+
+            (*s2n_numer) += pixval*model_val*ivar;
+            (*s2n_denom) += model_val*model_val*ivar;
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+
+_calculate_loglike_wt_jacob_bail:
+    return flags;
+}
+
+// row0,col0 is center of coordinate system
+// gvec centers should be in the u,v plane
+// combine s2n_numer and s2n_denom as below
+// can sum over multiple images
+//s2n = s2n_numer/sqrt(s2n_denom);
+
+static 
+int calculate_loglike_jacob(const struct image *image, 
+                            double ivar,
+                            const struct jacobian *jacob,
+                            double row0, double col0,
+                            const struct gvec *gvec, 
+                            double *s2n_numer,
+                            double *s2n_denom,
+                            double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0, ud=0, vd=0;
+    double chi2=0, diff=0, ierr=0;
+    ssize_t col=0, row=0;
+
+    double model_val=0, pixval=0;
+    int flags=0;
+
+    (*s2n_numer)=0;
+    (*s2n_denom)=0;
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_jacob_bail;
+    }
+
+    (*loglike)=0;
+    ierr=sqrt(ivar);
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
+        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+
+            pixval=IM_GET(image, row, col);
+
+            diff = model_val - pixval;
+            (*loglike) += diff*diff*ivar;
+
+            (*s2n_numer) += pixval*model_val*ivar;
+            (*s2n_denom) += model_val*model_val*ivar;
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+
+_calculate_loglike_jacob_bail:
+    return flags;
+}
+
+
+// using a weight image.  Not tested.
+// combine s2n_numer and s2n_denom as below
+// can sum over multiple images
+//s2n = s2n_numer/sqrt(s2n_denom);
+static 
+int calculate_loglike_wt(const struct image *image, 
+                         const struct image *weight,
+                         const struct gvec *gvec, 
+                         double *s2n_numer,
+                         double *s2n_denom,
+                         double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    struct gauss *gauss=NULL;
+    double u=0, v=0, rd=0, cd=0;
+    double chi2=0, diff=0;
+    size_t col=0, row=0;
+
+    double model_val=0, pixval=0, ivar=0;
+    int flags=0;
+
+    (*s2n_numer)=0;
+    (*s2n_denom)=0;
+    if (!gvec_verify(gvec)) {
+        *loglike=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_wt_bail;
+    }
+
+    (*loglike)=0;
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            model_val=GVEC_EVAL(gvec, u, v);
+
+            pixval=IM_GET(image, row, col);
+            ivar=IM_GET(weight, row, col);
+            if (ivar < 0) ivar=0.0; // fpack...
+
+            diff = model_val - pixval;
+            (*loglike) += diff*diff*ivar;
+
+            (*s2n_numer) += pixval*model_val*ivar;
+            (*s2n_denom) += model_val*model_val*ivar;
+
+        } // cols
+    } // rows
+
+    (*loglike) *= (-0.5);
+
+_calculate_loglike_wt_bail:
     return flags;
 }
 
@@ -1340,6 +1650,142 @@ PyGMixFit_fill_ydiff(PyObject *self, PyObject *args)
     // does not free underlying array
     image = image_free(image);
     diff = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+
+/*
+
+   (model-data)/err
+
+   for use in the LM algorithm
+
+   using jacobian in u,v space
+*/
+static PyObject *
+PyGMixFit_fill_ydiff_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    double ivar=0;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    PyObject *gvec_pyobj=NULL;
+    PyObject* diff_obj=NULL;
+
+    struct PyGVecObject *gvec_obj=NULL;
+    struct image *image=NULL, *weight=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    struct jacobian jacob;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OdddddddOO", 
+                &image_obj,
+                &ivar,
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &gvec_pyobj,
+                &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    diff = associate_image(diff_obj, dims[0], dims[1]);
+
+    jacob.dudrow=dudrow;
+    jacob.dudcol=dudcol;
+    jacob.dvdrow=dvdrow;
+    jacob.dvdcol=dvdcol;
+
+    flags=fill_ydiff_jacob(image, ivar, &jacob, row0, col0,
+                           gvec_obj->gvec, diff);
+
+    // does not free underlying array
+    image  = image_free(image);
+    diff   = image_free(diff);
+
+    return PyInt_FromLong(flags);
+}
+
+
+
+/*
+
+   (model-data)/err
+
+   for use in the LM algorithm
+
+   using jacobian in u,v space and weight image
+*/
+static PyObject *
+PyGMixFit_fill_ydiff_wt_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* weight_obj=NULL;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    PyObject *gvec_pyobj=NULL;
+    PyObject* diff_obj=NULL;
+
+    struct PyGVecObject *gvec_obj=NULL;
+    struct image *image=NULL, *weight=NULL;
+    struct image *diff=NULL;
+    npy_intp *dims=NULL;
+
+    struct jacobian jacob;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOddddddOO", 
+                &image_obj,
+                &weight_obj,
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &gvec_pyobj,
+                &diff_obj)) {
+        return NULL;
+    }
+
+    if (!check_image_and_diff(image_obj,diff_obj)) {
+        return NULL;
+    }
+    if (!check_numpy_image(weight_obj)) {
+        PyErr_SetString(PyExc_IOError,
+                "weight image must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    weight = associate_image(weight_obj, dims[0], dims[1]);
+    diff = associate_image(diff_obj, dims[0], dims[1]);
+
+    jacob.dudrow=dudrow;
+    jacob.dudcol=dudcol;
+    jacob.dvdrow=dvdrow;
+    jacob.dvdcol=dvdcol;
+
+    flags=fill_ydiff_wt_jacob(image, weight, &jacob, row0, col0,
+                              gvec_obj->gvec, diff);
+
+    // does not free underlying array
+    image  = image_free(image);
+    weight = image_free(weight);
+    diff   = image_free(diff);
 
     return PyInt_FromLong(flags);
 }
@@ -1773,6 +2219,147 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 
 
 static PyObject *
+PyGMixFit_loglike_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    double ivar=0;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    PyObject* gvec_pyobj=NULL;
+
+    double loglike=0, s2n_numer=0, s2n_denom=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    struct jacobian jacob;
+    struct PyGVecObject *gvec_obj=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OdddddddO", 
+                &image_obj,
+                &ivar,
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &gvec_pyobj)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    jacob.dudrow=dudrow;
+    jacob.dudcol=dudcol;
+    jacob.dvdrow=dvdrow;
+    jacob.dvdcol=dvdcol;
+
+    flags=calculate_loglike_jacob(image,
+                                  ivar,
+                                  &jacob,
+                                  row0,col0,
+                                  gvec_obj->gvec,
+                                  &s2n_numer,
+                                  &s2n_denom,
+                                  &loglike);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    tup = PyTuple_New(4);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n_numer));
+    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(s2n_denom));
+    PyTuple_SetItem(tup, 3, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
+
+
+static PyObject *
+PyGMixFit_loglike_wt_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject* image_obj=NULL;
+    PyObject* weight_obj=NULL;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    PyObject* gvec_pyobj=NULL;
+
+    double loglike=0, s2n_numer=0, s2n_denom=0;
+    PyObject *tup=NULL;
+
+    struct image *image=NULL;
+    struct image *weight=NULL;
+    struct jacobian jacob;
+    struct PyGVecObject *gvec_obj=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOddddddO", 
+                &image_obj,
+                &weight_obj,
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &gvec_pyobj)) {
+        return NULL;
+    }
+
+    if (!check_numpy_image(image_obj)) {
+        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+    if (!check_numpy_image(weight_obj)) {
+        PyErr_SetString(PyExc_IOError, "weight input must be a 2D double PyArrayObject");
+        return NULL;
+    }
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+    weight = associate_image(weight_obj, dims[0], dims[1]);
+
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    jacob.dudrow=dudrow;
+    jacob.dudcol=dudcol;
+    jacob.dvdrow=dvdrow;
+    jacob.dvdcol=dvdcol;
+
+    flags=calculate_loglike_wt_jacob(image,
+                                     weight,
+                                     &jacob,
+                                     row0,col0,
+                                     gvec_obj->gvec,
+                                     &s2n_numer,
+                                     &s2n_denom,
+                                     &loglike);
+
+    // does not free underlying array
+    image = image_free(image);
+    weight = image_free(weight);
+
+    tup = PyTuple_New(4);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n_numer));
+    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(s2n_denom));
+    PyTuple_SetItem(tup, 3, PyInt_FromLong((long)flags));
+
+    return tup;
+}
+
+
+
+static PyObject *
 PyGMixFit_loglike_subgrid(PyObject *self, PyObject *args) 
 {
     PyObject* image_obj=NULL;
@@ -2043,6 +2630,8 @@ static PyMethodDef render_module_methods[] = {
     {"fill_model_bbox", (PyCFunction)PyGMixFit_fill_model_bbox,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff", (PyCFunction)PyGMixFit_fill_ydiff,  METH_VARARGS,  "fill diff from gmix"},
+    {"fill_ydiff_jacob", (PyCFunction)PyGMixFit_fill_ydiff_jacob,  METH_VARARGS,  "fill diff with weight image and jacobian"},
+    {"fill_ydiff_wt_jacob", (PyCFunction)PyGMixFit_fill_ydiff_wt_jacob,  METH_VARARGS,  "fill diff with weight image and jacobian"},
     {"fill_ydiff_coellip", (PyCFunction)PyGMixFit_fill_ydiff_coellip,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff_dev10", (PyCFunction)PyGMixFit_fill_ydiff_dev10,  METH_VARARGS,  "fill the dev model image"},
     {"fill_ydiff_exp4", (PyCFunction)PyGMixFit_fill_ydiff_exp4,  METH_VARARGS,  "fill the exp model image"},
@@ -2056,6 +2645,8 @@ static PyMethodDef render_module_methods[] = {
 
 
     {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc full log likelihood"},
+    {"loglike_jacob", (PyCFunction)PyGMixFit_loglike_jacob,  METH_VARARGS,  "calc full log likelihood"},
+    {"loglike_wt_jacob", (PyCFunction)PyGMixFit_loglike_wt_jacob,  METH_VARARGS,  "calc full log likelihood"},
     {"loglike_subgrid", (PyCFunction)PyGMixFit_loglike_subgrid,  METH_VARARGS,  "calc full log likelihood"},
     {NULL}  /* Sentinel */
 };

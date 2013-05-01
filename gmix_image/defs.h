@@ -11,7 +11,7 @@
 
 #define EXP_MAX_CHI2 200
 
-#define DEBUG
+//#define DEBUG
 //#define DEBUG2
 
 #ifdef DEBUG

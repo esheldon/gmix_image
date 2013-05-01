@@ -76,7 +76,7 @@ void gvec_set_dets(struct gvec *self)
     }
 }
 
-int gvec_verify(struct gvec *self)
+int gvec_verify(const struct gvec *self)
 {
     size_t i=0;
     struct gauss *gauss=NULL;
@@ -98,7 +98,7 @@ int gvec_verify(struct gvec *self)
 }
 
 
-int gvec_copy(struct gvec *self, struct gvec* dest)
+int gvec_copy(const struct gvec *self, struct gvec* dest)
 {
     if (dest->size != self->size) {
         wlog("gvec are not same size\n");
@@ -108,7 +108,7 @@ int gvec_copy(struct gvec *self, struct gvec* dest)
     return 1;
 }
 
-void gvec_print(struct gvec *self, FILE* fptr)
+void gvec_print(const struct gvec *self, FILE* fptr)
 {
     struct gauss *gptr = self->data;
     size_t i=0;
@@ -122,7 +122,7 @@ void gvec_print(struct gvec *self, FILE* fptr)
     }
 }
 
-double gvec_wmomsum(struct gvec* gvec)
+double gvec_wmomsum(const struct gvec* gvec)
 {
     double wmom=0;
     struct gauss* gauss=gvec->data;
@@ -132,6 +132,26 @@ double gvec_wmomsum(struct gvec* gvec)
         gauss++;
     }
     return wmom;
+}
+
+void gvec_centroid(const struct gvec *self, double *row, double *col)
+{
+    int i=0;
+    struct gauss *gauss=NULL;
+    double psum=0;
+    (*row)=0;
+    (*col)=0;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[0];
+
+        psum += gauss->p;
+        (*row) += gauss->p*gauss->row;
+        (*col) += gauss->p*gauss->col;
+    }
+
+    (*row) /= psum;
+    (*col) /= psum;
 }
 
 void gvec_set_total_moms(struct gvec *self)
