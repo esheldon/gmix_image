@@ -1785,6 +1785,9 @@ def test_multi_color(s2n=100.,
     res1=gm1.get_result()
     pars1=res1['pars']
 
+    if res1['flags'] != 0:
+        return {}, {}, -1
+
     gm2=GMixFitFluxMulti(imlist2,
                          wtlist2,
                          jacoblist2,
