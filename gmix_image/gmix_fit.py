@@ -869,7 +869,7 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
 
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_lm_ydiff_flux, guess, full_output=1)
+            lmres = leastsq(self._get_ydiff, guess, full_output=1)
 
             res=self._calc_lm_results(lmres)
 
@@ -881,7 +881,7 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
 
         self._result=res
 
-    def _get_lm_ydiff_flux(self, pars3):
+    def _get_ydiff(self, pars3):
         """
         pars3 are [rowcen,colcen,counts]
         """
@@ -952,7 +952,7 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
         pcov=None
         perr=None
         if pcov0 is not None:
-            pcov = self._scale_leastsq_cov_1par(pars, pcov0)
+            pcov = self._scale_leastsq_cov_3par(pars, pcov0)
 
             d=diag(pcov)
             w,=where(d < 0)
@@ -983,19 +983,80 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
         res['rowcen_err']=9999.
         res['colcen_err']=9999.
         res['Ferr']=9999.
-        res['allpars'] = None
         if res['flags']==0:
 
             res['rowcen_err']=perr[0]
             res['colcen_err']=perr[1]
             res['Ferr']  = perr[2]
 
-            stats=self._get_stats(allpars)
+            stats=self._get_stats(pars)
             res.update(stats)
 
         return res
 
+    def _get_stats(self, pars3):
+        from math import log, sqrt
+        from . import render
+        import scipy.stats
 
+        npars=3
+
+        s2n_numer=0.
+        s2n_denom=0.
+        loglike=0.
+
+        gmix_list=self._pars3_to_gmix_list(pars3)
+        for i in xrange(self.nimage):
+            im=self.imlist[i]
+            wt=self.wtlist[i]
+            jacob=self.jacoblist[i]
+            gmix=gmix_list[i]
+ 
+            tres=render._render.loglike_wt_jacob(im,
+                                                 wt,
+                                                 jacob['dudrow'],
+                                                 jacob['dudcol'],
+                                                 jacob['dvdrow'],
+                                                 jacob['dvdcol'],
+                                                 self.cen0[0], # coord system center
+                                                 self.cen0[1],
+                                                 gmix)
+
+            tloglike,ts2n_numer,ts2n_denom,tflags=tres
+
+            s2n_numer += ts2n_numer
+            s2n_denom += ts2n_denom
+            loglike += tloglike
+            
+        s2n=s2n_numer/sqrt(s2n_denom)
+
+        chi2=loglike/(-0.5)
+        dof=self.totpix-npars
+        chi2per = chi2/dof
+
+        prob = scipy.stats.chisqprob(chi2, dof)
+
+        aic = -2*loglike + 2*npars
+        bic = -2*loglike + npars*log(self.totpix)
+
+        return {'s2n_w':s2n,
+                'loglike':loglike,
+                'chi2per':chi2per,
+                'dof':dof,
+                'fit_prob':prob,
+                'aic':aic,
+                'bic':bic}
+
+    def _scale_leastsq_cov_3par(self, pars, pcov):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        ydiff = self._get_ydiff(pars)
+        dof   = self.totpix-len(pars)
+
+        s_sq = (ydiff**2).sum()/dof
+        return pcov * s_sq 
 
 class GMixFitPSFJacob(GMixFitSimpleMulti):
     """
