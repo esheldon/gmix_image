@@ -642,10 +642,16 @@ class GMixFitSimpleMulti:
 
 class GMixFitFluxMulti(GMixFitSimpleMulti):
     """
-    6 parameter model, only letting the total flux vary.  The center of the
-    model should be relative the (0,0) coordinate center in uv space, which
-    corresponds to cen0, the coord system center in pixel coords.  Make sure
-    cen0 is the same as used for the reference fit!
+
+    fit to a model, only letting the total flux vary and taking the other
+    paramters from the pars0 input.  The center of the model should be
+    relative the (0,0) coordinate center in uv space, which corresponds to
+    cen0, the coord system center in pixel coords.  Make sure cen0 is the same
+    as used for the reference fit!
+
+    You can enter either a simple model or coellip; there should be no
+    instability with coellip because we are only varying the flux.
+    Note coellip not yet tested!
 
     Note the center of the coord system will be at the same location in each
     of the images and equal cen0.  The center in the uv plan will be taken
@@ -653,7 +659,7 @@ class GMixFitFluxMulti(GMixFitSimpleMulti):
     """
     def __init__(self, imlist, wtlist, jacoblist, psflist, cen0, model, pars0,
                  **keys):
-        self.npars=1
+
         self.imlist=self._get_imlist(imlist)
         self.wtlist=self._get_imlist(wtlist)
 
@@ -675,6 +681,12 @@ class GMixFitFluxMulti(GMixFitSimpleMulti):
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
         self.totpix=self.nimage*self.imsize
+
+        if self.model == 'coellip':
+            self.ngauss=(len(pars0)-4)/2
+            self.iscoellip=True
+        else:
+            self.iscoellip=False
 
         self._dofit()
 
@@ -711,11 +723,24 @@ class GMixFitFluxMulti(GMixFitSimpleMulti):
 
     def _pars1convert(self, pars1):
         epars=self.epars0.copy()
-        epars[-1] = pars1[0]
+        if self.iscoellip:
+            pstart=4+self.ngauss
+            sub  = epars[pstart:].copy()
+            psum = sub.sum()
+            sub *= pars1[0]/psum
+            epars[pstart:] = sub
+        else:
+            epars[-1] = pars1[0]
         return epars
 
     def _get_guess(self):
-        guess=numpy.array([self.pars0[-1]],dtype='f8')
+        if self.iscoellip:
+            pstart=4+self.ngauss
+            psum=self.epars[pstart:].sum()
+            guess=numpy.array([psum],dtype='f8')
+        else:
+            guess=numpy.array([self.pars0[-1]],dtype='f8')
+
         guess[0] = guess[0]*(1.+0.05*srandu())
         return guess
 
@@ -792,6 +817,184 @@ class GMixFitFluxMulti(GMixFitSimpleMulti):
 
         s_sq = (ydiff**2).sum()/dof
         return pcov * s_sq 
+
+class GMixPSFFluxMulti(GMixFitSimpleMulti):
+    """
+
+    Fit for a psfflux and centroid, taking the PSFs models from all the images
+    and applying a total flux for them and fitting to the data
+
+    psf_parslist is a list of parameter arrays
+
+    the psf model is that derived from GMixFitPSFJacob, which is currently
+    limited to 'coellip'
+
+    cen0 is the pixel coords corresponding to sky coords center, and 0,0 will
+    thus be taken as the starting point for the centroid fitting
+
+    the median counts from the images is used for starting guess on
+    the flux
+    """
+    def __init__(self, 
+                 imlist,
+                 wtlist,
+                 jacoblist,
+                 cen0, 
+                 parslist,
+                 **keys):
+
+        self.ngauss=(len(parslist[0])-4)/2
+        self.imlist=self._get_imlist(imlist)
+        self.wtlist=self._get_imlist(wtlist)
+        self.jacoblist=jacoblist
+        self.cen0=cen0  # starting center and center of coord system
+        self.parslist=parslist
+
+        self._set_eparslist()
+
+        self.nimage=len(self.imlist)
+        self.imsize=self.imlist[0].size
+        self.totpix=self.nimage*self.imsize
+
+        self._set_counts()
+
+    def _dofit(self):
+        """
+        Do a levenberg-marquardt
+        """
+        from scipy.optimize import leastsq
+
+        ntry=self.lm_max_try
+        for i in xrange(1,ntry+1):
+
+            guess=self._get_guess()
+
+            lmres = leastsq(self._get_lm_ydiff_flux, guess, full_output=1)
+
+            res=self._calc_lm_results(lmres)
+
+            if res['flags']==0:
+                break
+
+        if i == ntry:
+            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+
+        self._result=res
+
+    def _get_lm_ydiff_flux(self, pars3):
+        """
+        pars3 are [rowcen,colcen,counts]
+        """
+
+        gmix_list=self._pars3_to_gmix_list(pars3)
+        return self._get_lm_ydiff_generic(gmix_list)
+
+    def _pars3_to_gmix_list(self, pars3):
+        """
+        Generate a list of psf models with the same center and total flux.
+        assumes coellip
+        """
+        pstart=4+self.ngauss
+        gmix_list=[]
+        for epars in self.eparslist:
+            sub=epars[pstart:]
+            psum=sub.sum()
+            sub *= pars3[0]/psum
+
+            new_epars=epars.copy()
+            new_epars[0:0+2] = pars3[0:0+2]
+            new_epars[pstart:] = sub
+
+            gmix=GMixCoellip(new_epars)
+            gmix_list.append(gmix)
+
+        return gmix_list
+
+    def _set_eparslist(self):
+        """
+        Convert the parslist into epars space
+        """
+        eparslist=[]
+        for pars in self.parslist:
+            epars=get_estyle_pars(pars)
+            if epars is None:
+                raise ValueError("invalid pars entered")
+            eparslist.append(epars)
+
+        self.eparslist=eparslist
+
+    def _get_guess(self):
+        guess=numpy.zeros(3)
+        guess[0:0+2] = 0.5*srandu(2)
+        guess[2] = self.counts*(1.+0.05*srandu())
+        return guess
+
+    def _calc_lm_results(self, lmres):
+
+        res={'model':self.model, 'restype': 'lm'}
+
+        pars, pcov0, infodict, errmsg, ier = lmres
+
+        if ier == 0:
+            # wrong args, this is a bug
+            raise ValueError(errmsg)
+
+        res['pars'] = pars
+        res['pcov0'] = pcov0
+        res['numiter'] = infodict['nfev']
+        res['errmsg'] = errmsg
+        res['ier'] = ier
+
+        res['rowcen']=pars[0]
+        res['colcen']=pars[1]
+        res['Fmean']=pars[2]
+
+        pcov=None
+        perr=None
+        if pcov0 is not None:
+            pcov = self._scale_leastsq_cov_1par(pars, pcov0)
+
+            d=diag(pcov)
+            w,=where(d < 0)
+
+            if w.size == 0:
+                # only do if non negative
+                perr = sqrt(d)
+
+        flags = 0
+        if ier > 4:
+            flags = 2**(ier-5)
+
+        if pcov is None:
+            flags += GMIXFIT_SINGULAR_MATRIX 
+        else:
+            e,v = eig(pcov)
+            weig,=where(e < 0)
+            if weig.size > 0:
+                flags += GMIXFIT_NEG_COV_EIG 
+
+            wneg,=where(diag(pcov) < 0)
+            if wneg.size > 0:
+                flags += GMIXFIT_NEG_COV_DIAG 
+
+
+        res['flags']=flags
+
+        res['rowcen_err']=9999.
+        res['colcen_err']=9999.
+        res['Ferr']=9999.
+        res['allpars'] = None
+        if res['flags']==0:
+
+            res['rowcen_err']=perr[0]
+            res['colcen_err']=perr[1]
+            res['Ferr']  = perr[2]
+
+            stats=self._get_stats(allpars)
+            res.update(stats)
+
+        return res
+
 
 
 class GMixFitPSFJacob(GMixFitSimpleMulti):
