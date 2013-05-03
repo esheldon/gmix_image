@@ -1033,7 +1033,6 @@ int calculate_loglike_margamp(struct image *image,
 
     *loglike = 0.5*A*B*B;
 
-    //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
     return flags;
 }
@@ -1697,7 +1696,6 @@ PyGMixFit_fill_ydiff_jacob(PyObject *self, PyObject *args)
 
     flags=fill_ydiff_jacob(image, ivar, &jacob, row0, col0,
                            gvec_obj->gvec, diff);
-
     // does not free underlying array
     image  = image_free(image);
     diff   = image_free(diff);
