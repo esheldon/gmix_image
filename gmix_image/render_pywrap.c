@@ -262,67 +262,53 @@ static PyObject *PyGVecObject_get_dlist(struct PyGVecObject* self)
 static PyObject *PyGVecObject_get_T(struct PyGVecObject* self)
 {
     double T=0;
-    double psum=0;
-    size_t i=0;
-    struct gauss *gauss=NULL;
-
-    gauss=self->gvec->data;
-    for (i=0; i<self->gvec->size; i++) {
-        T += (gauss->irr + gauss->icc)*gauss->p;
-        psum += gauss->p;
-        gauss++;
-    }
-
-    T /= psum;
-
+    T = gvec_get_T(self->gvec);
     return PyFloat_FromDouble(T);
 }
-static PyObject *PyGVecObject_get_cen(struct PyGVecObject* self)
+static PyObject *PyGVecObject_get_psum(struct PyGVecObject* self)
 {
     double psum=0;
-    size_t i=0;
-    struct gauss *gauss=NULL;
+    psum = gvec_get_psum(self->gvec);
+    return PyFloat_FromDouble(psum);
+}
+static PyObject *PyGVecObject_set_psum(struct PyGVecObject* self, PyObject *args)
+{
+    double psum=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"d", &psum)) {
+        return NULL;
+    }
+
+    gvec_set_psum(self->gvec, psum);
+
+    Py_XINCREF(Py_None);
+    return Py_None;
+}
+
+
+static PyObject *PyGVecObject_get_cen(struct PyGVecObject* self)
+{
     npy_intp dims[1] = {2};
     int npy_dtype=NPY_FLOAT64;
-    double row=0, col=0;
     PyObject *cen=NULL;
     double *cendata=NULL;
 
     cen=PyArray_ZEROS(1, dims, npy_dtype, 0);
     cendata=PyArray_DATA(cen);
 
-    gauss=self->gvec->data;
-    for (i=0; i<self->gvec->size; i++) {
-        row += gauss->row*gauss->p;
-        col += gauss->col*gauss->p;
-        psum += gauss->p;
-        gauss++;
-    }
-
-    row /= psum;
-    col /= psum;
-
-    cendata[0] = row;
-    cendata[1] = col;
+    gvec_get_cen(self->gvec, &cendata[0], &cendata[1]);
 
     return cen;
 }
 static PyObject *PyGVecObject_set_cen(struct PyGVecObject* self, PyObject *args)
 {
     double row=0, col=0;
-    size_t i=0;
-    struct gauss *gauss=NULL;
 
     if (!PyArg_ParseTuple(args, (char*)"dd", &row, &col)) {
         return NULL;
     }
 
-    gauss=self->gvec->data;
-    for (i=0; i<self->gvec->size; i++) {
-        gauss->row=row;
-        gauss->col=col;
-        gauss++;
-    }
+    gvec_set_cen(self->gvec, row, col);
 
     Py_XINCREF(Py_None);
     return Py_None;
@@ -425,9 +411,11 @@ static PyMethodDef PyGVecObject_methods[] = {
     {"get_dlist", (PyCFunction)PyGVecObject_get_dlist, METH_NOARGS, "get_dlist\n\nreturn list of dicts."},
     {"get_e1e2T", (PyCFunction)PyGVecObject_get_e1e2T, METH_NOARGS, "get_e1e2T\n\nreturn stats based on average moments val=sum(val_i*p)/sum(p)."},
     {"get_T", (PyCFunction)PyGVecObject_get_T, METH_NOARGS, "get_T\n\nreturn T=sum(T_i*p)/sum(p)."},
-    {"get_pars", (PyCFunction)PyGVecObject_get_pars, METH_NOARGS, "get_pars\n\nreturn full pars."},
+    {"get_psum", (PyCFunction)PyGVecObject_get_psum, METH_NOARGS, "get_psum\n\nreturn sum(p)."},
+    {"set_psum", (PyCFunction)PyGVecObject_set_psum, METH_VARARGS, "set_psum\n\nset new sum(p)."},
     {"get_cen", (PyCFunction)PyGVecObject_get_cen, METH_NOARGS, "get_cen\n\nreturn cen=sum(cen_i*p)/sum(p)."},
     {"set_cen", (PyCFunction)PyGVecObject_set_cen, METH_VARARGS, "set_cen\n\nSet all centers to the input row,col"},
+    {"get_pars", (PyCFunction)PyGVecObject_get_pars, METH_NOARGS, "get_pars\n\nreturn full pars."},
     {"_convolve_replace", (PyCFunction)PyGVecObject_convolve_replace, METH_VARARGS, "convolve_inplace\n\nConvolve with the psf in place."},
     {NULL}  /* Sentinel */
 };
@@ -774,7 +762,7 @@ fill_ydiff_jacob(const struct image *image,
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
     double u=0, v=0;
-    double chi2=0, diff=0;
+    double diff=0;
     ssize_t col=0, row=0;
     double ierr=0;
 
@@ -823,7 +811,7 @@ fill_ydiff_wt_jacob(const struct image *image,
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
     double u=0, v=0;
-    double chi2=0, diff=0;
+    double diff=0;
     ssize_t col=0, row=0;
 
     double model_val=0, pixval=0, ivar=0;
@@ -1134,8 +1122,8 @@ int calculate_loglike_wt_jacob(const struct image *image,
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    double u=0, v=0, ud=0, vd=0;
-    double chi2=0, diff=0;
+    double u=0, v=0;
+    double diff=0;
     ssize_t col=0, row=0;
 
     double model_val=0;
@@ -1196,8 +1184,8 @@ int calculate_loglike_jacob(const struct image *image,
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    double u=0, v=0, ud=0, vd=0;
-    double chi2=0, diff=0, ierr=0;
+    double u=0, v=0;
+    double diff=0, ierr=0;
     ssize_t col=0, row=0;
 
     double model_val=0, pixval=0;
@@ -1253,9 +1241,8 @@ int calculate_loglike_wt(const struct image *image,
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    struct gauss *gauss=NULL;
-    double u=0, v=0, rd=0, cd=0;
-    double chi2=0, diff=0;
+    double u=0, v=0;
+    double diff=0;
     size_t col=0, row=0;
 
     double model_val=0, pixval=0, ivar=0;
@@ -1674,7 +1661,7 @@ PyGMixFit_fill_ydiff_jacob(PyObject *self, PyObject *args)
     PyObject* diff_obj=NULL;
 
     struct PyGVecObject *gvec_obj=NULL;
-    struct image *image=NULL, *weight=NULL;
+    struct image *image=NULL;
     struct image *diff=NULL;
     npy_intp *dims=NULL;
 

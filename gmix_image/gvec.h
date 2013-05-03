@@ -63,7 +63,15 @@ void gvec_print(const struct gvec *self, FILE* fptr);
 //  sum_gi( p*(irr + icc )
 double gvec_wmomsum(const struct gvec* gvec);
 
-void gvec_centroid(const struct gvec *gvec, double *row, double *col);
+void gvec_get_cen(const struct gvec *gvec, double *row, double *col);
+// set the overall centroid.  Note individual gaussians can have
+// a different center
+void gvec_set_cen(struct gvec *gvec, double row, double col);
+
+double gvec_get_T(const struct gvec *self);
+double gvec_get_psum(const struct gvec *gvec);
+// set the overall sum(p)
+void gvec_set_psum(struct gvec *gvec, double psum);
 
 // 0 returned if a zero determinant is found somewhere, else 1
 //int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);

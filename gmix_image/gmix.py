@@ -125,6 +125,8 @@ class GMix(_render.GVec):
 
     methods
     -------
+    copy(self):
+        make a new copy of this GMix
     convolve(psf):
         Get a new GMix that is the convolution of the GMix with the input psf
     get_size():
@@ -133,12 +135,16 @@ class GMix(_render.GVec):
         get a list of dicts representing the gaussian mixture
     get_T():
         get T=sum(p*T_i)/sum(p)
+    get_psum():
+        get sum(p)
+    set_psum(psum):
+        set new overall psum
     get_e1e2T():
         get stats based on averaged moments val=sum(p*val_i)/sum(p)
     get_cen():
         get cen=sum(p*cen_i)/sum(p)
     set_cen(row,col):
-        set all centers to the input.
+        set the overall center to the input.
     get_pars():
         get a copy of the parameters used to initialize the GMix
     get_type():
@@ -161,6 +167,13 @@ class GMix(_render.GVec):
                 pars_array=array(pars,dtype='f8')
 
             super(GMix,self).__init__(type, pars_array)
+
+    def copy(self):
+        """
+        Make a new GMix with the same parameters
+        """
+        gmix = GMix(self.get_pars())
+        return gmix
 
     #def _print_type(self,t):
     #    print 'type(type):',type(t)

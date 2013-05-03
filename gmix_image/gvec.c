@@ -68,11 +68,11 @@ void gauss_set(struct gauss* self,
 }
 void gvec_set_dets(struct gvec *self)
 {
-    struct gauss *gptr = self->data;
+    struct gauss *gptr = NULL;
     size_t i=0;
     for (i=0; i<self->size; i++) {
+        gptr = &self->data[i];
         gptr->det = gptr->irr*gptr->icc - gptr->irc*gptr->irc;
-        gptr++;
     }
 }
 
@@ -86,13 +86,12 @@ int gvec_verify(const struct gvec *self)
         return 0;
     }
 
-    gauss=self->data;
     for (i=0; i<self->size; i++) {
+        gauss=&self->data[i];
         if (gauss->det <= 0) {
             DBG wlog("gvec_verify found det: %.16g\n", gauss->det);
             return 0;
         }
-        gauss++;
     }
     return 1;
 }
@@ -110,40 +109,40 @@ int gvec_copy(const struct gvec *self, struct gvec* dest)
 
 void gvec_print(const struct gvec *self, FILE* fptr)
 {
-    struct gauss *gptr = self->data;
+    struct gauss *gptr = NULL;
     size_t i=0;
     for (i=0; i<self->size; i++) {
+        gptr = &self->data[i];
         fprintf(fptr,
              "%lu p: %9.6lf row: %9.6lf col: %9.6lf " 
              "irr: %9.6lf irc: %9.6lf icc: %9.6lf\n",
              i, gptr->p, gptr->row, gptr->col,
              gptr->irr,gptr->irc, gptr->icc);
-        gptr++;
     }
 }
 
 double gvec_wmomsum(const struct gvec* gvec)
 {
     double wmom=0;
-    struct gauss* gauss=gvec->data;
+    const struct gauss* gauss=NULL;
     size_t i=0;
     for (i=0; i<gvec->size; i++) {
+        gauss=&gvec->data[i];
         wmom += gauss->p*(gauss->irr + gauss->icc);
-        gauss++;
     }
     return wmom;
 }
 
-void gvec_centroid(const struct gvec *self, double *row, double *col)
+void gvec_get_cen(const struct gvec *self, double *row, double *col)
 {
     int i=0;
-    struct gauss *gauss=NULL;
+    const struct gauss *gauss=NULL;
     double psum=0;
     (*row)=0;
     (*col)=0;
 
     for (i=0; i<self->size; i++) {
-        gauss=&self->data[0];
+        gauss=&self->data[i];
 
         psum += gauss->p;
         (*row) += gauss->p*gauss->row;
@@ -152,6 +151,72 @@ void gvec_centroid(const struct gvec *self, double *row, double *col)
 
     (*row) /= psum;
     (*col) /= psum;
+}
+
+void gvec_set_cen(struct gvec *self, double row, double col)
+{
+    int i=0;
+    struct gauss *gauss=NULL;
+
+    double row_cur=0, col_cur=0;
+    double row_shift=0, col_shift=0;
+
+    gvec_get_cen(self, &row_cur, &col_cur);
+
+    row_shift = row - row_cur;
+    col_shift = col - col_cur;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[i];
+
+        gauss->row += row_shift;
+        gauss->col += col_shift;
+    }
+}
+
+
+double gvec_get_T(const struct gvec *self)
+{
+    int i=0;
+    const struct gauss *gauss=NULL;
+    double T=0, psum=0;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[i];
+
+        T += (gauss->irr + gauss->icc)*gauss->p;
+        psum += gauss->p;
+    }
+    T /= psum;
+    return T;
+}
+double gvec_get_psum(const struct gvec *self)
+{
+    int i=0;
+    const struct gauss *gauss=NULL;
+    double psum=0;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[i];
+
+        psum += gauss->p;
+    }
+    return psum;
+}
+void gvec_set_psum(struct gvec *self, double psum)
+{
+    int i=0;
+    double psum_cur=0, rat=0;
+    struct gauss *gauss=NULL;
+
+    psum_cur=gvec_get_psum(self);
+    rat=psum/psum_cur;
+
+    for (i=0; i<self->size; i++) {
+        gauss=&self->data[i];
+
+        gauss->p *= rat;
+    }
 }
 
 void gvec_set_total_moms(struct gvec *self)
@@ -164,15 +229,14 @@ void gvec_set_total_moms(struct gvec *self)
     self->total_irc=0;
     self->total_icc=0;
 
-    gauss = self->data;
     for (i=0; i<self->size; i++) {
+        gauss = &self->data[i];
         p = gauss->p;
         psum += p;
 
         self->total_irr += p*gauss->irr;
         self->total_irc += p*gauss->irc;
         self->total_icc += p*gauss->icc;
-        gauss++;
     }
 
     self->total_irr /= psum;
@@ -198,12 +262,12 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
         psum += psf->p;
     }
 
-    obj = obj_gvec->data;
     comb = gvec->data;
     for (iobj=0; iobj<obj_gvec->size; iobj++) {
+        obj = &obj_gvec->data[iobj];
 
-        psf = psf_gvec->data;
         for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
+            psf = &psf_gvec->data[ipsf];
 
             irr = obj->irr + psf->irr;
             irc = obj->irc + psf->irc;
@@ -214,11 +278,8 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
                       obj->row, obj->col, 
                       irr, irc, icc);
 
-            psf++;
             comb++;
         }
-
-        obj++;
     }
 
     return gvec;
@@ -304,6 +365,7 @@ struct gvec *gvec_from_coellip_Tfrac(double *pars, int size)
     return gvec;
 }
 
+/*
 struct gvec *gvec_from_coellip_crap(double *pars, int size)
 {
     int ngauss=0, Tstart=0, Astart=0;
@@ -359,7 +421,7 @@ struct gvec *gvec_from_coellip_crap(double *pars, int size)
 
     return gvec;
 }
-
+*/
 
 struct gvec *gvec_from_coellip(double *pars, int size)
 {
@@ -434,15 +496,14 @@ static struct gvec *_gapprox_pars_to_gvec_old(double *pars,
 
     gvec = gvec_new(3);
 
-    gauss=gvec->data;
     for (i=0; i<gvec->size; i++) {
+        gauss=&gvec->data[i];
         gauss_set(gauss,
                   counts[i], 
                   row, col, 
                   (Tvals[i]/2.)*(1-e1), 
                   (Tvals[i]/2.)*e2,
                   (Tvals[i]/2.)*(1+e1));
-        gauss++;
     }
 
     return gvec;
@@ -487,8 +548,8 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 
     gvec = gvec_new(ngauss);
 
-    gauss=gvec->data;
     for (i=0; i<gvec->size; i++) {
+        gauss=&gvec->data[i];
         T_i = T*Fvals[i];
         counts_i=counts*pvals[i];
 
@@ -498,7 +559,6 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
                   (T_i/2.)*(1-e1), 
                   (T_i/2.)*e2,
                   (T_i/2.)*(1+e1));
-        gauss++;
     }
 
     return gvec;

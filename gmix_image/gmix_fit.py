@@ -840,17 +840,15 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
                  wtlist,
                  jacoblist,
                  cen0, 
-                 parslist,
+                 gmix_list,
                  **keys):
 
-        self.ngauss=(len(parslist[0])-4)/2
         self.imlist=self._get_imlist(imlist)
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.cen0=cen0  # starting center and center of coord system
-        self.parslist=parslist
+        self.gmix_list=gmix_list
 
-        self._set_eparslist()
 
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
@@ -891,37 +889,23 @@ class GMixPSFFluxMulti(GMixFitSimpleMulti):
 
     def _pars3_to_gmix_list(self, pars3):
         """
-        Generate a list of psf models with the same center and total flux.
-        assumes coellip
+        Generate a list of new gaussian mixtures with the same center and total
+        flux.
         """
-        pstart=4+self.ngauss
         gmix_list=[]
-        for epars in self.eparslist:
-            sub=epars[pstart:]
-            psum=sub.sum()
-            sub *= pars3[0]/psum
+        new_row=pars3[0]
+        new_col=pars3[1]
+        new_flux=pars3[2]
 
-            new_epars=epars.copy()
-            new_epars[0:0+2] = pars3[0:0+2]
-            new_epars[pstart:] = sub
+        for gm in self.gmix_list:
+            gmix_new = gm.copy()
 
-            gmix=GMixCoellip(new_epars)
-            gmix_list.append(gmix)
+            gmix_new.set_cen(new_row, new_col)
+            gmix_new.set_psum(new_flux)
+
+            gmix_list.append(gmix_new)
 
         return gmix_list
-
-    def _set_eparslist(self):
-        """
-        Convert the parslist into epars space
-        """
-        eparslist=[]
-        for pars in self.parslist:
-            epars=get_estyle_pars(pars)
-            if epars is None:
-                raise ValueError("invalid pars entered")
-            eparslist.append(epars)
-
-        self.eparslist=eparslist
 
     def _get_guess(self):
         guess=numpy.zeros(3)
@@ -1847,7 +1831,7 @@ def test_multi(s2n=100.,
                g2=0.0,
                counts=100., 
                model='gexp',
-               nimages=3,
+               nimages=10,
                scale=0.27,
                randpsf=False):
     """
@@ -1960,7 +1944,7 @@ def test_multi_color(s2n=100.,
                      counts1=100., 
                      counts2=250.,
                      model='gexp',
-                     nimages=3,
+                     nimages=10,
                      scale=0.27,
                      sigratio=0.9,
                      eratio=0.9,
@@ -2067,4 +2051,72 @@ def test_multi_color(s2n=100.,
     #return gm._round_fixcen_pars
     return res1,res2,s2n_uw15
 
+
+def test_psfflux_star(s2n=100.,
+                      sigma=2.0,
+                      ngauss_fit=2,
+                      counts=100., 
+                      nimages=10,
+                      scale=0.27):
+    """
+    test recover of the PSFFlux from a turb PSF using a coelliptical gauss fit
+
+    The psf shape is fit from a higher s/n image, then an image at the
+    requested s/n per SE image is created and used for the fit
+
+    """
+    import fimage
+
+    s2n_per=s2n/sqrt(nimages)
+
+    # for simulation, in pixels
+    sigma_pix=sigma/scale
+    Tpix=2*(sigma_pix)**2
+    counts_pix=counts/(scale*scale)
+
+    padding=5.
+    dims=[2*5*sigma_pix]*2
+
+    imlist=[]
+    wtlist=[]
+    parlist=[]
+    jacoblist=[]
+
+    aperture=1.5/scale # 1.5 arcsec diameter
+    rad=aperture/2.
+    for i in xrange(nimages):
+        jacob={'dudrow':scale, 'dudcol':0.0,
+               'dvdrow':0.0,   'dvdcol':scale}
+
+        e1=0.1*srandu()
+        e2=0.1*srandu()
+        T=Tpix*(1.+0.1*srandu())
+        gmix_nopix=GMix([-1., -1., e1, e2, T, 1.0],type='turb')
+
+        im=gmix2image(gmix_nopix, dims, nsub=16)
+        im_lown,skysig_lown=fimage.noise.add_noise_admom(im, 1.e6)
+        im_highn,skysig_highn=fimage.noise.add_noise_admom(im, s2n_per)
+
+        ivar=1./skysig_psf**2
+        gm_psf=GMixFitPSFJacob(cin.psf, ivar, jacob, cin['cen'], psf_ngauss_fit)
+        gmix_psf=gm_psf.get_gmix()
+
+        wt=im.copy()
+        wt = 0.0*wt + ivar
+
+        imlist.append(cin.image) 
+        wtlist.append(wt)
+        psflist.append(gmix_psf)
+        jacoblist.append(jacob)
+
+    # starting guess in pixel coords, origin in uv space
+    cen0=ci['cen']
+    gm=GMixFitSimpleMulti(imlist,
+                          wtlist,
+                          jacoblist,
+                          psflist,
+                          cen0,
+                          model)
+    #return gm._round_fixcen_pars
+    return gm.get_result()
 
