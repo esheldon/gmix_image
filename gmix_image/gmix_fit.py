@@ -285,7 +285,7 @@ class GMixFitMultiBase:
         self.cen0=cen0  # starting center and center of coord system
         self.model=model
 
-        self._set_median_counts()
+        self._set_im_wt_sums()
 
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
@@ -354,15 +354,19 @@ class GMixFitMultiBase:
             imlist.append(im)
         return imlist
 
-    def _set_median_counts(self):
+    def _set_im_wt_sums(self):
         """
         median of the counts across all input images
         """
         clist=numpy.zeros(len(self.imlist))
+        wtsum=0.0
         for i,im in enumerate(self.imlist):
             clist[i] = im.sum()
+            wtsum += self.wtlist[i].sum()
         
         self.counts=numpy.median(clist)
+        self.wtsum=wtsum
+        #self.lowest_psum = -5.0*sqrt(1./wtsum)
 
     def _calc_lm_results(self, lmres):
         """
@@ -514,7 +518,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.cen0=cen0  # starting center and center of coord system
         self.model=model
 
-        self._set_median_counts()
+        self._set_im_wt_sums()
         self.lm_max_try=10
 
         self.nimage=len(self.imlist)
@@ -640,7 +644,6 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         """
         pars are [T,counts]
         """
-
         pars=self._pars2convert(pars2)
         return self._get_lm_ydiff_epars(pars)
 
@@ -652,9 +655,11 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         return self._get_lm_ydiff_epars(epars)
     
     def _get_lm_ydiff_epars(self, epars):
+        #if epars is None or epars[-1] < self.lowest_psum:
+
         if epars is None:
             ydiffall = zeros(self.totpix, dtype='f8')
-            ydiffall[:] = HIGHVAL
+            ydiffall[:] = -HIGHVAL
             return ydiffall
 
         gmix_list=self._get_gmix_list(epars)
@@ -765,6 +770,10 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
         """
         pars1 are [counts]
         """
+        #if pars1[0] < self.lowest_psum:
+        #    ydiffall = zeros(self.totpix, dtype='f8')
+        #    ydiffall[:] = -HIGHVAL
+        #    return ydiffall
 
         self._set_psum(pars1)
         return self._get_lm_ydiff_gmix_list(self.gmix_list)
@@ -838,7 +847,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         self.totpix=self.nimage*self.imsize
 
         self.model='psf'
-        self._set_median_counts()
+        self._set_im_wt_sums()
 
         self._dofit()
 
@@ -870,6 +879,11 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         """
         pars3 are [rowcen,colcen,counts]
         """
+
+        #if pars3[2] < self.lowest_psum:
+        #    ydiffall = zeros(self.totpix, dtype='f8')
+        #    ydiffall[:] = -HIGHVAL
+        #    return ydiffall
 
         self._set_cen_psum(pars3)
         return self._get_lm_ydiff_gmix_list(self.gmix_list)
@@ -952,6 +966,10 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.totpix=self.imsize
         self.counts=self.image.sum()
 
+        # lowest allowed amplitide
+        #self.lowest_psum = -5.0*sqrt(self.ivar*self.imsize)
+        self.pstart=4+self.ngauss
+
         self.lm_max_try=10
 
         self._fit_round_fixcen()
@@ -968,16 +986,16 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         return self._get_lm_ydiff_epars(epars)
 
     def _get_lm_ydiff_full(self, pars):
-        """
-        pars are [T,counts]
-        """
         epars=get_estyle_pars(pars)
         return self._get_lm_ydiff_epars(epars)
  
     def _get_lm_ydiff_epars(self, epars):
+        #if (epars is None 
+        #        or epars[self.pstart:].sum() < self.lowest_psum):
+
         if epars is None:
             ydiff = zeros(self.totpix, dtype='f8')
-            ydiff[:] = HIGHVAL
+            ydiff[:] = -HIGHVAL
             return ydiff
 
         gmix=GMixCoellip(epars)
@@ -1681,7 +1699,8 @@ def test_simple(s2n=100.,
                 psf_sigma=2.0,
                 sigma=4.0,
                 counts=100.,
-                model='gexp'):
+                model='gexp',
+                s2n_method='matched'):
     import fimage
     import admom
 
@@ -1703,7 +1722,7 @@ def test_simple(s2n=100.,
 
     ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_prepix)
     cin = fimage.convolved.NoisyConvolvedImage(ci, s2n, 1.e8,
-                                               s2n_method='admom')
+                                               s2n_method=s2n_method)
 
     ivar=1./cin['skysig']**2
 
@@ -1741,6 +1760,7 @@ def test_multi(s2n=100.,
                counts=100., 
                model='gexp',
                nimages=10,
+               s2n_method='matched',
                scale=0.27,
                randpsf=False):
     """
@@ -1774,6 +1794,7 @@ def test_multi(s2n=100.,
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
     rad=aperture/2.
+
     for i in xrange(nimages):
         jacob={'dudrow':scale, 'dudcol':0.0,
                'dvdrow':0.0,   'dvdcol':scale}
@@ -1790,7 +1811,7 @@ def test_multi(s2n=100.,
 
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
-                                                   s2n_method='admom')
+                                                   s2n_method=s2n_method)
         s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
                                                        ci['cen'], rad)
 
@@ -1821,7 +1842,8 @@ def test_multi(s2n=100.,
     #return gm._round_fixcen_pars
     return gm.get_result(), s2n_uw15
 
-def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad):
+def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad,
+              s2n_method='matched'):
     import fimage
     e1psf=0.1*srandu()
     e2psf=0.1*srandu()
@@ -1830,7 +1852,7 @@ def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad):
 
     ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
     cin = fimage.convolved.NoisyConvolvedImage(ci, s2n, psf_s2n,
-                                                s2n_method='admom')
+                                                s2n_method=s2n_method)
     s2n_uw = fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
                                               ci['cen'], rad)
 
@@ -1858,7 +1880,8 @@ def test_multi_color(s2n=100.,
                      scale=0.27,
                      sigratio=0.9,
                      eratio=0.9,
-                     eoffset=0.01):
+                     eoffset=0.01,
+                     s2n_method='matched'):
     """
     psf is fit in pixel space, so need in future
     to transform the gaussian moments into uv space before
@@ -1914,7 +1937,7 @@ def test_multi_color(s2n=100.,
                 'dvdrow':0.0,   'dvdcol':scale}
         im1, wt1, gmix_psf1,s2n_uw1,cen1=\
                 _make_data(jacob1,gmix1,Tpsf0_pix, s2n_per,psf_s2n,
-                           psf_ngauss_fit,rad)
+                           psf_ngauss_fit,rad, s2n_method=s2n_method)
         jacob2={'dudrow':scale, 'dudcol':0.0,
                 'dvdrow':0.0,   'dvdcol':scale}
         im2, wt2, gmix_psf2,s2n_uw2,cen2=\
@@ -2006,8 +2029,10 @@ def test_psfflux_star(s2n=100.,
         gmix_nopix=GMix([cen[0], cen[1], e1, e2, T, counts_pix],type='turb')
 
         im=gmix2image(gmix_nopix, dims, nsub=16)
-        im_lown,skysig_lown=fimage.noise.add_noise_admom(im, 1.e6)
-        im_highn,skysig_highn=fimage.noise.add_noise_admom(im, s2n_per)
+        #im_lown,skysig_lown=fimage.noise.add_noise_admom(im, 1.e6)
+        #im_highn,skysig_highn=fimage.noise.add_noise_admom(im, s2n_per)
+        im_lown,skysig_lown=fimage.noise.add_noise_matched(im, 1.e6, cen)
+        im_highn,skysig_highn=fimage.noise.add_noise_matched(im, s2n_per, cen)
 
         # get psf model from low noise image
         ivar_lown=1./skysig_lown**2
