@@ -1913,7 +1913,9 @@ def test_multi(s2n=100.,
         psflist.append(gmix_psf)
         jacoblist.append(jacob)
         
-    s2n_uw15 = s2n_uw_sum/nimages
+    s2n_uw15_per = s2n_uw_sum/nimages
+    s2n_uw15 = s2n_uw15_per*sqrt(nimages)
+
     # starting guess in pixel coords, origin in uv space
     cen0=ci['cen']
     gm=GMixFitSimpleMulti(imlist,
@@ -2037,7 +2039,9 @@ def test_multi_color(s2n=100.,
         psflist2.append(gmix_psf2)
         jacoblist2.append(jacob2)
 
-    s2n_uw15 = s2n_uw_sum/nimages
+    s2n_uw15_per = s2n_uw_sum/nimages
+    s2n_uw15 = s2n_uw15_per*sqrt(nimages)
+
     # starting guess in pixel coords, origin in uv space
     # all are the same for this simple test
     gm1=GMixFitSimpleMulti(imlist1,
