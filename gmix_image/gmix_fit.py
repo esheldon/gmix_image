@@ -811,7 +811,7 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
         return guess
 
 
-class GMixFitSloanSwindle(GMixFitMultiBase):
+class GMixFitMultiCModel(GMixFitMultiBase):
     """
     fit to the input gaussian mixture, only letting the total flux vary .  The
     center of the model should be relative the (0,0) coordinate center in uv
@@ -888,10 +888,11 @@ class GMixFitSloanSwindle(GMixFitMultiBase):
         """
         pars1 are [frac_dev]
         """
-        #if pars1[0] < self.lowest_psum:
-        #    ydiffall = zeros(self.totpix, dtype='f8')
-        #    ydiffall[:] = -HIGHVAL
-        #    return ydiffall
+
+        if pars1[0] < 0 or pars1[0] > 1:
+            ydiffall = zeros(self.totpix, dtype='f8')
+            ydiffall[:] = HIGHVAL
+            return ydiffall
 
         gmix_list=self._get_gmix_list(pars1)
         return self._get_lm_ydiff_gmix_list(gmix_list)
@@ -923,7 +924,7 @@ class GMixFitSloanSwindle(GMixFitMultiBase):
 
             gmix_list.append(gm)
 
-        return self.gmix_list
+        return gmix_list
 
     def _set_gmix_lists(self):
         exp_list=[]
@@ -2191,23 +2192,25 @@ def test_psfflux_star(s2n=100.,
     return gm.get_result()
 
 
-def test_sloan_swindle(s2n=100.,
-                       exp_sigma=4.0,
-                       dev_sigma=7.0,
-                       fracdev=0.4,
-                       g1exp=0.0,
-                       g2exp=0.0,
-                       g1dev=0.0,
-                       g2dev=0.0,
-                       counts=100.,
+def test_cmodel(s2n=100.,
+                exp_sigma=4.0,
+                dev_sigma=7.0,
+                g1exp=0.0,
+                g2exp=0.0,
+                g1dev=0.0,
+                g2dev=0.0,
 
-                       psf_s2n=1.e8,
-                       psf_sigma=2.0,
-                       psf_ngauss_fit=2,
-                       nimages=10,
-                       scale=0.27,
-                       s2n_method='matched'):
+                counts=100.,
+                fracdev_true=0.4,
+
+                psf_s2n=1.e8,
+                psf_sigma=2.0,
+                psf_ngauss_fit=2,
+                nimages=10,
+                scale=0.27,
+                s2n_method='matched'):
     import fimage
+    #import images
 
     s2n_per=s2n/sqrt(nimages)
 
@@ -2218,8 +2221,8 @@ def test_sloan_swindle(s2n=100.,
     dev_Tpix=2*(dev_sigma/scale)**2
 
     counts_pix=counts/(scale*scale)
-    exp_counts_pix=(1.-fracdev)*counts_pix
-    dev_counts_pix=fracdev*counts_pix
+    exp_counts_pix=(1.-fracdev_true)*counts_pix
+    dev_counts_pix=fracdev_true*counts_pix
 
     # centers are actually ignored when creating the convolved
     # image
@@ -2234,6 +2237,7 @@ def test_sloan_swindle(s2n=100.,
     exp_dlist=exp_gmix.get_dlist()
     dev_dlist=dev_gmix.get_dlist()
     dlist=exp_dlist + dev_dlist
+    #pprint.pprint(dlist)
 
     gmix = GMix(dlist)
 
@@ -2246,6 +2250,8 @@ def test_sloan_swindle(s2n=100.,
     aperture=1.5/scale # 1.5 arcsec diameter
     rad=aperture/2.
     for i in xrange(nimages):
+        jacob={'dudrow':scale, 'dudcol':0.0,
+               'dvdrow':0.0,   'dvdcol':scale}
 
         e1psf=0.1*srandu()
         e2psf=0.1*srandu()
@@ -2256,6 +2262,9 @@ def test_sloan_swindle(s2n=100.,
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
                                                    s2n_method=s2n_method)
+        #images.view(ci.image)
+        #images.view(cin.image)
+        #stop
         s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
                                                        ci['cen'], rad)
 
@@ -2287,7 +2296,7 @@ def test_sloan_swindle(s2n=100.,
                                  cen0,
                                  'gexp')
     exp_res=gm_expfit.get_result()
-    if exp_res['flags'] == 0:
+    if exp_res['flags'] != 0:
         return defres
 
     gm_devfit=GMixFitMultiSimple(imlist,
@@ -2297,20 +2306,21 @@ def test_sloan_swindle(s2n=100.,
                                  cen0,
                                  'gdev')
     dev_res=gm_devfit.get_result()
-    if dev_res['flags'] == 0:
+    if dev_res['flags'] != 0:
+        print dev_res['errmsg']
         return defres
 
 
     exp_gmix=gm_expfit.get_gmix()
     dev_gmix=gm_devfit.get_gmix()
 
-    gm=GMixFitSloanSwindle(imlist,
-                           wtlist,
-                           jacoblist,
-                           psflist,
-                           cen0,
-                           exp_gmix,
-                           dev_gmix)
+    gm=GMixFitMultiCModel(imlist,
+                          wtlist,
+                          jacoblist,
+                          psflist,
+                          cen0,
+                          exp_gmix,
+                          dev_gmix)
 
 
     res=gm.get_result()
