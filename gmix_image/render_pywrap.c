@@ -314,34 +314,6 @@ static PyObject *PyGVecObject_set_cen(struct PyGVecObject* self, PyObject *args)
     return Py_None;
 }
 
-// apply the jacobian.  irr becomes iuu and icc becomes ivv
-static
-PyObject *PyGVecObject_apply_jacobian(struct PyGVecObject* self,PyObject *args)
-{
-    double dudrow,dudcol,dvdrow,dvdcol;
-    size_t i=0;
-    struct gauss *g=NULL;
-    double A=0,B=0,C=0,D=0;
-
-    if (!PyArg_ParseTuple(args, (char*)"dddd", 
-                &dudrow, &dudcol, &dvdrow, &dvdcol)) {
-        return NULL;
-    }
-
-    for (i=0; i<self->gvec->size; i++) {
-        g=&self->gvec->data[i];
-
-        A=g->irr*dudrow + g->irc*dvdrow;
-        B=g->irr*dudcol + g->irc*dvdcol;
-        C=g->irc*dudrow + g->icc*dvdrow;
-        D=g->irc*dudcol + g->icc*dvdcol;
-
-    }
-
-    Py_XINCREF(Py_None);
-    return Py_None;
-}
-
 
 static PyObject *PyGVecObject_get_e1e2T(struct PyGVecObject* self)
 {
