@@ -1156,7 +1156,7 @@ int calculate_loglike_jacob(const struct image *image,
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
     double u=0, v=0;
-    double diff=0, ierr=0;
+    double diff=0;
     ssize_t col=0, row=0;
 
     double model_val=0, pixval=0;
@@ -1171,7 +1171,6 @@ int calculate_loglike_jacob(const struct image *image,
     }
 
     (*loglike)=0;
-    ierr=sqrt(ivar);
     for (row=0; row<nrows; row++) {
         u=JACOB_PIX2U(jacob, row-row0, 0-col0);
         v=JACOB_PIX2V(jacob, row-row0, 0-col0);
