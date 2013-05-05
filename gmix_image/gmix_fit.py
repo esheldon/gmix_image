@@ -1907,8 +1907,21 @@ def test_multi(s2n=100.,
                nimages=10,
                s2n_method='matched',
                scale=0.27,
+               theta=20.0,
                randpsf=False):
     import fimage
+    import math
+    from math import cos,sin
+    from lensing.util import rotate_shape
+
+    thetarad=math.radians(theta)
+    ctheta=cos(thetarad)
+    stheta=sin(thetarad)
+    c2theta=cos(2*thetarad)
+    s2theta=sin(2*thetarad)
+
+    # rotate backwards to the pixel coords
+    g1pix,g2pix=rotate_shape(g1,g2,-theta)
 
     s2n_per=s2n/sqrt(nimages)
 
@@ -1919,7 +1932,7 @@ def test_multi(s2n=100.,
 
     # centers are actually ignored when creating the convolved
     # image
-    pars=numpy.array([-1., -1., g1, g2, Tpix, counts_pix])
+    pars=numpy.array([-1., -1., g1pix, g2pix, Tpix, counts_pix])
     epars=get_estyle_pars(pars)
     gmix=GMix(epars,type=model)
 
@@ -1933,18 +1946,18 @@ def test_multi(s2n=100.,
     rad=aperture/2.
 
     for i in xrange(nimages):
-        jacob={'dudrow':scale, 'dudcol':0.0,
-               'dvdrow':0.0,   'dvdcol':scale}
+        jacob={'dudrow':ctheta*scale, 'dudcol':-stheta*scale,
+               'dvdrow':stheta*scale, 'dvdcol': ctheta*scale}
         if randpsf:
             e1psf=0.1*srandu()
             e2psf=0.1*srandu()
             Tpsf=Tpsf0_pix*(1.+0.1*srandu())
-            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
+            gmix_psf_nopix=GMix([0., 0., e1psf, e2psf, Tpsf, 1.0],type='turb')
         else:
             e1psf=-0.05
             e2psf=-0.07
             Tpsf=Tpsf0_pix
-            gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
+            gmix_psf_nopix=GMix([0., 0., e1psf, e2psf, Tpsf, 1.0],type='turb')
 
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
