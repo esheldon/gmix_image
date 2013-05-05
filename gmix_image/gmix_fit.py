@@ -484,12 +484,11 @@ class GMixFitMultiBase:
                 'aic':aic,
                 'bic':bic}
 
-    def _check_lists4(self):
-        if (   (len(self.imlist) != len(self.wtlist))
-            or (len(self.imlist) != len(self.jacoblist))
-            or (len(self.imlist) != len(self.psflist)) ):
-            raise ValueError("all lists must be same length")
-
+    def _check_lists(self,*args):
+        llen=len(args[0])
+        for l in args:
+            if len(l) != llen:
+                raise ValueError("all lists must be same length")
 
     def _scale_leastsq_cov(self, gmix_list, pcov):
         """
@@ -521,6 +520,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.psflist=psflist
+        self._check_lists(self.imlist,self.wtlist,self.jacoblist,self.psflist)
 
         self.cen0=cen0  # starting center and center of coord system
         self.model=model
@@ -726,7 +726,7 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
         self.jacoblist=jacoblist
         self.psflist=psflist
         self.gmix0=gmix0.copy()
-        self._check_lists4()
+        self._check_lists(self.imlist,self.wtlist,self.jacoblist,self.psflist)
 
         self.cen0=cen0  # starting center and center of coord system
 
@@ -831,13 +831,15 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.lm_max_try=keys.get('lm_max_try',10)
         self.npars=1
 
+        self._check_lists(imlist,wtlist,jacoblist,psflist)
+
         self.imlist=self._get_imlist(imlist)
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.psflist=psflist
+
         self.gmix_exp=gmix_exp.copy()
         self.gmix_dev=gmix_dev.copy()
-        self._check_lists4()
 
         self.cen0=cen0  # starting center and center of coord system
 
@@ -850,7 +852,6 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.model='composite'
 
         self._dofit()
-
 
     def _dofit(self):
         """
@@ -952,13 +953,6 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         guess[0] = guess[0]*(1.+0.1*srandu())
         return guess
 
-    def _check_lists(self):
-        if (   (len(self.imlist) != len(self.wtlist))
-            or (len(self.imlist) != len(self.jacoblist))
-            or (len(self.imlist) != len(self.psflist)) ):
-            raise ValueError("all lists must be same length")
-
-
 class GMixFitMultiPSFFlux(GMixFitMultiBase):
     """
 
@@ -988,6 +982,8 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         self.imlist=self._get_imlist(imlist)
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
+        self._check_lists(self.imlist,self.wtlist,self.jacoblist)
+
         self.cen0=cen0  # starting center and center of coord system
         self._copy_gmix_list(gmix_list)
 
@@ -2210,7 +2206,6 @@ def test_cmodel(s2n=100.,
                 scale=0.27,
                 s2n_method='matched'):
     import fimage
-    #import images
 
     s2n_per=s2n/sqrt(nimages)
 
@@ -2233,6 +2228,7 @@ def test_cmodel(s2n=100.,
     dev_epars=get_estyle_pars(dev_pars)
     exp_gmix=GMix(exp_epars,type='exp')
     dev_gmix=GMix(dev_epars,type='dev')
+    
 
     exp_dlist=exp_gmix.get_dlist()
     dev_dlist=dev_gmix.get_dlist()
@@ -2258,11 +2254,11 @@ def test_cmodel(s2n=100.,
         Tpsf=Tpsf0_pix*(1.+0.1*srandu())
         gmix_psf_nopix=GMix([-1., -1., e1psf, e2psf, Tpsf, 1.0],type='turb')
 
-
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
                                                    s2n_method=s2n_method)
-        #images.view(ci.image)
+        #import images
+        #images.multiview(ci.image)
         #images.view(cin.image)
         #stop
         s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
@@ -2321,7 +2317,6 @@ def test_cmodel(s2n=100.,
                           cen0,
                           exp_gmix,
                           dev_gmix)
-
 
     res=gm.get_result()
     return exp_res,dev_res,res,s2n_uw15
