@@ -632,6 +632,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             pcov=self._scale_leastsq_cov(gmix_list,pcov0)
 
         self._rfc_res={'flags':flags,
+                       'numiter':infodict['nfev'],
                        'pars':pars,
                        'pcov0':pcov0,
                        'pcov':pcov,
