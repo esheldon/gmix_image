@@ -1,4 +1,5 @@
 from sys import stderr
+import inspect
 import pprint
 
 import numpy
@@ -19,6 +20,8 @@ from . import _render
 
 from . import gmix
 from .gmix import GMix, GMixCoellip
+
+LM_MAX_TRY=5
 
 HIGHVAL=9.999e9
 
@@ -54,7 +57,7 @@ class GMixFitSimple:
 
 
         self.counts=self.image.sum()
-        self.lm_max_try=10
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
 
         self.gprior=keys.get('gprior',None)
         self.gprior_like=keys.get('gprior_like',False)
@@ -86,7 +89,8 @@ class GMixFitSimple:
                 break
 
         if i == ntry:
-            print self.__class__,"could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         self._result=res
 
@@ -513,7 +517,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
     def __init__(self, imlist, wtlist, jacoblist, psflist, cen0, model,
                  **keys):
 
-        self.lm_max_try=keys.get('lm_max_try',10)
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
 
         self.npars=6
         self.imlist=self._get_imlist(imlist)
@@ -526,7 +530,6 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.model=model
 
         self._set_im_wt_sums()
-        self.lm_max_try=10
 
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
@@ -550,9 +553,11 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         """
         from scipy.optimize import leastsq
 
-        if self._round_fixcen_flags != 0:
-            self._result={'flags':self._round_fixcen_flags,
-                          'model':self.model,'restype':'lm'}
+        if self._rfc_res['flags'] != 0:
+            self._result={'flags':self._rfc_res['flags'],
+                          'model':self.model,
+                          'restype':'lm',
+                          'errmsg':'round fixcen fit failed'}
             return
 
         ntry=self.lm_max_try
@@ -567,7 +572,8 @@ class GMixFitMultiSimple(GMixFitMultiBase):
                 break
 
         if i == ntry:
-            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         self._result=res
 
@@ -613,13 +619,26 @@ class GMixFitMultiSimple(GMixFitMultiBase):
                 break
 
         if i == ntry:
-            print self.__class__,"fit_round_fixcen could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
             flags=GMIXFIT_EARLY_FAILURE 
         else:
             flags=0
 
-        self._round_fixcen_pars=pars
-        self._round_fixcen_flags=flags
+        pcov=None
+        if pcov0 is not None:
+            epars=self._pars2convert(pars)
+            gmix_list=self._get_gmix_list(epars)
+            pcov=self._scale_leastsq_cov(gmix_list,pcov0)
+
+        self._rfc_res={'flags':flags,
+                       'pars':pars,
+                       'pcov0':pcov0,
+                       'pcov':pcov,
+                       'errmsg':errmsg}
+
+    def get_rfc_result(self):
+        return self._rfc_res
 
     def _get_gmix_list(self, pars):
         """
@@ -680,17 +699,17 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         return guess
 
     def _get_guess(self):
-        if self._round_fixcen_flags != 0:
+        if self._rfc_res['flags'] != 0:
             raise ValueError("can't fit when round fixcen fails")
 
         guess=zeros(self.npars)
         
-        T0 = self._round_fixcen_pars[0]
-        counts0 = self._round_fixcen_pars[1]
+        T0 = self._rfc_res['pars'][0]
+        counts0 = self._rfc_res['pars'][1]
 
         # guess center 0,0 in uv plane
-        guess[0]=0.0
-        guess[1]=0.0
+        guess[0]=0.5*srandu()
+        guess[1]=0.5*srandu()
 
         g1rand=0.1*srandu()
         g2rand=0.1*srandu()
@@ -718,7 +737,7 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
     def __init__(self, imlist, wtlist, jacoblist, psflist, cen0, gmix0,
                  **keys):
 
-        self.lm_max_try=keys.get('lm_max_try',10)
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
 
         self.imlist=self._get_imlist(imlist)
@@ -760,7 +779,8 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
                 break
 
         if i == ntry:
-            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         self._result=res
 
@@ -828,7 +848,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
                  gmix_exp, gmix_dev,
                  **keys):
 
-        self.lm_max_try=keys.get('lm_max_try',10)
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
 
         self._check_lists(imlist,wtlist,jacoblist,psflist)
@@ -872,7 +892,8 @@ class GMixFitMultiCModel(GMixFitMultiBase):
                 break
 
         if i == ntry:
-            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         self._result=res
 
@@ -976,7 +997,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
                  cen0, 
                  **keys):
 
-        self.lm_max_try=keys.get('lm_max_try',10)
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=3
 
         self.imlist=self._get_imlist(imlist)
@@ -1015,7 +1036,8 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
                 break
 
         if i == ntry:
-            print self.__class__,"fit_full could not find maxlike after",ntry,"tries" 
+            mess="could not find maxlike after %s tries" % ntry
+            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         self._result=res
         self._add_extra_results()
@@ -1095,7 +1117,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         if ngauss > 3:
             raise ValueError("support ngauss>3")
 
-        self.lm_max_try=keys.get('lm_max_try',10)
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
 
         self.ngauss=ngauss
         self.model='coellip'
@@ -1114,8 +1136,6 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         # lowest allowed amplitide
         #self.lowest_psum = -5.0*sqrt(self.ivar*self.imsize)
         self.pstart=4+self.ngauss
-
-        self.lm_max_try=10
 
         self._fit_round_fixcen()
         self._fit_full()
@@ -1223,15 +1243,15 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
 
     def _get_guess(self):
-        if self._round_fixcen_flags != 0:
+        if self._rfc_res['flags'] != 0:
             raise ValueError("can't fit when round fixcen fails")
 
         npars=self.npars
         ngauss=self.ngauss
         guess=zeros(npars)
         
-        T0 = self._round_fixcen_pars[0]
-        counts0 = self._round_fixcen_pars[1]
+        T0 = self._rfc_res['pars'][0]
+        counts0 = self._rfc_res['pars'][1]
 
         # guess center 0,0 in uv plane
         guess[0]=0.0
@@ -1989,7 +2009,6 @@ def test_multi(s2n=100.,
                           psflist,
                           cen0,
                           model)
-    #return gm._round_fixcen_pars
     return gm.get_result(), s2n_uw15
 
 def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad,
@@ -2121,7 +2140,6 @@ def test_multi_color(s2n=100.,
                          cen2,
                          gm1.get_gmix())
     res2=gm2.get_result()
-    #return gm._round_fixcen_pars
     return res1,res2,s2n_uw15
 
 
@@ -2197,7 +2215,6 @@ def test_psfflux_star(s2n=100.,
                            jacoblist,
                            psflist,
                            cen)
-    #return gm._round_fixcen_pars
     return gm.get_result()
 
 
