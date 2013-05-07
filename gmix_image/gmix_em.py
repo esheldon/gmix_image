@@ -93,10 +93,13 @@ class GMixEM(_gmix_em.GMixEM):
 
     getters
     ----------
+    get_gmix(): get a GMix object
+        get a GMix object representing the mixture
     get_dlist(): list of dictionaries
         The fitted gaussian mixture model at the end of the last iteration.
         These have the same entries as the guess parameter with the addition of
         "det", which has the determinant of the covariance matrix.
+    get_model(): get a model image
 
     get_flags(): number
         A bitmask holding flags for the processing.  Should be zero for
@@ -144,7 +147,7 @@ class GMixEM(_gmix_em.GMixEM):
     def __init__(self, im, guess, 
                  sky=None,
                  counts=None,
-                 maxiter=1000,
+                 maxiter=5000,
                  tol=1.e-6,
                  bound=None,
                  cocenter=False,
@@ -186,14 +189,249 @@ class GMixEM(_gmix_em.GMixEM):
         return gmix2image_em(dlist, self._image.shape,
                              counts=self._counts)
 
+
+class GMixEMBoot:
+    """
+
+    This version can bootstrap because it can generate guesses based on an
+    intial guess of the size only.  Also it will retry up to a specified number
+    of guesses until convergence is found.
+
+    parameters
+    ----------
+    image: ndarray
+        The image to fit. The can be sky subtracted; a constant will be
+        added for the EM to ensure all values are positive.
+    ngauss: int
+        number of gaussians
+    cen_guess: [row,col]
+        First guess at the center
+    sigma_guess: number, optional
+        An optional starting guess for the "sigma" of a single
+        gausian.  Default sqrt(2) which is fwhm=0.9'' in DES
+    ivar: number, optional
+        To get a meaningful chi^2 in the returned statistics,
+        send a correct ivar.  Default 1
+    maxiter: number, optional
+        maximum number of iterations, default 5000.  For ngauss > 2
+        you may well need that many
+    tol: number, optional
+        Tolerance in the moments for convergence, default 1.e-6
+    cocenter: bool, optional
+        If True, force the gaussians to be cocentric.  Default False
+    maxtry: number, optional
+        Maximum number of retries.  Default 10.
+
+    """
+    def __init__(self, image, ngauss, cen_guess,
+                 sigma_guess=1.414, # fwhm=0.9'' in des
+                 ivar=1.0,
+                 maxiter=5000, 
+                 tol=1.e-6,
+                 cocenter=False,
+                 maxtry=10):
+
+        self.image0=image
+        self.image,self.sky = self._prep_image()
+        self.counts=self.image.sum()
+
+        self.ngauss=ngauss
+        self.cen_guess=cen
+
+        self.sigma_guess=sigma_guess
+        self.ivar=ivar
+
+        self.maxiter=maxiter
+        self.tol=tol
+        self.cocenter=cocenter
+        self.maxtry=maxtry
+
+
+        self._run_em()
+
+    def get_result(self):
+        """
+        The result, holding a dict list of pars, a GMix representation, and
+        some stats about the fit.
+        """
+        return self.result
+
+    def get_gmix(self):
+        """
+        Get the GMix representation
+        """
+        return self.result['gmix']
+
+    def _run_em(self):
+        guess0=self._get_guess()
+
+        ntry=self.maxtry
+        for i in xrange(ntry):
+            guess = self._perturb_dlist(guess0)
+            gm = GMixEM(self.image, guess, sky=sky, 
+                        maxiter=self.maxiter, tol=self.tol,
+                        cocenter=self.cocenter)
+            flags = gm.get_flags()
+            if flags==0:
+                break
+
+        if flags != 0:
+            print 'em flags:'
+            gmix_image.printflags('em',flags)
+
+        self._fitter=gm
+        gmix=gm.get_gmix()
+        self.result={'gmix':gmix,
+                     'flags':gm.get_flags(),
+                     'numiter':gm.get_numiter(),
+                     'fdiff':gm.get_fdiff(),
+                     'ntry':i+1}
+        if flags == 0:
+            stats=self.get_stats()
+            self.result.update(stats)
+
+    def _perturb_dlist(self, dlist_in):
+        dlist=copy.deepcopy(dlist_in) 
+        for i in xrange(len(dlist)):
+            # weirdness with references....
+            g=dlist[i]
+            g['p']   = g['p']*(1+0.01*srandu())
+            g['row'] = g['row'] + 0.5*srandu()
+            g['col'] = g['col'] + 0.5*srandu()
+            g['irr'] = g['irr']*(1+0.05*srandu())
+            g['irc'] = g['irc']*(1+0.05*srandu())
+            g['icc'] = g['icc']*(1+0.05*srandu())
+
+            dlist[i]=g
+
+        return dlist
+
+    def _get_guess(self):
+        """
+        Get a guess as a list of dictionaries.  Guesses
+        for higher ngauss are ~turbulence like
+        """
+        row=self.cen_guess[0]
+        col=self.cen_guess[1]
+        irr_guess=self.sigma_guess**2
+
+        if self.ngauss==1:
+            guess=[{'p':1.0,
+                    'row':row,
+                    'col':col,
+                    'irr':irr_guess,
+                    'irc':0.0,
+                    'icc':irr_guess}]
+        else:
+            if self.ngauss==3:
+                Texamp=array([0.3,1.0,.6])
+                pexamp=array([0.1,0.7,0.22])
+            elif self.ngauss==2:
+                Texamp=array([12.6,3.8])
+                pexamp=array([0.30, 0.70])
+            else:
+                raise ValueError("ngauss==1,2,3 for now")
+
+            Tfrac=Texamp/Texamp.sum()
+            pfrac=pexamp/pexamp.sum()
+
+            guess=[]
+
+            for i in xrange(self.ngauss):
+                pi=pfrac[i]
+                g={'p':pi,'row':row, 'col':col,
+                   'irr':Tfrac[i]*irr_guess,
+                   'irc':0.0,
+                   'icc':Tfrac[i]*irr_guess}
+                guess.append(g)
+
+    def _prep_image(self, image):
+
+        im=image.copy()
+
+        # need no zero pixels and sky value
+        im_min = im.min()
+        if im_min==0:
+            sky=0.001
+            im += sky
+        elif im_min < 0:
+            sky=0.001
+            im += (sky-im_min)
+        else:
+            #sky = im_min
+            sky=numpy.median(im)
+
+        return im,sky
+
+    def get_model(self):
+        """
+        Model is not normalized
+        """
+        from .render import gmix2image
+
+        gmix=self.result['gmix']
+        model=gmix2image(gmix, self.image.shape)
+        return model
+
+    def get_loglike(self):
+        """
+        Get the log likelihood.  The model is forced to have
+        the same counts as the image and the articial "sky" is
+        added
+        """
+
+        model=self.get_model()
+        model += self.sky
+
+        model *= self.counts/model.sum()
+        diff=(model-self.image)*sqrt(self.ivar)
+        loglike = -0.5*(diff**2).sum()
+        return loglike
+
+    def get_stats(self):
+        """
+        Get some stats on goodness of fit and bayesian information
+        """
+        import copy
+        from math import log
+        import scipy.stats
+
+        loglike=self.get_loglike()
+
+        if self.cocenter:
+            npars = self.ngauss*4+2
+        else:
+            npars=self.ngauss*6
+        ndata=self.image.size
+
+        chi2=loglike/(-0.5)
+        dof=ndata-npars
+        chi2per = chi2/dof
+
+        prob = scipy.stats.chisqprob(chi2, dof)
+
+        aic = -2*loglike + 2*npars
+        bic = -2*loglike + npars*log(ndata)
+
+        stats={'loglike':loglike,
+               'chi2per':chi2per,
+               'dof':dof,
+               'fit_prob':prob,
+               'aic':aic,
+               'bic':bic}
+
+        return stats
+
 class GMixEMPSF:
     """
-    Process the image as if it is a PSF
+    deprecated
 
     Send either cen= or ares= (adaptive moments output)
 
-    Note if the initial adaptive moments run fails, then
-    the result is simply {'flags':GMIXEM_ERROR_ADMOM_FAILED}
+    This version can "stand alone" because it does an
+    initial fit for a single gaussian to bootstrap.  You
+    do need to give it guess at the center however, 
+    and a size guess will be helpful.
     """
     def __init__(self, image, ivar, ngauss, 
                  cen=None,
@@ -209,8 +447,8 @@ class GMixEMPSF:
         self.cen_guess=cen
         self.ngauss=ngauss
 
-        self.maxtry_admom=10
-        self.maxtry_em=10
+        self.maxtry_admom=maxtry_admom
+        self.maxtry_em=maxtry_em
 
         self.maxiter=maxiter
         self.tol=tol
