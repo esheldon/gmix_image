@@ -46,7 +46,6 @@
 int gmix_em(struct gmix* self,
                struct image *image, 
                struct gvec *gvec,
-               struct gvec *gvec_psf,
                size_t *iter,
                double *fdiff)
 {
@@ -61,19 +60,16 @@ int gmix_em(struct gmix* self,
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/npoints);
 
-    if (gvec_psf)
-        gvec_set_total_moms(gvec_psf);
-
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
         if (self->verbose > 1) gvec_print(gvec,stderr);
 
-        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, iter_struct);
         if (flags!=0)
             goto _gmix_em_bail;
 
-        gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+        gmix_set_gvec_fromiter(gvec, iter_struct);
 
         // fixing sky doesn't work, need correct starting value
         if (!self->fixsky) {
@@ -104,7 +100,7 @@ _gmix_em_bail:
 }
 /*
  
- Find the weighted average center
+ Find the center for the next step
 
  for j gaussians
 
@@ -117,7 +113,7 @@ _gmix_em_bail:
  types in the gaussian!  Maybe some other day.
 
  */
-int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
+static int get_cen_new(const struct gvec* gvec, struct vec2* mu_new)
 {
     int status=1;
     struct vec2 mu_Cinvp, mu_Cinvpsum;
@@ -134,7 +130,7 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
         if (!mtx2_invert(&C, &Cinvp)) {
             wlog("gvec_fix_centers: zero determinant found in C\n");
             status=0;
-            goto _gvec_wmean_center_bail;
+            goto _get_cen_new_bail;
         }
         mtx2_sprodi(&Cinvp, gauss->p);
 
@@ -154,12 +150,12 @@ int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new)
     if (!mtx2_invert(&Cinvpsum, &Cinvpsum_inv)) {
         wlog("gvec_fix_centers: zero determinant found in Cinvpsum\n");
         status=0;
-        goto _gvec_wmean_center_bail;
+        goto _get_cen_new_bail;
     }
 
     mtx2_vec2prod(&Cinvpsum_inv, &mu_Cinvpsum, mu_new);
 
-_gvec_wmean_center_bail:
+_get_cen_new_bail:
     return status;
 }
 
@@ -168,6 +164,7 @@ _gvec_wmean_center_bail:
  *
  *   sum(p*Covar)/sum(p)
  */
+ /*
 void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
 {
     double psum=0.0;
@@ -187,7 +184,7 @@ void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov)
     cov->m12 /= psum;
     cov->m22 /= psum;
 }
-
+*/
 
 static void set_means(struct gvec *gvec, struct vec2 *cen)
 {
@@ -204,7 +201,6 @@ static void set_means(struct gvec *gvec, struct vec2 *cen)
 int gmix_em_cocenter(struct gmix* self,
                         struct image *image, 
                         struct gvec *gvec,
-                        struct gvec *gvec_psf,
                         size_t *iter,
                         double *fdiff)
 {
@@ -222,8 +218,6 @@ int gmix_em_cocenter(struct gmix* self,
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/npoints);
 
-    if (gvec_psf)
-        gvec_set_total_moms(gvec_psf);
 
     wmomlast=-9999;
     *iter=0;
@@ -231,27 +225,27 @@ int gmix_em_cocenter(struct gmix* self,
         if (self->verbose > 1) gvec_print(gvec,stderr);
 
         // first pass to get centers
-        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, iter_struct);
         if (flags!=0)
             goto _gmix_em_cocenter_bail;
 
         // copy for getting centers only
         gvec_copy(gvec, gcopy);
-        gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
+        gmix_set_gvec_fromiter(gcopy, iter_struct);
 
-        if (!gvec_wmean_center(gcopy, &cen_new)) {
+        if (!get_cen_new(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
             goto _gmix_em_cocenter_bail;
         }
         set_means(gvec, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
-        flags = gmix_get_sums(self, image, gvec, gvec_psf, iter_struct);
+        flags = gmix_get_sums(self, image, gvec, iter_struct);
         if (flags!=0)
             goto _gmix_em_cocenter_bail;
  
 
-        gmix_set_gvec_fromiter(gvec, gvec_psf, iter_struct);
+        gmix_set_gvec_fromiter(gvec, iter_struct);
         // we only wanted to update the moments, set these back.
         // Should do with extra par in above function or something
         set_means(gvec, &cen_new);
@@ -288,6 +282,7 @@ _gmix_em_cocenter_bail:
 // set all the covariances equal to the input covariance
 // scaled to their own size
 //   cov_i = cov*(irr_i+icc_i)/(irr+icc)
+/*
 static void force_coellip(struct gvec *gvec, struct mtx2 *cov)
 {
     double size = cov->m11+cov->m22;
@@ -344,7 +339,7 @@ int gmix_em_coellip(struct gmix* self,
         gvec_copy(gvec, gcopy);
         gmix_set_gvec_fromiter(gcopy, gvec_psf, iter_struct);
 
-        if (!gvec_wmean_center(gcopy, &cen_new)) {
+        if (!get_cen_new(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
             goto _gmix_em_coellip_bail;
         }
@@ -394,12 +389,11 @@ _gmix_em_coellip_bail:
     return flags;
 }
 
-
+*/
 
 int gmix_get_sums(struct gmix* self,
                   struct image *image,
                   struct gvec *gvec,
-                  struct gvec *gvec_psf,
                   struct iter* iter)
 {
     int flags=0;
@@ -434,21 +428,11 @@ int gmix_get_sums(struct gmix* self,
 
                 u2 = u*u; v2 = v*v; uv = u*v;
 
-                if (gvec_psf) { 
-                    sums->gi = gmix_evaluate_convolved(self,
-                                                       gauss,
-                                                       gvec_psf,
-                                                       u2,uv,v2,
-                                                       &flags);
-                    if (flags != 0) {
-                        goto _gmix_get_sums_bail;
-                    }
-                } else {
-                    chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                    chi2 /= gauss->det;
-                    b = M_TWO_PI*sqrt(gauss->det);
-                    sums->gi = gauss->p*exp( -0.5*chi2 )/b;
-                }
+                chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                chi2 /= gauss->det;
+                b = M_TWO_PI*sqrt(gauss->det);
+                sums->gi = gauss->p*exp( -0.5*chi2 )/b;
+
                 gtot += sums->gi;
 
                 // keep row units in unmasked frame
@@ -509,6 +493,7 @@ _gmix_get_sums_bail:
 */
 
 
+/*
 double gmix_evaluate_convolved(struct gmix* self,
                                struct gauss *gauss,
                                struct gvec *gvec_psf,
@@ -558,9 +543,31 @@ _gmix_eval_conv_bail:
     return val;
 }
 
+*/
+
+void gmix_set_gvec_fromiter(struct gvec *gvec, 
+                            struct iter* iter)
+{
+    struct sums *sums=iter->sums;
+    struct gauss *gauss = gvec->data;
+    size_t i=0;
+    for (i=0; i<gvec->size; i++) {
+        gauss->p   = sums->pnew;
+        gauss->row = sums->rowsum/sums->pnew;
+        gauss->col = sums->colsum/sums->pnew;
+        gauss->irr = sums->u2sum/sums->pnew;
+        gauss->irc = sums->uvsum/sums->pnew;
+        gauss->icc = sums->v2sum/sums->pnew;
+        gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+
+        sums++;
+        gauss++;
+    }
+}
 
 
 
+/*
 void gmix_set_gvec_fromiter(struct gvec *gvec, 
                             struct gvec *gvec_psf, 
                             struct iter* iter)
@@ -611,7 +618,7 @@ void gmix_set_gvec_fromiter_convolved(struct gvec *gvec,
         gauss++;
     }
 }
-
+*/
 
 struct iter *iter_new(size_t ngauss)
 {

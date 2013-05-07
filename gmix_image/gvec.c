@@ -247,7 +247,8 @@ void gvec_set_total_moms(struct gvec *self)
 
 
 /* convolution results in nobj*npsf total gaussians */
-struct gvec *gvec_convolve(struct gvec *obj_gvec, 
+/*
+struct gvec *gvec_convolve_wrong(struct gvec *obj_gvec, 
                            struct gvec *psf_gvec)
 {
     struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
@@ -287,6 +288,57 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
 
     return gvec;
 }
+*/
+struct gvec *gvec_convolve(struct gvec *obj_gvec, 
+                           struct gvec *psf_gvec)
+{
+    struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
+    struct gvec *gvec=NULL;
+
+    int ntot=0, iobj=0, ipsf=0;
+    double irr=0, irc=0, icc=0, psum=0;
+    double row=0, col=0;
+    double psf_rowcen=0, psf_colcen=0;
+
+    ntot = obj_gvec->size*psf_gvec->size;
+
+    gvec = gvec_new(ntot);
+
+    gvec_get_cen(psf_gvec, &psf_rowcen, &psf_colcen);
+
+    for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
+        psf = &psf_gvec->data[ipsf];
+        psum += psf->p;
+    }
+
+    comb = gvec->data;
+    for (iobj=0; iobj<obj_gvec->size; iobj++) {
+        obj = &obj_gvec->data[iobj];
+
+        for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
+            psf = &psf_gvec->data[ipsf];
+
+            irr = obj->irr + psf->irr;
+            irc = obj->irc + psf->irc;
+            icc = obj->icc + psf->icc;
+
+            // off-center psf components shift the
+            // convolved center
+            row = obj->row + (psf->row-psf_rowcen);
+            col = obj->col + (psf->col-psf_colcen);
+
+            gauss_set(comb,
+                      obj->p*psf->p/psum,
+                      row, col, 
+                      irr, irc, icc);
+
+            comb++;
+        }
+    }
+
+    return gvec;
+}
+
 
 
 // pars are full gmix of size 6*ngauss

@@ -357,6 +357,29 @@ static PyObject *PyGVecObject_get_e1e2T(struct PyGVecObject* self)
 
 
 /* error checking should happen in python */
+/*
+static PyObject *PyGVecObject_convolve_replace_wrong(struct PyGVecObject* self, PyObject *args)
+{
+    PyObject *psf_obj=NULL;
+    struct PyGVecObject *psf=NULL;
+    struct gvec *gvec_new=NULL;
+
+    if (!PyArg_ParseTuple(args, (char*)"O", &psf_obj)) {
+        return NULL;
+    }
+
+    psf=(struct PyGVecObject *) psf_obj;
+
+    gvec_new = gvec_convolve(self->gvec, psf->gvec);
+    self->gvec = gvec_free(self->gvec);
+
+    self->gvec = gvec_new;
+
+    Py_XINCREF(Py_None);
+    return Py_None;
+}
+*/
+/* error checking should happen in python */
 static PyObject *PyGVecObject_convolve_replace(struct PyGVecObject* self, PyObject *args)
 {
     PyObject *psf_obj=NULL;
@@ -377,6 +400,7 @@ static PyObject *PyGVecObject_convolve_replace(struct PyGVecObject* self, PyObje
     Py_XINCREF(Py_None);
     return Py_None;
 }
+
 
 static PyMethodDef PyGVecObject_methods[] = {
     {"get_size", (PyCFunction)PyGVecObject_get_size, METH_NOARGS, "get_size\n\nreturn number of gaussians."},

@@ -3,6 +3,23 @@
 
 //#include "matrix.h"
 
+/*
+struct gauss2 {
+    double p;
+    double norm;
+
+    double cen[2];
+    double cov[2][2];
+};
+struct gauss2 {
+    double p;
+    double norm;
+
+    struct vec2;
+    struct mtx2;
+};
+*/
+
 struct gauss {
     double p;
     double row;

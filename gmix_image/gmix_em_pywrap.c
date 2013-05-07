@@ -14,9 +14,6 @@ struct PyGMixEMObject {
   // holds the result
   struct gvec *gvec;
 
-  // optional psf specificatioin
-  struct gvec *gvec_psf;
-
   int flags;
   size_t numiter;
 
@@ -324,7 +321,6 @@ void gmix_cleanup(struct PyGMixEMObject* self)
 {
     self->image    = image_free(self->image);
     self->gvec     = gvec_free(self->gvec);
-    self->gvec_psf = gvec_free(self->gvec_psf);
 }
 
 static int
@@ -334,28 +330,27 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     struct gmix gmix = {0};
 
     PyObject* guess_lod=NULL;
-    PyObject* psf_lod=NULL;
     PyObject* bound_obj=NULL;
     PyObject* image_obj=NULL;
     double sky=0, counts=0;
     unsigned int maxiter=0;
-    self->image=NULL; self->gvec=NULL; self->gvec_psf=NULL;
+    self->image=NULL; self->gvec=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
-                               "maxiter", "tol", "psf", "bound", 
-                               "cocenter", "coellip", "fixsky", 
+                               "maxiter", "tol", "bound", 
+                               "cocenter", "fixsky", 
                                "verbose", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, (char*)"OddOId|OOiiii", argnames,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds,
+                                     (char*)"OddOId|Oiii",
+                                     argnames,
                                      &image_obj, 
                                      &sky, 
                                      &counts, 
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
                                      &gmix.tol,
-                                     &psf_lod,
                                      &bound_obj,
                                      &gmix.cocenter,
-                                     &gmix.coellip,
                                      &gmix.fixsky,
                                      &gmix.verbose)) {
         return -1;
@@ -383,35 +378,18 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
         goto _gmix_init_bail;
     }
 
-    if (psf_lod != NULL && psf_lod != Py_None) {
-        self->gvec_psf = gvec_from_list_of_dicts(psf_lod,"psf");
-        if (!self->gvec_psf) {
-            status=0;
-            goto _gmix_init_bail;
-        }
-    }
     gmix.maxiter = maxiter;
 
-    if (gmix.coellip) {
-        self->flags = gmix_em_coellip(&gmix, 
-                self->image, 
-                self->gvec, 
-                self->gvec_psf,
-                &self->numiter,
-                &self->fdiff);
-
-    } else if (gmix.cocenter) {
+    if (gmix.cocenter) {
         self->flags = gmix_em_cocenter(&gmix, 
                 self->image, 
                 self->gvec, 
-                self->gvec_psf,
                 &self->numiter,
                 &self->fdiff);
     } else {
         self->flags = gmix_em(&gmix, 
                 self->image, 
                 self->gvec, 
-                self->gvec_psf,
                 &self->numiter,
                 &self->fdiff);
     }
@@ -440,38 +418,24 @@ PyGMixEMObject_dealloc(struct PyGMixEMObject* self)
 static PyObject*
 PyGMixEMObject_write(struct PyGMixEMObject* self)
 {
-    int npsf=0;
-    if (self->gvec_psf) {
-        npsf=self->gvec_psf->size;
-    }
     printf("GMix\n"
            "\tngauss:  %lu\n"
            "\tflags:   %d\n"
            "\tnumiter: %lu\n"
            "\tfdiff:   %g\n"
-           "\tnpsf:    %d\n"
             ,self->gvec->size,
             self->flags,
             self->numiter,
-            self->fdiff,
-            npsf);
+            self->fdiff);
 
     printf("gauss\n");
     gvec_print(self->gvec,stdout);
-    if (npsf > 0) {
-        printf("psf\n");
-        gvec_print(self->gvec_psf,stdout);
-    }
     Py_RETURN_NONE;
 }
 
 static PyObject *
 PyGMixEMObject_repr(struct PyGMixEMObject* self) {
     char buff[1024];
-    int npsf=0;
-    if (self->gvec_psf) {
-        npsf=self->gvec_psf->size;
-    }
 
     sprintf(buff,
             "GMix\n"
@@ -479,19 +443,17 @@ PyGMixEMObject_repr(struct PyGMixEMObject* self) {
             "\tflags:   %d\n"
             "\tnumiter: %lu\n"
             "\tfdiff:   %g\n"
-            "\tnpsf:    %d\n"
             ,self->gvec->size,
             self->flags,
             self->numiter,
-            self->fdiff,
-            npsf);
+            self->fdiff);
     return PyString_FromString(buff);
     Py_RETURN_NONE;
 }
 
 
 static PyObject*
-PyGMixEMObject_get_pars(struct PyGMixEMObject* self)
+PyGMixEMObject_get_dlist(struct PyGMixEMObject* self)
 {
     PyObject* lod=NULL;
     PyObject* tdict=NULL;
@@ -542,7 +504,7 @@ PyGMixEMObject_get_fdiff(struct PyGMixEMObject* self)
 static PyMethodDef PyGMixEMObject_methods[] = {
     {"write", (PyCFunction)PyGMixEMObject_write, METH_VARARGS, 
         "print a representation\n"},
-    {"get_pars", (PyCFunction)PyGMixEMObject_get_pars, METH_VARARGS, 
+    {"get_dlist", (PyCFunction)PyGMixEMObject_get_dlist, METH_VARARGS, 
         "get the gaussian parameters as a list of dicts\n"},
     {"get_flags", (PyCFunction)PyGMixEMObject_get_flags, METH_VARARGS, 
         "get the flags from the processing\n"},

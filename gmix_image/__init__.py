@@ -36,12 +36,12 @@ from .util import pars2gmix, total_moms,  gmix_print
 
 from .gmix_mcmc import MixMC
 
-from .gmix_em import GMixEM
+from .gmix_em import GMixEM, GMixEMPSF
 from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET
 from .gmix_em import GMIXEM_ERROR_MAXIT
 from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET_COCENTER
 from .gmix_em import GMIXEM_ERROR_ADMOM_FAILED
-from .gmix_em import gmix2image_em, gmix2image_psf_em
+from .gmix_em import gmix2image_em
 from .gmix_em import ogrid_image
 
 from .gmix_fit import GMixFitCoellip

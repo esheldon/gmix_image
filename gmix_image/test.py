@@ -1,5 +1,7 @@
 import os
 from sys import stderr
+import pprint
+
 import numpy
 from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag, \
         tanh, pi
@@ -8,6 +10,7 @@ import gmix_image
 import gmix_fit
 from .gmix_fit import print_pars, ellip2eta, eta2ellip
 from .gmix_em import gmix2image_em
+from .gmix import GMix
 import copy
 
 import esutil as eu
@@ -21,6 +24,7 @@ except:
 
 try:
     from fimage import model_image, ellip2mom, etheta2e1e2
+    from fimage.noise import add_noise_matched
 except:
     pass
 #
@@ -28,48 +32,53 @@ except:
 #
 
 def test_all_em():
-    test_em(add_noise=False)
-    test_em(add_noise=True)
-    test_psf_em()
-    test_psf_em(add_noise=True)
-    test_psf_colocate_em(add_noise=False, npsf=1)
-    test_psf_colocate_em(add_noise=True, npsf=1)
-    test_psf_colocate_em(add_noise=False, npsf=2)
-    test_psf_colocate_em(add_noise=True, npsf=2)
-def test_em(add_noise=False):
-    print '\nnoise:',add_noise
+    test_em()
+
+def test_em(s2n=100., show=False):
+    #tol=1.e-6
     tol=1.e-6
+    maxiter=1000
+
     dims=[31,31]
-    gd = [{'p':0.6,'row':15,'col':15,'irr':2.0,'irc':0.0,'icc':2.0},
-          {'p':0.4,'row':8,'col':10,'irr':4.0,'irc':0.3,'icc':1.5}]
+    gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0},
+          {'p':0.4,'row':14.2,'col':15.4,'irr':3.2,'irc':0.3,'icc':2.0}]
 
+    guess=[{'p':0.5+0.02*srandu(),
+            'row':15+2*srandu(),
+            'col':15+2*srandu(),
+            'irr':2.0+0.5*srandu(),
+            'irc':0.0+0.1*srandu(),
+            'icc':2.0+0.5*srandu()},
+           {'p':0.5+0.02*srandu(),
+            'row':15+2*srandu(),
+            'col':15+2*srandu(),
+            'irr':2.0+0.5*srandu(),
+            'irc':0.0+0.1*srandu(),
+            'icc':2.0+0.5*srandu()} ]
+    pprint.pprint(guess)
     counts=1000
-    im = gmix2image_em(gd, dims, counts=counts)
+    im_nonoise = gmix2image_em(gd, dims, counts=counts)
 
-    if add_noise:
-        skysig=0.1*im.max()
-        print 'image max:',im.max()
-        print 'skysig   :',skysig
-        im += skysig*randu(im.size).reshape(dims[0],dims[1])
+    im,skysig=add_noise_matched(im_nonoise,s2n)
 
-    im_min = im.min()
-    if im_min < 0:
-        sky=-im_min
-    else:
-        sky=im_min
-    sky += 1
+    # pretend it is poisson
+    #sky = skysig**2
+    #im += sky
+    im_min=im.min()
+    sky = 0.01 + abs(im_min)
     im += sky
 
     print 'sky:',sky
+    print 'im_min:',im.min()
 
-    maxiter=500
     verbose=False
-    gm = gmix_image.GMixEM(im,gd,
-                         sky=sky,
-                         counts=counts,
-                         maxiter=maxiter,
-                         tol=tol,
-                         verbose=verbose)
+    gm = gmix_image.GMixEM(im,
+                           guess,
+                           sky=sky,
+                           counts=counts,
+                           maxiter=maxiter,
+                           tol=tol,
+                           verbose=verbose)
     gm.write()
     print 'truth'
     for i,d in enumerate(gd):
@@ -78,166 +87,42 @@ def test_em(add_noise=False):
             print '%s: %9.6lf' % (k,d[k]),
         print
 
+    if show and have_images:
+        model_image=gm.get_model()
+        images.compare_images(im-sky,  model_image,
+                              label1='im', label2='model',
+                              cross_sections=False)
 
-def test_psf_colocate_em(add_noise=False, npsf=1):
-    print '\nnoise:',add_noise
+def test_em_errors(s2n=100., show=False, ntrial=100):
     tol=1.e-6
-    maxiter=2000
-    verbose=False
+    maxiter=1000
     counts=1000
 
-    dims=[21,21]
-    cen=[(dims[0]-1)/2., (dims[1]-1)/2.]
-    gd = [{'p':0.4,'row':cen[0],'col':cen[1],'irr':2.5,'irc':0.1,'icc':3.1},
-          {'p':0.6,'row':cen[0],'col':cen[1],'irr':1.7,'irc':0.3,'icc':1.5}]
-
-    if npsf==3:
-        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
-                {'p':0.4,'irr':2.0,'irc':0.1,'icc':1.5},
-                {'p':0.1,'irr':4.0,'irc':0.4,'icc':3.2}]
-    elif npsf==2:
-        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
-                {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
-    else:
-        gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
-
-    im_prepsf = gmix2image_em(gd,dims,counts=counts)
-    im = gmix2image_em(gd,dims, psf=gpsf,counts=counts)
-
-    if add_noise:
-        skysig=0.05*im.max()
-        print 'image max:',im.max()
-        print 'skysig   :',skysig
-        im += skysig*randu(im.size).reshape(dims[0],dims[1])
-    else:
-        skysig=None
-
-    # must have non-zero sky
-    im_nosky = im.copy()
-
-    sky=1
-    im_min=im.min()
-    if im_min < 0:
-        im += (sky-im_min)
-
-    guess=copy.deepcopy(gd)
-    for g in guess:
-        g['row'] += 0.2*randu()
-        g['col'] += 0.2*randu()
-        g['irr'] += 0.2*randu()
-        g['irc'] += 0.2*randu()
-        g['icc'] += 0.2*randu()
-    print guess
-    post_counts=im.sum()
-    gm = gmix_image.GMixEM(im,guess,
-                         sky=sky,
-                         counts=post_counts,
-                         maxiter=maxiter,
-                         tol=tol,
-                         psf=gpsf,
-                         verbose=verbose)
-    gm.write()
-    print 'truth'
-    for i,d in enumerate(gd):
-        print '%i'% i,
-        for k in ['p','row','col','irr','irc','icc']:
-            print '%s: %9.6lf' % (k,d[k]),
-        print
-
-    if gm.flags != 0:
-        raise ValueError("halting")
-
-    if have_images:
-        pars = gm.pars
-
-        im_fit = gmix2image_em(pars,dims,counts=counts)
-        im_fit_conv = gmix2image_em(pars,dims,psf=gpsf, counts=counts)
-
-        images.compare_images(im_prepsf, im_fit)
-
-        # im_nosky includes noise
-        images.compare_images(im_nosky, im_fit_conv, skysig=skysig)
-
-        mean_moms = gmix_image.total_moms(gd)
-        fit_mean_moms = gmix_image.total_moms(pars)
-        psf_mean_moms = gmix_image.total_moms(gpsf)
-
-        print 'psf total moms:', \
-            psf_mean_moms['irr'],psf_mean_moms['irc'],psf_mean_moms['icc']
-        print 'input total moms:    ', \
-            mean_moms['irr'],mean_moms['irc'],mean_moms['icc']
-        print 'estimated total moms:', \
-            fit_mean_moms['irr'],fit_mean_moms['irc'],fit_mean_moms['icc']
-
-def test_psf_em(add_noise=False, npsf=1):
-    print '\nnoise:',add_noise
-    tol=1.e-8
-    maxiter=2000
-    verbose=False
-    counts=1000.
-
     dims=[31,31]
-    gd = [{'p':0.4,'row':10,'col':10,'irr':2.5,'irc':0.1,'icc':3.1},
-          {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
-    im_prepsf = gmix2image_em(gd,dims)
+    gd = [{'p':0.6,'row':15.1,'col':15.1,'irr':4.0,'irc':0.0,'icc':4.0},
+          {'p':0.4,'row':14.8,'col':14.8,'irr':3.2,'irc':0.3,'icc':2.0}]
+    gmix_true=GMix(gd)
 
-    #gd = [{'p':0.4,'row':15,'col':15,'irr':2.5,'irc':0.1,'icc':3.1}]
+    im0 = gmix2image_em(gd, dims, counts=counts)
+    imtmp,skysig=add_noise_matched(im0,s2n)
+    ivar=1./skysig**2
 
-    if npsf==3:
-        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
-                {'p':0.4,'irr':2.0,'irc':0.1,'icc':1.5},
-                {'p':0.1,'irr':4.0,'irc':0.4,'icc':3.2}]
-    elif npsf==2:
-        gpsf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
-                {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
-    else:
-        gpsf = [{'p':1.0,'irr':1.0,'irc':0.2,'icc':1.0}]
+    # pretend it is poisson
+    #sky = skysig**2
+    #imsky = im0 + sky
 
-    im = gmix_image.gmix2image_psf(gd,gpsf,dims,counts=counts)
+    npix=im_nonoise.size
 
-    if add_noise:
-        skysig=0.05*im.max()
-        print 'image max:',im.max()
-        print 'skysig   :',skysig
-        im += skysig*randu(im.size).reshape(dims[0],dims[1])
+    for i in xrange(ntrial):
 
+        im = im0 + skysig*numpy.random.randn(npix).reshape(dims)
 
-    # must have non-zero sky
-    im -= im.min()
-    sky = 0.01*im.max()
-    im += sky
+        gm=GMixEMPSF(im, ivar, len(gd),
+                     cen=[15,15],
+                     maxiter=maxiter,
+                     tol=tol)
+        tgmix=gm.get_gmix() 
 
-    guess=copy.deepcopy(gd)
-    for g in guess:
-        g['row'] += 0.5*randu()
-        g['col'] += 0.5*randu()
-        g['irr'] += 0.5*randu()
-        g['icc'] += 0.5*randu()
-    print guess
-    counts=im.sum()
-    gm = gmix_image.GMixEM(im,guess,
-                         sky=sky,
-                         counts=counts,
-                         maxiter=maxiter,
-                         tol=tol,
-                         psf=gpsf,
-                         verbose=verbose)
-    gm.write()
-    print 'truth'
-    for i,d in enumerate(gd):
-        print '%i'% i,
-        for k in ['p','row','col','irr','irc','icc']:
-            print '%s: %9.6lf' % (k,d[k]),
-        print
-
-    if gm.flags != 0:
-        raise ValueError("halting")
-
-    if have_images:
-        pars = gm.pars
-        im_fit = gmix2image_em(pars,dims)
-
-        images.compare_images(im_prepsf, im_fit)
 
 def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
     """
@@ -1699,4 +1584,3 @@ def test_turb(ngauss=2, Tfrac=False):
 if __name__ == "__main__":
     test(add_noise=False)
     test(add_noise=True)
-    test_psf_em()

@@ -12,23 +12,10 @@ GMixEM:
 functions
 ---------
 gmix2image_em:
-    Create an image from the gaussian input mixture model.  Optionally
-    send a PSF, which results in a call to gmix2image_psf.
-
-gmix2image_psf:
-    Create an image from the input gaussian mixture model and psf mixture
-    model.
+    Create an image from the gaussian input mixture model.
 
 ogrid_image:
     Create an image using the ogrid function from numpy
-
-total_moms:
-    Get the total moments for the mixture model; only easily
-    interpreted when the centers coincide.  Optionally send a
-    psf, which results in a call to total_moms_psf
-total_moms_psf:
-    Get the total moments for the mixture model and psf; only easily
-    interpreted when the centers coincide.
 """
 
 import copy
@@ -84,10 +71,6 @@ class GMixEM(_gmix_em.GMixEM):
         The total counts in the image.  If not sent it is calculated
         from the image, which is fine.
 
-    psf: list of dictionaries, optional
-        A gaussian mixture model representing the PSF.  The best fit gaussian
-        mixture will thus be the pre-psf values.  Centers are not necessary for
-        the psf mixture model.
     bound: dict
         A boundary region over which to work.  The dictionary should have the
         following integer entries
@@ -105,21 +88,17 @@ class GMixEM(_gmix_em.GMixEM):
         difference in the weighted summed moments between iterations.
     cocenter: bool
         If True, force the centers of all gaussians to agree.
-    coellip: bool
-        If True, force the centers of all gaussians to agree and
-        the covariance matrices to be proportional.
     verbose: bool, optional
         Print out some information for each iteration.
 
-    properties
+    getters
     ----------
-    pars: list of dictionaries
+    get_dlist(): list of dictionaries
         The fitted gaussian mixture model at the end of the last iteration.
         These have the same entries as the guess parameter with the addition of
-        "det", which has the determinant of the covariance matrix.  There is a
-        corresponding method get_pars() if you prefer.
+        "det", which has the determinant of the covariance matrix.
 
-    flags: number
+    get_flags(): number
         A bitmask holding flags for the processing.  Should be zero for
         success.  These flags are defined as attributes to the gmix_image
         module.
@@ -128,17 +107,14 @@ class GMixEM(_gmix_em.GMixEM):
             GMIXEM_ERROR_MAXIT                2 # max iteration reached
             GMIXEM_ERROR_NEGATIVE_DET_COCENTER 4 # not used currently
 
-        There is a corresponding method get_flags() if you prefer.
-
-    numiter: number
+    get_numiter(): number
         The number of iterations used during processing.  Will equal maxiter if
-        the maximum iterations was reached.  There is a corresponding method
-        get_numiter() if you prefer.
+        the maximum iterations was reached.
 
-    fdiff: number
+    get_fdiff(): number
         The fractional difference between the weighted moments for the last two
         iterations.  For convergence this will be less than the input
-        tolerance.  There is a corresponding method get_fdiff() if you prefer.
+        tolerance.
 
     examples
     --------
@@ -152,39 +128,26 @@ class GMixEM(_gmix_em.GMixEM):
     gm = gmix_image.GMixEM(image, guess, sky=100, maxiter=2000, tol=1.e-6)
 
     # Work with the results
-    if gm.flags != 0:
-        print 'failed with flags:',gm.flags
+    flags=gm.get_flags()
+    if flags != 0:
+        print 'failed with flags:',flags
 
-    print 'number of iterations:',gm.numiter
-    print 'fractional diff on last iteration:',gm.fdiff
+    print 'number of iterations:',gm.get_numiter()
+    print 'fractional diff on last iteration:',gm.get_fdiff()
 
-    pars = gm.pars
-    print 'center for first guassian:',pars[0]['row'],pars[0]['col']
-
-    # Find the gaussian mixture accounting for a point spread function.  The
-    # psf is just another gaussian mixture model.  The fit gaussian mixture
-    # will thus be "pre-psf". Centers are not necessary for the psf.
-
-    psf = [{'p':0.8,'irr':1.2,'irc':0.2,'icc':1.0},
-           {'p':0.2,'irr':2.0,'irc':0.1,'icc':1.5}]
-    gm = gmix_image.GMixEM(image, guess, psf=psf, sky=100)
+    dlist = gm.get_dlist()
+    print 'center for first guassian:',dlist[0]['row'],dlist[0]['col']
 
     # run some unit tests
     gmix_image.test.test_em()
-    gmix_image.test.test_em(add_noise=True)
-    gmix_image.test.test_psf_em(add_noise=False)
-    gmix_image.test.test_psf_colocate_em(add_noise=True)
-
     """
     def __init__(self, im, guess, 
                  sky=None,
                  counts=None,
                  maxiter=1000,
                  tol=1.e-6,
-                 psf=None,
                  bound=None,
                  cocenter=False,
-                 coellip=False,
                  verbose=False):
 
         self._image = array(im, ndmin=2, dtype='f8', copy=False)
@@ -193,10 +156,8 @@ class GMixEM(_gmix_em.GMixEM):
         self._counts=counts
         self._maxiter=maxiter
         self._tol=tol
-        self._psf=self._fixup_psf(copy.deepcopy(psf))
         self._bound=copy.deepcopy(bound)
         self._cocenter = cocenter
-        self._coellip = coellip
         self._verbose=verbose
 
         if self._sky is None:
@@ -206,7 +167,6 @@ class GMixEM(_gmix_em.GMixEM):
 
         verbosity  = 1 if self._verbose else 0
         do_cocenter = 1 if self._cocenter else 0
-        do_coellip = 1 if self._coellip else 0
 
         super(GMixEM,self).__init__(self._image,
                                   self._sky,
@@ -214,46 +174,16 @@ class GMixEM(_gmix_em.GMixEM):
                                   self._guess,
                                   self._maxiter,
                                   self._tol,
-                                  psf=self._psf,
                                   bound=self._bound,
                                   cocenter=do_cocenter,
-                                  coellip=do_coellip,
                                   verbose=verbosity)
 
-    # just to make access nicer.
-    pars=property(_gmix_em.GMixEM.get_pars)
-    flags=property(_gmix_em.GMixEM.get_flags)
-    numiter=property(_gmix_em.GMixEM.get_numiter)
-    fdiff=property(_gmix_em.GMixEM.get_fdiff)
-
     def get_gmix(self):
-        return self.get_pars()
+        return self.get_dlist()
     def get_model(self):
-        pars=self.get_pars()
-        return gmix2image_em(pars, self._image.shape,
-                             psf=self._psf,
+        dlist=self.get_dlist()
+        return gmix2image_em(dlist, self._image.shape,
                              counts=self._counts)
-
-    def _fixup_psf(self, psf):
-        """
-        Add center info if not there, just to make it a full gvec definition
-        """
-        if psf is None:
-            return None
-
-        if not isinstance(psf,list):
-            raise ValueError("expected psf to be a list of dicts")
-
-        for p in psf:
-            if not isinstance(p,dict):
-                raise ValueError("expected psf to be a list of dicts")
-
-            if 'row' not in p:
-                p['row'] = -1
-            if 'col' not in p:
-                p['col'] = -1
-        return psf
-
 
 class GMixEMPSF:
     """
@@ -502,6 +432,7 @@ class GMixEMPSF:
                               skysig=sqrt(1/self.ivar),
                               dof=dof)
 
+    '''
     def compare_normalized_model(self):
         """
         don't use this
@@ -521,7 +452,7 @@ class GMixEMPSF:
 
         # only runs if norm not already found
         self.find_norm()
-        return GMix(self._normalized_gmix.get_pars())
+        return GMix(self._normalized_gmix.get_dlist())
 
     def get_normalized_model(self):
         """
@@ -550,7 +481,6 @@ class GMixEMPSF:
 
         ydiff=self._eval_normalized_ydiff([self._norm])
         return (ydiff**2).sum()
-
 
     def _eval_normalized_pars(self, counts):
         pars=self.result['gmix'].get_pars()
@@ -582,8 +512,8 @@ class GMixEMPSF:
     def find_norm(self):
         """
         don't use this, just match the total counts
-        Use least squares to find the best normalization
 
+        Use least squares to find the best normalization
         only runs if norm not already found
         """
         from scipy.optimize import leastsq
@@ -612,10 +542,10 @@ class GMixEMPSF:
         self._norm = norm
 
         #print 'found norm:',norm,"  image sum is:",self.counts
-
+        '''
 
 def gmix2image_em(gauss_list, dims, 
-                  psf=None, aslist=False, renorm=True, 
+                  aslist=False, renorm=True, 
                   order='c',
                   nsub=1,
                   counts=1.0):
@@ -636,11 +566,8 @@ def gmix2image_em(gauss_list, dims,
     dims:
         The dimensions of the result.  This matters since
         the gaussian centers are in this coordinate syste.
-    psf: optional
-        An optional gaussian mixture PSf model.  The models will be convolved
-        with this PSF.
     aslist:
-        Get a list of images.  If a psf is sent, you get a list of lists.
+        Get a list of images.
 
     renorm:
         Make images as sum( pi*counts*imi ), not dividing by sum(pi).  For
@@ -660,11 +587,6 @@ def gmix2image_em(gauss_list, dims,
         #print 'using ogrid_image'
         model_image = ogrid_image
 
-    if psf is not None:
-        return gmix2image_psf_em(gauss_list, psf, dims, 
-                              aslist=aslist, renorm=renorm,
-                              order=order, nsub=nsub,
-                              counts=counts)
     if aslist:
         modlist=[]
     else:
@@ -694,71 +616,6 @@ def gmix2image_em(gauss_list, dims,
         return im
 
 
-def gmix2image_psf_em(gauss_list, psf_list, dims, 
-                   aslist=False, renorm=True, 
-                   order='c',
-                   nsub=1,
-                   counts=1.0):
-    """
-    Create an image from the input gaussian mixture model and psf mixture
-    model.
-    """
-    try:
-        import fimage
-        model_image = fimage.model_image
-    except:
-        #print 'using ogrid_image'
-        model_image = ogrid_image
-
-    if aslist:
-        modlist=[]
-    else:
-        im = zeros(dims)
-        tmp_im = zeros(dims)
-
-    g_psum = sum([g['p'] for g in gauss_list])
-
-    for g in gauss_list:
-        gp = g['p']
-        if renorm:
-            gp /= g_psum
-
-        row=g['row']
-        col=g['col']
-
-        # we always normalize the psf
-        p_psum = sum([psf['p'] for psf in psf_list])
-
-        if aslist:
-            modlist.append([])
-        else:
-            tmp_im[:,:] = 0.0
-
-        for psf in psf_list:
-            pp = psf['p']/p_psum
-            irr = g['irr'] + psf['irr']
-            irc = g['irc'] + psf['irc']
-            icc = g['icc'] + psf['icc']
-
-            cnt = counts*gp*pp
-            pim = model_image('gauss',
-                              dims,
-                              [row,col],
-                              [irr,irc,icc],
-                              counts=cnt,
-                              nsub=nsub,
-                              order=order)
-            if aslist:
-                modlist[-1].append(pim)
-            else:
-                tmp_im[:,:] += pim
-        if not aslist:
-            im += tmp_im
-
-    if aslist:
-        return modlist
-    else:
-        return im
 
 def ogrid_image(model, dims, cen, cov, counts=1.0, **keys):
     """

@@ -147,8 +147,6 @@ class GMix(_render.GVec):
         set the overall center to the input.
     get_pars():
         get a copy of the parameters used to initialize the GMix
-    get_type():
-        get a copy of the type of the input parameters
     """
     def __init__(self, pars, type=GMIX_FULL):
 
@@ -175,9 +173,6 @@ class GMix(_render.GVec):
         gmix = GMix(self.get_pars())
         return gmix
 
-    #def _print_type(self,t):
-    #    print 'type(type):',type(t)
-
     def convolve(self, psf):
         """
         Get a new GMix that is the convolution of the GMix with the input psf
@@ -192,14 +187,6 @@ class GMix(_render.GVec):
         gmix = GMix(self.get_pars())
         gmix._convolve_replace(psf)
         return gmix
-
-    '''
-    def get_type(self):
-        """
-        Get a copy of the type of the input parameters
-        """
-        return copy.copy(self._type)
-    '''
 
     def __repr__(self):
         import pprint
