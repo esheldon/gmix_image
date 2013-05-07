@@ -179,7 +179,8 @@ class GMixEM(_gmix_em.GMixEM):
                                   verbose=verbosity)
 
     def get_gmix(self):
-        return self.get_dlist()
+        return GMix(self.get_dlist())
+
     def get_model(self):
         dlist=self.get_dlist()
         return gmix2image_em(dlist, self._image.shape,
@@ -199,7 +200,9 @@ class GMixEMPSF:
                  ares=None,
                  maxiter=5000, 
                  tol=1.e-6,
-                 cocenter=False):
+                 cocenter=False,
+                 maxtry_admom=10,
+                 maxtry_em=10):
         self.image=image
         self.counts=image.sum()
         self.ivar=ivar
@@ -262,28 +265,23 @@ class GMixEMPSF:
             flags = gm.get_flags()
             if flags==0:
                 break
-            """
-            else:
-                print 'em flags:'
-                gmix_image.printflags('em',flags)
-                pprint.pprint(gm.get_gmix())
-            """
 
-        if i==(ntry-1):
+        if flags != 0:
             print 'em flags:'
-            gmix_image.printflags('em',gm.get_flags())
-            #pprint.pprint(gm.get_gmix())
+            gmix_image.printflags('em',flags)
 
 
 
         self._fitter=gm
-        gmix=GMix(gm.get_gmix())
+        gmix=gm.get_gmix()
         self.result={'gmix':gmix,
                      'flags':gm.get_flags(),
                      'numiter':gm.get_numiter(),
                      'fdiff':gm.get_fdiff(),
                      'ntry':i+1}
-
+        if flags == 0:
+            stats=self.get_stats()
+            self.result.update(stats)
 
     def _perturb_gmix(self, gmix_in):
         gmix=copy.deepcopy(gmix_in) 
@@ -291,8 +289,8 @@ class GMixEMPSF:
             # weirdness with references....
             g=gmix[i]
             g['p']   = g['p']*(1+0.01*srandu())
-            g['row'] = g['row']*(1+0.01*srandu())
-            g['col'] = g['col']*(1+0.01*srandu())
+            g['row'] = g['row'] + 0.5*srandu()
+            g['col'] = g['col'] + 0.5*srandu()
             g['irr'] = g['irr']*(1+0.05*srandu())
             g['irc'] = g['irc']*(1+0.05*srandu())
             g['icc'] = g['icc']*(1+0.05*srandu())
@@ -335,11 +333,6 @@ class GMixEMPSF:
 
             for i in xrange(self.ngauss):
                 pi=pfrac[i]
-                """
-                Ti=Tadmom*Tfrac[i]
-                g={'p':pi,'row':row,
-                   'col':col,'irr':Ti/2,'irc':0.0,'icc':Ti/2}
-                """
                 g={'p':pi,'row':row, 'col':col,
                    'irr':Tfrac[i]*irr_admom,
                    'irc':Tfrac[i]*irc_admom,
@@ -357,7 +350,8 @@ class GMixEMPSF:
             sky=0.001
             im += (sky-im_min)
         else:
-            sky = im_min
+            #sky = im_min
+            sky=numpy.median(im)
 
 
         return im,sky,guess

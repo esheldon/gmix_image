@@ -190,8 +190,15 @@ class GMix(_render.GVec):
 
     def __repr__(self):
         import pprint
+        fmt='p: %9.7g r: %9.7g c: %9.7g irr: %9.7g irc: %9.7g icc: %9.7g'
+
         dlist=self.get_dlist()
-        return pprint.pformat(dlist)
+        slist=[]
+        for g in dlist:
+            s=fmt % (g['p'],g['row'],g['col'],g['irr'],g['irc'],g['icc'])
+            slist.append(s)
+        s='\n'.join(slist)
+        return s
 
 
 def togmix(gmix, coellip=False, Tfrac=False):

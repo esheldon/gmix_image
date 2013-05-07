@@ -8,6 +8,7 @@ from numpy import sqrt, array, ogrid, random, exp, zeros, cos, sin, diag, \
 from numpy.random import random as randu
 import gmix_image
 import gmix_fit
+from .render import gmix2image
 from .gmix_fit import print_pars, ellip2eta, eta2ellip
 from .gmix_em import gmix2image_em
 from .gmix import GMix
@@ -23,6 +24,7 @@ except:
     have_images=False
 
 try:
+    import fimage
     from fimage import model_image, ellip2mom, etheta2e1e2
     from fimage.noise import add_noise_matched
 except:
@@ -93,35 +95,89 @@ def test_em(s2n=100., show=False):
                               label1='im', label2='model',
                               cross_sections=False)
 
-def test_em_errors(s2n=100., show=False, ntrial=100):
-    tol=1.e-6
-    maxiter=1000
-    counts=1000
 
-    dims=[31,31]
-    gd = [{'p':0.6,'row':15.1,'col':15.1,'irr':4.0,'irc':0.0,'icc':4.0},
-          {'p':0.4,'row':14.8,'col':14.8,'irr':3.2,'irc':0.3,'icc':2.0}]
-    gmix_true=GMix(gd)
+def test_em_sdss(ngauss=2,
+                 run=756,
+                 field=45,
+                 camcol=1,
+                 filter='r',
+                 row=123.1,
+                 col=724.8,
+                 cocenter=False,
+                 show=False):
+    import sdsspy
+    psfkl=sdsspy.read('psField', run=run, camcol=camcol, field=field,
+                      filter=filter)
+    if psfkl is None:
+        print 'no such field'
+        return
 
-    im0 = gmix2image_em(gd, dims, counts=counts)
-    imtmp,skysig=add_noise_matched(im0,s2n)
+    im_nonoise=psfkl.rec(row, col, trim=True)
+    im0,skysig=add_noise_matched(im_nonoise, 1.e8)
     ivar=1./skysig**2
+    dims=im0.shape
+    cen=[(dims[0]-1.)/2., (dims[1]-1.)/2.]
 
-    # pretend it is poisson
-    #sky = skysig**2
-    #imsky = im0 + sky
+    """
+    im,sky=_em_prep(im0)
 
-    npix=im_nonoise.size
 
-    for i in xrange(ntrial):
+    guess=[]
+    for i in xrange(ngauss):
+        g = {'p':0.5+0.02*srandu(),
+             'row':cen[0] + 0.2*srandu(),
+             'col':cen[1] + 0.2*srandu(),
+             'irr':2.0+0.5*srandu(),
+             'irc':0.0+0.1*srandu(),
+             'icc':2.0+0.5*srandu()}
+        guess.append(g)
 
-        im = im0 + skysig*numpy.random.randn(npix).reshape(dims)
+    gm = gmix_image.GMixEM(im,
+                           guess,
+                           sky=sky,
+                           cocenter=cocenter)
+    """
+    gm=gmix_image.GMixEMPSF(im0, ivar, ngauss,
+                            cen=cen, cocenter=cocenter)
+    res=gm.get_result()
+    gmx=gm.get_gmix()
 
-        gm=GMixEMPSF(im, ivar, len(gd),
-                     cen=[15,15],
-                     maxiter=maxiter,
-                     tol=tol)
-        tgmix=gm.get_gmix() 
+    T=gmx.get_T()
+    fwhm=sqrt(T/2)*2.35*0.396
+    fwhm=fimage.mom2fwhm(T, pixscale=0.396)
+
+    print 'fwhm:',fwhm
+    print 'numiter:',res['numiter']
+    if show and have_images:
+        import biggles
+
+        biggles.configure('screen','width',1000)
+        biggles.configure('screen','height',1000)
+        mod=gmix2image(gmx,im0.shape)
+        counts=im0.sum()
+        mod *= counts/mod.sum()
+
+        if cocenter:
+            title='cocenter ngauss: %d' % ngauss
+        else:
+            title='free centers: %d' % ngauss
+        images.compare_images(im0, mod, label1='image',label2='model',
+                              title=title)
+    print gmx
+
+def _em_prep(im0):
+    im=im0.copy()
+    im_min = im.min()
+    if im_min==0:
+        sky=0.001
+        im += sky
+    elif im_min < 0:
+        sky=0.001
+        im += (sky-im_min)
+    else:
+        sky = numpy.median(im)
+
+    return im, sky
 
 
 def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
