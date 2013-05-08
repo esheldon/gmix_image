@@ -39,7 +39,7 @@ def test_all_em():
 def test_em(s2n=100., show=False):
     #tol=1.e-6
     tol=1.e-6
-    maxiter=1000
+    maxiter=5000
 
     dims=[31,31]
     gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0},
