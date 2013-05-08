@@ -50,18 +50,18 @@ def test_em(s2n=100., show=False, ngauss=2, offcen=True):
         else:
             gd = [{'p':0.6,'row':15.1,'col':15.6,'irr':4.0,'irc':0.0,'icc':4.0},
                   {'p':0.4,'row':15.1,'col':15.6,'irr':3.2,'irc':0.3,'icc':2.0}]
-            guess=[{'p':0.5+0.02*srandu(),
-                    'row':15+2*srandu(),
-                    'col':15+2*srandu(),
-                    'irr':2.0+0.5*srandu(),
-                    'irc':0.0+0.1*srandu(),
-                    'icc':2.0+0.5*srandu()},
-                   {'p':0.5+0.02*srandu(),
-                    'row':15+2*srandu(),
-                    'col':15+2*srandu(),
-                    'irr':2.0+0.5*srandu(),
-                    'irc':0.0+0.1*srandu(),
-                    'icc':2.0+0.5*srandu()} ]
+        guess=[{'p':0.5+0.02*srandu(),
+                'row':15+2*srandu(),
+                'col':15+2*srandu(),
+                'irr':2.0+0.5*srandu(),
+                'irc':0.0+0.1*srandu(),
+                'icc':2.0+0.5*srandu()},
+               {'p':0.5+0.02*srandu(),
+                'row':15+2*srandu(),
+                'col':15+2*srandu(),
+                'irr':2.0+0.5*srandu(),
+                'irc':0.0+0.1*srandu(),
+                'icc':2.0+0.5*srandu()} ]
     elif ngauss==1:
         gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0}]
         guess=[{'p':0.5+0.02*srandu(),
@@ -112,14 +112,14 @@ def test_em(s2n=100., show=False, ngauss=2, offcen=True):
                               cross_sections=False)
     return gm
 
-def test_em_many(nrand=100, s2n=100., ngauss=2):
+def test_em_many(nrand=100, s2n=100., ngauss=2, offcen=True):
 
     nbad=0
     for i in xrange(nrand):
         print '-'*70
         print '%d/%d' % (i+1,nrand)
         
-        gm=test_em(s2n=s2n, ngauss=ngauss)
+        gm=test_em(s2n=s2n, ngauss=ngauss, offcen=offcen)
         flags=gm.get_flags()
         if flags != 0:
             nbad+= 1
