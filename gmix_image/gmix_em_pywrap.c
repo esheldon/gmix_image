@@ -420,12 +420,10 @@ PyGMixEMObject_write(struct PyGMixEMObject* self)
 {
     printf("GMix\n"
            "\tngauss:  %lu\n"
-           "\tflags:   %d\n"
            "\tnumiter: %lu\n"
            "\tfdiff:   %g\n"
            "\tflags:   %d\n"
             ,self->gvec->size,
-            self->flags,
             self->numiter,
             self->fdiff,
             self->flags);
@@ -442,12 +440,10 @@ PyGMixEMObject_repr(struct PyGMixEMObject* self) {
     sprintf(buff,
             "GMix\n"
             "\tngauss:  %lu\n"
-            "\tflags:   %d\n"
             "\tnumiter: %lu\n"
             "\tfdiff:   %g\n"
             "\tflags:   %d\n"
             ,self->gvec->size,
-            self->flags,
             self->numiter,
             self->fdiff,
             self->flags);
