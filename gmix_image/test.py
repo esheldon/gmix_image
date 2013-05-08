@@ -96,6 +96,32 @@ def test_em(s2n=100., show=False):
                               cross_sections=False)
 
 
+def test_em_sdss_random(ngauss=2, nrand=1000):
+    import gmix_sdss
+    flist=gmix_sdss.files.read_field_cache(gmix_run='gmix-r01')
+    
+    rint=numpy.random.randint(0,flist.size,size=nrand)
+
+    nbad=0
+    for i in xrange(nrand):
+        print '-'*70
+        print '%d/%d' % (i+1,nrand)
+        ii = rint[i]
+        run=flist['run'][ii]
+        camcol=flist['camcol'][ii]
+        field=flist['field'][ii]
+
+        res=test_em_sdss(ngauss=ngauss,
+                         run=run,
+                         camcol=camcol,
+                         field=field)
+
+        if res['flags'] != 0:
+            nbad+= 1
+
+    print '\nnbad: %d/%d' % (nbad,nrand)
+
+
 def test_em_sdss(ngauss=2,
                  run=756,
                  field=45,
@@ -106,6 +132,10 @@ def test_em_sdss(ngauss=2,
                  cocenter=False,
                  show=False):
     import sdsspy
+    fnum=sdsspy.FILTERNUM[filter]
+
+    psfield=sdsspy.read('psField', run=run, camcol=camcol, field=field,
+                        lower=True)
     psfkl=sdsspy.read('psField', run=run, camcol=camcol, field=field,
                       filter=filter)
     if psfkl is None:
@@ -114,39 +144,23 @@ def test_em_sdss(ngauss=2,
 
     im_nonoise=psfkl.rec(row, col, trim=True)
     im0,skysig=add_noise_matched(im_nonoise, 1.e8)
+
     ivar=1./skysig**2
+
     dims=im0.shape
     cen=[(dims[0]-1.)/2., (dims[1]-1.)/2.]
+    fwhm=psfield['psf_width'][0,fnum]
+    sigma_guess=fimage.fwhm2sigma(fwhm)
+    sigma_guess /= 0.4 # pixels
+    print 'guess fwhm:',fwhm
 
-    """
-    im,sky=_em_prep(im0)
-
-
-    guess=[]
-    for i in xrange(ngauss):
-        g = {'p':0.5+0.02*srandu(),
-             'row':cen[0] + 0.2*srandu(),
-             'col':cen[1] + 0.2*srandu(),
-             'irr':2.0+0.5*srandu(),
-             'irc':0.0+0.1*srandu(),
-             'icc':2.0+0.5*srandu()}
-        guess.append(g)
-
-    gm = gmix_image.GMixEM(im,
-                           guess,
-                           sky=sky,
-                           cocenter=cocenter)
-    """
-    gm=gmix_image.GMixEMPSF(im0, ivar, ngauss,
-                            cen=cen, cocenter=cocenter)
+    gm=gmix_image.gmix_em.GMixEMBoot(im0, ngauss, cen,
+                                     sigma_guess=sigma_guess,
+                                     ivar=ivar,
+                                     cocenter=cocenter)
     res=gm.get_result()
     gmx=gm.get_gmix()
 
-    T=gmx.get_T()
-    fwhm=sqrt(T/2)*2.35*0.396
-    fwhm=fimage.mom2fwhm(T, pixscale=0.396)
-
-    print 'fwhm:',fwhm
     print 'numiter:',res['numiter']
     if show and have_images:
         import biggles
@@ -164,6 +178,7 @@ def test_em_sdss(ngauss=2,
         images.compare_images(im0, mod, label1='image',label2='model',
                               title=title)
     print gmx
+    return res
 
 def _em_prep(im0):
     im=im0.copy()

@@ -9,7 +9,6 @@ struct gmix {
     double tol;
     int coellip;
     int cocenter;
-    int fixsky;
     int verbose;
 };
 

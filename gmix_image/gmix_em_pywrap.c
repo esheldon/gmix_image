@@ -128,33 +128,34 @@ static int
 gauss_from_dict(struct gauss *self, PyObject *dict)
 {
     int status=1;
+    double p=0,row=0,col=0,irr=0,irc=0,icc=0;
 
-    if (!get_dict_double(dict,"p", &self->p)) {
+    if (!get_dict_double(dict,"p", &p)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
-    if (!get_dict_double(dict,"row", &self->row)) {
+    if (!get_dict_double(dict,"row", &row)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
-    if (!get_dict_double(dict,"col", &self->col)) {
+    if (!get_dict_double(dict,"col", &col)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
-    if (!get_dict_double(dict,"irr", &self->irr)) {
+    if (!get_dict_double(dict,"irr", &irr)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
-    if (!get_dict_double(dict,"irc", &self->irc)) {
+    if (!get_dict_double(dict,"irc", &irc)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
-    if (!get_dict_double(dict,"icc", &self->icc)) {
+    if (!get_dict_double(dict,"icc", &icc)) {
         status=0;
         goto _gauss_copy_from_dict_bail;
     }
 
-    self->det = self->irr*self->icc - self->irc*self->irc;
+    gauss_set(self,p,row,col,irr,irc,icc);
 
 _gauss_copy_from_dict_bail:
     return status;
@@ -338,10 +339,10 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
                                "maxiter", "tol", "bound", 
-                               "cocenter", "fixsky", 
+                               "cocenter",
                                "verbose", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds,
-                                     (char*)"OddOId|Oiii",
+                                     (char*)"OddOId|Oii",
                                      argnames,
                                      &image_obj, 
                                      &sky, 
@@ -351,7 +352,6 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                      &gmix.tol,
                                      &bound_obj,
                                      &gmix.cocenter,
-                                     &gmix.fixsky,
                                      &gmix.verbose)) {
         return -1;
     }

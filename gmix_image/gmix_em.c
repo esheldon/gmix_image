@@ -43,11 +43,13 @@
 #include "matrix.h"
 #include "defs.h"
 
+#include "fmath.h"
+
 int gmix_em(struct gmix* self,
-               struct image *image, 
-               struct gvec *gvec,
-               size_t *iter,
-               double *fdiff)
+            struct image *image, 
+            struct gvec *gvec,
+            size_t *iter,
+            double *fdiff)
 {
     int flags=0;
     double wmomlast=0, wmom=0;
@@ -71,11 +73,8 @@ int gmix_em(struct gmix* self,
 
         gmix_set_gvec_fromiter(gvec, iter_struct);
 
-        // fixing sky doesn't work, need correct starting value
-        if (!self->fixsky) {
-            iter_struct->psky = iter_struct->skysum;
-            iter_struct->nsky = iter_struct->psky/npoints;
-        }
+        iter_struct->psky = iter_struct->skysum;
+        iter_struct->nsky = iter_struct->psky/npoints;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
@@ -250,11 +249,8 @@ int gmix_em_cocenter(struct gmix* self,
         // Should do with extra par in above function or something
         set_means(gvec, &cen_new);
 
-        // fixing sky doesn't work, need correct starting value
-        if (!self->fixsky) {
-            iter_struct->psky = iter_struct->skysum;
-            iter_struct->nsky = iter_struct->psky/npoints;
-        }
+        iter_struct->psky = iter_struct->skysum;
+        iter_struct->nsky = iter_struct->psky/npoints;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
@@ -397,12 +393,13 @@ int gmix_get_sums(struct gmix* self,
                   struct iter* iter)
 {
     int flags=0;
-    double igrat=0, imnorm=0, gtot=0, wtau=0, b=0, chi2=0;
+    double igrat=0, imnorm=0, gtot=0, wtau=0, chi2=0;
+    //double b=0;
     double u=0, v=0, uv=0, u2=0, v2=0;
     size_t i=0, col=0, row=0;
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
     size_t row0=IM_ROW0(image), col0=IM_COL0(image); // could be a subimage
-    struct gauss* gauss=NULL;
+    const struct gauss* gauss=NULL;
     struct sums *sums=NULL;
 
     iter_clear(iter);
@@ -413,9 +410,10 @@ int gmix_get_sums(struct gmix* self,
             imnorm /= IM_COUNTS(image);
 
             gtot=0;
-            gauss = &gvec->data[0];
-            sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
+                gauss = &gvec->data[i];
+                sums  = &iter->sums[i];
+
                 if (gauss->det <= 0) {
                     if (self->verbose) wlog("found det: %.16g\n", gauss->det);
                     flags+=GMIX_ERROR_NEGATIVE_DET;
@@ -428,10 +426,18 @@ int gmix_get_sums(struct gmix* self,
 
                 u2 = u*u; v2 = v*v; uv = u*v;
 
-                chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                chi2 /= gauss->det;
-                b = M_TWO_PI*sqrt(gauss->det);
-                sums->gi = gauss->p*exp( -0.5*chi2 )/b;
+                //chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
+                //chi2 /= gauss->det;
+                //b = M_TWO_PI*sqrt(gauss->det);
+                //sums->gi = gauss->p*exp( -0.5*chi2 )/b;
+
+                chi2=gauss->dcc*u2 + gauss->drr*v2 - 2.0*gauss->drc*uv;
+
+                if (chi2 < EXP_MAX_CHI2) {
+                    sums->gi = gauss->norm*gauss->p*expd( -0.5*chi2 );
+                } else {
+                    sums->gi=0;
+                }
 
                 gtot += sums->gi;
 
@@ -442,8 +448,6 @@ int gmix_get_sums(struct gmix* self,
                 sums->tuvsum  = uv*sums->gi;
                 sums->tv2sum  = v2*sums->gi;
 
-                gauss++;
-                sums++;
             }
             gtot += iter->nsky;
             igrat = imnorm/gtot;
@@ -548,20 +552,21 @@ _gmix_eval_conv_bail:
 void gmix_set_gvec_fromiter(struct gvec *gvec, 
                             struct iter* iter)
 {
-    struct sums *sums=iter->sums;
-    struct gauss *gauss = gvec->data;
     size_t i=0;
+    struct sums *sums   = NULL;
+    struct gauss *gauss = NULL;
+    double b=0;
     for (i=0; i<gvec->size; i++) {
-        gauss->p   = sums->pnew;
-        gauss->row = sums->rowsum/sums->pnew;
-        gauss->col = sums->colsum/sums->pnew;
-        gauss->irr = sums->u2sum/sums->pnew;
-        gauss->irc = sums->uvsum/sums->pnew;
-        gauss->icc = sums->v2sum/sums->pnew;
-        gauss->det = gauss->irr*gauss->icc - gauss->irc*gauss->irc;
+        sums  = &iter->sums[i];
+        gauss = &gvec->data[i];
 
-        sums++;
-        gauss++;
+        gauss_set(gauss,
+                  sums->pnew,               // p
+                  sums->rowsum/sums->pnew,  // row
+                  sums->colsum/sums->pnew,  // col
+                  sums->u2sum/sums->pnew,   // irr
+                  sums->uvsum/sums->pnew,   // irc
+                  sums->v2sum/sums->pnew);  // icc
     }
 }
 

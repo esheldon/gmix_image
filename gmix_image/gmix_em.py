@@ -100,6 +100,7 @@ class GMixEM(_gmix_em.GMixEM):
         These have the same entries as the guess parameter with the addition of
         "det", which has the determinant of the covariance matrix.
     get_model(): get a model image
+        The image is not normalized to the counts in the original
 
     get_flags(): number
         A bitmask holding flags for the processing.  Should be zero for
@@ -172,30 +173,38 @@ class GMixEM(_gmix_em.GMixEM):
         do_cocenter = 1 if self._cocenter else 0
 
         super(GMixEM,self).__init__(self._image,
-                                  self._sky,
-                                  self._counts,
-                                  self._guess,
-                                  self._maxiter,
-                                  self._tol,
-                                  bound=self._bound,
-                                  cocenter=do_cocenter,
-                                  verbose=verbosity)
+                                    self._sky,
+                                    self._counts,
+                                    self._guess,
+                                    self._maxiter,
+                                    self._tol,
+                                    bound=self._bound,
+                                    cocenter=do_cocenter,
+                                    verbose=verbosity)
 
     def get_gmix(self):
+        """
+        Get a GMix object representing the result
+        """
         return GMix(self.get_dlist())
 
     def get_model(self):
-        dlist=self.get_dlist()
-        return gmix2image_em(dlist, self._image.shape,
-                             counts=self._counts)
+        """
+        Model is not normalized
+        """
+        from .render import gmix2image
+
+        gmix=self.get_gmix()
+        model=gmix2image(gmix, self.image.shape)
+        return model
 
 
 class GMixEMBoot:
     """
 
     This version can bootstrap because it can generate guesses based on an
-    intial guess of the size only.  Also it will retry up to a specified number
-    of guesses until convergence is found.
+    intial guess of the center and size only.  Also it will retry up to a
+    specified number of guesses until convergence is found.
 
     parameters
     ----------
@@ -222,6 +231,14 @@ class GMixEMBoot:
     maxtry: number, optional
         Maximum number of retries.  Default 10.
 
+    methods
+    -------
+    get_result():
+        Return a dict with some results and stats
+    get_gmix():
+        Get a GMix representation of the result
+    get_model():
+        Get an image of the result, not normalized.
     """
     def __init__(self, image, ngauss, cen_guess,
                  sigma_guess=1.414, # fwhm=0.9'' in des
@@ -232,11 +249,11 @@ class GMixEMBoot:
                  maxtry=10):
 
         self.image0=image
-        self.image,self.sky = self._prep_image()
+        self._prep_image() # this sets self.image
         self.counts=self.image.sum()
 
         self.ngauss=ngauss
-        self.cen_guess=cen
+        self.cen_guess=cen_guess
 
         self.sigma_guess=sigma_guess
         self.ivar=ivar
@@ -245,7 +262,6 @@ class GMixEMBoot:
         self.tol=tol
         self.cocenter=cocenter
         self.maxtry=maxtry
-
 
         self._run_em()
 
@@ -268,9 +284,13 @@ class GMixEMBoot:
         ntry=self.maxtry
         for i in xrange(ntry):
             guess = self._perturb_dlist(guess0)
-            gm = GMixEM(self.image, guess, sky=sky, 
-                        maxiter=self.maxiter, tol=self.tol,
+            gm = GMixEM(self.image,
+                        guess,
+                        sky=self.sky, 
+                        maxiter=self.maxiter,
+                        tol=self.tol,
                         cocenter=self.cocenter)
+
             flags = gm.get_flags()
             if flags==0:
                 break
@@ -282,7 +302,7 @@ class GMixEMBoot:
         self._fitter=gm
         gmix=gm.get_gmix()
         self.result={'gmix':gmix,
-                     'flags':gm.get_flags(),
+                     'flags':flags,
                      'numiter':gm.get_numiter(),
                      'fdiff':gm.get_fdiff(),
                      'ntry':i+1}
@@ -345,9 +365,11 @@ class GMixEMBoot:
                    'icc':Tfrac[i]*irr_guess}
                 guess.append(g)
 
-    def _prep_image(self, image):
+        return guess
 
-        im=image.copy()
+    def _prep_image(self):
+
+        im=self.image0.copy()
 
         # need no zero pixels and sky value
         im_min = im.min()
@@ -361,7 +383,8 @@ class GMixEMBoot:
             #sky = im_min
             sky=numpy.median(im)
 
-        return im,sky
+        self.image=im
+        self.sky=sky
 
     def get_model(self):
         """
