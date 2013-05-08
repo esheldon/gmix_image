@@ -32,10 +32,31 @@ GMIXFIT_NEG_COV_DIAG    = 2**6
 GMIXFIT_NEG_MCOV_DIAG   = 2**7 # the M sub-cov matrix not positive definite
 GMIXFIT_MCOV_NOTPOSDEF  = 2**8 # more strict checks on cholesky decomposition
 GMIXFIT_CALLS_NOT_CHANGING   = 2**9 # see fmin_cg
-GMIXFIT_LOW_S2N = 2**8 # very low S/N for ixx+iyy
+GMIXFIT_LOW_S2N = 2**10 # very low S/N for ixx+iyy
+
+notfinite_bit=11
+GMIXFIT_NOTFINITE = 2**notfinite_bit # very low S/N for ixx+iyy
 
 # failure before true fit begins, e.g. in _fit_round_fixcen
 GMIXFIT_EARLY_FAILURE = 2**30
+
+def run_leastsq(func, guess):
+    from scipy.optimize import leastsq
+    try:
+        lmres = leastsq(func, guess, full_output=1)
+    except ValueError as e:
+        serr=str(d)
+        if 'NaNs' in serr or 'infs' in serr:
+            pars=numpy.zeros(len(guess))
+            pars[:] = -9999
+            cov0=numpy.zeros( (len(guess),len(guess)))
+            cov0[:,:] = 9999
+            lmres=(pars,cov0,{'nfev':-1},
+                   "not finite",notfinite_bit+5)
+        else:
+            raise e
+
+    return lmres
 
 class GMixFitSimple:
     """
@@ -71,17 +92,17 @@ class GMixFitSimple:
         """
         Do a levenberg-marquardt
         """
-        from scipy.optimize import leastsq
 
         ntry=self.lm_max_try
+
         for i in xrange(1,ntry+1):
 
             guess=self._get_guess()
 
             if self.gprior is None or not self.gprior_like:
-                lmres = leastsq(self._get_lm_ydiff, guess, full_output=1)
+                lmres = run_leastsq(self._get_lm_ydiff, guess)
             else:
-                lmres = leastsq(self._get_lm_ydiff_gprior, guess, full_output=1)
+                lmres = run_leastsq(self._get_lm_ydiff_gprior, guess)
 
             res=self._calc_lm_results(lmres)
 
@@ -555,7 +576,6 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         """
         Do a levenberg-marquardt
         """
-        from scipy.optimize import leastsq
 
         if self._rfc_res['flags'] != 0:
             self._result={'flags':self._rfc_res['flags'],
@@ -570,7 +590,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         for i in xrange(1,ntry+1):
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_lm_ydiff_full, guess, full_output=1)
+            lmres = run_leastsq(self._get_lm_ydiff_full, guess)
 
             res=self._calc_lm_results(lmres)
 
@@ -584,7 +604,8 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         res['ntry'] = i
         self._result=res
 
-        self._add_extra_results()
+        if 'pars' in res:
+            self._add_extra_results()
 
     def _add_extra_results(self):
         res=self._result
@@ -609,15 +630,13 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         we fit only for parameters [T,counts]
         """
-        from scipy.optimize import leastsq
 
         ntry=self.lm_max_try
         for i in xrange(1,ntry+1):
 
             guess=self._get_round_fixcen_guess()
-            lmres = leastsq(self._get_lm_ydiff_round_fixcen,
-                            guess,
-                            full_output=1)
+            lmres = run_leastsq(self._get_lm_ydiff_round_fixcen, guess)
+
             pars, pcov0, infodict, errmsg, ier = lmres
             if ier==0:
                 raise ValueError(errmsg)
@@ -773,14 +792,13 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         """
         Do a levenberg-marquardt
         """
-        from scipy.optimize import leastsq
 
         ntry=self.lm_max_try
         for i in xrange(1,ntry+1):
 
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_lm_ydiff_flux, guess, full_output=1)
+            lmres = run_leastsq(self._get_lm_ydiff_flux, guess)
 
             res=self._calc_lm_results(lmres)
 
@@ -887,14 +905,13 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         """
         Do a levenberg-marquardt
         """
-        from scipy.optimize import leastsq
 
         ntry=self.lm_max_try
         for i in xrange(1,ntry+1):
 
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_ydiff, guess, full_output=1)
+            lmres = run_leastsq(self._get_ydiff, guess)
 
             res=self._calc_lm_results(lmres)
 
@@ -1032,14 +1049,13 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         """
         Do a levenberg-marquardt
         """
-        from scipy.optimize import leastsq
 
         ntry=self.lm_max_try
         for i in xrange(1,ntry+1):
 
             guess=self._get_guess()
 
-            lmres = leastsq(self._get_ydiff, guess, full_output=1)
+            lmres = run_leastsq(self._get_ydiff, guess)
 
             res=self._calc_lm_results(lmres)
 
@@ -1401,11 +1417,8 @@ class GMixFitCoellip:
         """
         Run the fit using LM
         """
-        from scipy.optimize import leastsq
 
-        res = leastsq(self.get_ydiff,
-                      self.prior,
-                      full_output=1)
+        res = run_leastsq(self.get_ydiff, self.prior)
 
         self.pars, self.pcov0, self.infodict, self.errmsg, self.ier = res
         if self.ier == 0:
