@@ -45,7 +45,7 @@ def run_leastsq(func, guess):
     try:
         lmres = leastsq(func, guess, full_output=1)
     except ValueError as e:
-        serr=str(d)
+        serr=str(e)
         if 'NaNs' in serr or 'infs' in serr:
             pars=numpy.zeros(len(guess))
             pars[:] = -9999
