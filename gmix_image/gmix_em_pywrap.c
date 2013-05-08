@@ -423,12 +423,14 @@ PyGMixEMObject_write(struct PyGMixEMObject* self)
            "\tflags:   %d\n"
            "\tnumiter: %lu\n"
            "\tfdiff:   %g\n"
+           "\tflags:   %d\n"
             ,self->gvec->size,
             self->flags,
             self->numiter,
-            self->fdiff);
+            self->fdiff,
+            self->flags);
 
-    printf("gauss\n");
+    printf("gaussians\n");
     gvec_print(self->gvec,stdout);
     Py_RETURN_NONE;
 }
@@ -443,10 +445,12 @@ PyGMixEMObject_repr(struct PyGMixEMObject* self) {
             "\tflags:   %d\n"
             "\tnumiter: %lu\n"
             "\tfdiff:   %g\n"
+            "\tflags:   %d\n"
             ,self->gvec->size,
             self->flags,
             self->numiter,
-            self->fdiff);
+            self->fdiff,
+            self->flags);
     return PyString_FromString(buff);
     Py_RETURN_NONE;
 }

@@ -195,7 +195,7 @@ class GMixEM(_gmix_em.GMixEM):
         from .render import gmix2image
 
         gmix=self.get_gmix()
-        model=gmix2image(gmix, self.image.shape)
+        model=gmix2image(gmix, self._image.shape)
         return model
 
 

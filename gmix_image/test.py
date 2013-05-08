@@ -36,28 +36,44 @@ except:
 def test_all_em():
     test_em()
 
-def test_em(s2n=100., show=False):
+def test_em(s2n=100., show=False, ngauss=2, offcen=True):
     #tol=1.e-6
     tol=1.e-6
     maxiter=5000
 
     dims=[31,31]
-    gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0},
-          {'p':0.4,'row':14.2,'col':15.4,'irr':3.2,'irc':0.3,'icc':2.0}]
+    if ngauss==2:
+        if offcen:
+            gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0},
+                  {'p':0.4,'row':14.2,'col':15.4,'irr':3.2,'irc':0.3,'icc':2.0}]
 
-    guess=[{'p':0.5+0.02*srandu(),
-            'row':15+2*srandu(),
-            'col':15+2*srandu(),
-            'irr':2.0+0.5*srandu(),
-            'irc':0.0+0.1*srandu(),
-            'icc':2.0+0.5*srandu()},
-           {'p':0.5+0.02*srandu(),
-            'row':15+2*srandu(),
-            'col':15+2*srandu(),
-            'irr':2.0+0.5*srandu(),
-            'irc':0.0+0.1*srandu(),
-            'icc':2.0+0.5*srandu()} ]
-    pprint.pprint(guess)
+        else:
+            gd = [{'p':0.6,'row':15.1,'col':15.6,'irr':4.0,'irc':0.0,'icc':4.0},
+                  {'p':0.4,'row':15.1,'col':15.6,'irr':3.2,'irc':0.3,'icc':2.0}]
+            guess=[{'p':0.5+0.02*srandu(),
+                    'row':15+2*srandu(),
+                    'col':15+2*srandu(),
+                    'irr':2.0+0.5*srandu(),
+                    'irc':0.0+0.1*srandu(),
+                    'icc':2.0+0.5*srandu()},
+                   {'p':0.5+0.02*srandu(),
+                    'row':15+2*srandu(),
+                    'col':15+2*srandu(),
+                    'irr':2.0+0.5*srandu(),
+                    'irc':0.0+0.1*srandu(),
+                    'icc':2.0+0.5*srandu()} ]
+    elif ngauss==1:
+        gd = [{'p':0.6,'row':17.1,'col':17.6,'irr':4.0,'irc':0.0,'icc':4.0}]
+        guess=[{'p':0.5+0.02*srandu(),
+                'row':15+2*srandu(),
+                'col':15+2*srandu(),
+                'irr':2.0+0.5*srandu(),
+                'irc':0.0+0.1*srandu(),
+                'icc':2.0+0.5*srandu()} ]
+
+    else:
+        raise ValueError("1 or 2 gauss")
+
     counts=1000
     im_nonoise = gmix2image_em(gd, dims, counts=counts)
 
@@ -69,9 +85,6 @@ def test_em(s2n=100., show=False):
     im_min=im.min()
     sky = 0.01 + abs(im_min)
     im += sky
-
-    print 'sky:',sky
-    print 'im_min:',im.min()
 
     verbose=False
     gm = gmix_image.GMixEM(im,
@@ -91,9 +104,27 @@ def test_em(s2n=100., show=False):
 
     if show and have_images:
         model_image=gm.get_model()
+        msum=model_image.sum()
+        if msum > 0:
+            model_image *= counts/msum
         images.compare_images(im-sky,  model_image,
                               label1='im', label2='model',
                               cross_sections=False)
+    return gm
+
+def test_em_many(nrand=100, s2n=100., ngauss=2):
+
+    nbad=0
+    for i in xrange(nrand):
+        print '-'*70
+        print '%d/%d' % (i+1,nrand)
+        
+        gm=test_em(s2n=s2n, ngauss=ngauss)
+        flags=gm.get_flags()
+        if flags != 0:
+            nbad+= 1
+
+    print '\nnbad: %d/%d' % (nbad,nrand)
 
 
 def test_em_sdss_random(ngauss=2, nrand=1000):

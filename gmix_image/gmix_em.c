@@ -555,7 +555,6 @@ void gmix_set_gvec_fromiter(struct gvec *gvec,
     size_t i=0;
     struct sums *sums   = NULL;
     struct gauss *gauss = NULL;
-    double b=0;
     for (i=0; i<gvec->size; i++) {
         sums  = &iter->sums[i];
         gauss = &gvec->data[i];
