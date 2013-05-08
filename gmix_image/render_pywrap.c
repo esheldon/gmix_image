@@ -590,6 +590,9 @@ fill_model_subgrid(struct image *image,
                 gauss++;
             } // gvec
 
+            if (!isfinite(model_val)) {
+                model_val=0;
+            }
             IM_SETFAST(image, row, col, model_val);
 
         } // cols
@@ -676,6 +679,9 @@ fill_model_subgrid_bbox(struct image *image,
                 gauss++;
             } // gvec
 
+            if (!isfinite(model_val)) {
+                model_val=0;
+            }
             IM_SETFAST(image, row, col, model_val);
 
         } // cols
@@ -733,6 +739,9 @@ fill_ydiff(struct image *image, double ivar, struct gvec *gvec, struct image *di
             diff = model_val - (*rowdata);
             diff *= ierr;
 
+            if (!isfinite(diff)) {
+                diff=GMIX_IMAGE_BIGNUM;
+            }
             IM_SETFAST(diff_image, row, col, diff);
 
             rowdata++;
@@ -782,6 +791,9 @@ fill_ydiff_jacob(const struct image *image,
             diff = model_val - pixval;
             diff *= ierr;
 
+            if (!isfinite(diff)) {
+                diff=GMIX_IMAGE_BIGNUM;
+            }
             IM_SETFAST(diff_image, row, col, diff);
 
             u += jacob->dudcol; v += jacob->dvdcol;
@@ -831,6 +843,9 @@ fill_ydiff_wt_jacob(const struct image *image,
             diff = model_val - pixval;
             diff *= sqrt(ivar);
 
+            if (!isfinite(diff)) {
+                diff=GMIX_IMAGE_BIGNUM;
+            }
             IM_SETFAST(diff_image, row, col, diff);
 
             u += jacob->dudcol; v += jacob->dvdcol;
@@ -1059,6 +1074,7 @@ static int calculate_loglike(struct image *image,
     }
 
     (*loglike)=0;
+    (*s2n)=0;
     for (row=0; row<nrows; row++) {
         rowdata=IM_ROW(image, row);
         for (col=0; col<ncols; col++) {
@@ -1090,7 +1106,12 @@ static int calculate_loglike(struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
-    (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
+    if (w2sum > 0) {
+        (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+    }
 
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_bail:
@@ -1156,6 +1177,9 @@ int calculate_loglike_wt_jacob(const struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
 
 _calculate_loglike_wt_jacob_bail:
     return flags;
@@ -1215,6 +1239,9 @@ int calculate_loglike_jacob(const struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
 
 _calculate_loglike_jacob_bail:
     return flags;
@@ -1270,6 +1297,9 @@ int calculate_loglike_wt(const struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
 
 _calculate_loglike_wt_bail:
     return flags;
@@ -1310,6 +1340,7 @@ static int calculate_loglike_subgrid(struct image *image,
     nsub_fac=1./(nsub*nsub);
 
     (*loglike)=0;
+    (*s2n)=0;
     for (row=0; row<nrows; row++) {
         rowdata=IM_ROW(image, row);
         for (col=0; col<ncols; col++) {
@@ -1353,7 +1384,12 @@ static int calculate_loglike_subgrid(struct image *image,
     } // rows
 
     (*loglike) *= (-0.5);
-    (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
+    if (w2sum > 0) {
+        (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
+    }
 
     //fprintf(stderr,"OK faster\n");
 _calculate_loglike_subgrid_bail:

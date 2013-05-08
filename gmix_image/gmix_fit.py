@@ -88,10 +88,11 @@ class GMixFitSimple:
             if res['flags']==0:
                 break
 
-        if i == ntry:
+        if res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
+        res['ntry'] = i
         self._result=res
 
     def _get_guess(self):
@@ -469,7 +470,10 @@ class GMixFitMultiBase:
             s2n_denom += ts2n_denom
             loglike += tloglike
             
-        s2n=s2n_numer/sqrt(s2n_denom)
+        if s2n_denom > 0:
+            s2n=s2n_numer/sqrt(s2n_denom)
+        else:
+            s2n=0.0
 
         chi2=loglike/(-0.5)
         dof=self.totpix-npars
@@ -557,7 +561,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             self._result={'flags':self._rfc_res['flags'],
                           'model':self.model,
                           'restype':'lm',
-                          'errmsg':'round fixcen fit failed'}
+                          'errmsg':'round fixcen fit failed',
+                          'numiter':0,
+                          'ntry':0}
             return
 
         ntry=self.lm_max_try
@@ -571,10 +577,11 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if i == ntry:
+        if res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
+        res['ntry'] = i
         self._result=res
 
         self._add_extra_results()
@@ -618,9 +625,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             if pcov0 is not None and ier <= 4:
                 break
 
-        if i == ntry:
+        if pcov0 is None or ier > 4:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
             flags=GMIXFIT_EARLY_FAILURE 
         else:
             flags=0
@@ -633,6 +640,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         self._rfc_res={'flags':flags,
                        'numiter':infodict['nfev'],
+                       'ntry':i,
                        'pars':pars,
                        'pcov0':pcov0,
                        'pcov':pcov,
@@ -722,7 +730,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         return guess
 
-class GMixFitMultiFlux(GMixFitMultiSimple):
+class GMixFitMultiMatch(GMixFitMultiSimple):
     """
     fit to the input gaussian mixture, only letting the total flux vary .  The
     center of the model should be relative the (0,0) coordinate center in uv
@@ -779,10 +787,11 @@ class GMixFitMultiFlux(GMixFitMultiSimple):
             if res['flags']==0:
                 break
 
-        if i == ntry:
+        if res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
+        res['ntry'] = i
         self._result=res
 
         self._add_extra_results()
@@ -892,10 +901,11 @@ class GMixFitMultiCModel(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if i == ntry:
+        if res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
+        res['ntry'] = i
         self._result=res
 
         self._add_extra_results()
@@ -1036,10 +1046,11 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if i == ntry:
+        if res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print '%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
+        res['ntry'] = i
         self._result=res
         self._add_extra_results()
 
@@ -1223,7 +1234,10 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
         loglike,s2n_numer,s2n_denom,flags=tres
             
-        s2n=s2n_numer/sqrt(s2n_denom)
+        if s2n_denom > 0:
+            s2n=s2n_numer/sqrt(s2n_denom)
+        else:
+            s2n=0.0
 
         chi2=loglike/(-0.5)
         dof=self.totpix-npars
@@ -2134,12 +2148,12 @@ def test_multi_color(s2n=100.,
     if res1['flags'] != 0:
         return {}, {}, -1
 
-    gm2=GMixFitMultiFlux(imlist2,
-                         wtlist2,
-                         jacoblist2,
-                         psflist2,
-                         cen2,
-                         gm1.get_gmix())
+    gm2=GMixFitMultiMatch(imlist2,
+                          wtlist2,
+                          jacoblist2,
+                          psflist2,
+                          cen2,
+                          gm1.get_gmix())
     res2=gm2.get_result()
     return res1,res2,s2n_uw15
 

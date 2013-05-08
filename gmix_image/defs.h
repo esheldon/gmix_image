@@ -11,6 +11,8 @@
 
 #define EXP_MAX_CHI2 200
 
+#define GMIX_IMAGE_BIGNUM 9.999e9
+
 //#define DEBUG
 //#define DEBUG2
 
