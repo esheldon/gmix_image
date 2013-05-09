@@ -331,13 +331,32 @@ class GMixFitMultiBase:
     def _get_gmix_list(self, pars):
         raise RuntimeError("over-ride")
 
+    def _get_bad_ydiff(self):
+        n_ydiff = self._get_n_ydiff()
+        ydiff = zeros(n_ydiff) + HIGHVAL
+        return ydiff
+
+    def _get_n_ydiff(self):
+        n_ydiff = self.totpix
+        if self.use_cenprior:
+            n_ydiff += 2
+
+        return n_ydiff
+
     def _get_lm_ydiff_gmix_list(self, gmix_list):
         """
         Take in a list of full gmix objects and calculate
         the full ydiff vector across them all
+
+        Note if self.use_cenprior, then two spaces are left at the end to be
+        filled in by the user as (cen-cenrior)/width.  The cenprior is at zero
         """
         imsize=self.imsize
-        ydiffall = zeros(self.totpix, dtype='f8')
+
+        # two for the centroid prior
+        n_ydiff = self._get_n_ydiff()
+
+        ydiffall = zeros(n_ydiff, dtype='f8')
         ydiff = zeros(imsize, dtype='f8')
 
         for i in xrange(self.nimage):
@@ -498,14 +517,16 @@ class GMixFitMultiBase:
         else:
             s2n=0.0
 
+        dof=self.get_dof()
+        eff_npix=self.get_effective_npix()
+
         chi2=loglike/(-0.5)
-        dof=self.totpix-npars
         chi2per = chi2/dof
 
         prob = scipy.stats.chisqprob(chi2, dof)
 
         aic = -2*loglike + 2*npars
-        bic = -2*loglike + npars*log(self.totpix)
+        bic = -2*loglike + npars*log(eff_npix)
 
         return {'s2n_w':s2n,
                 'loglike':loglike,
@@ -521,13 +542,46 @@ class GMixFitMultiBase:
             if len(l) != llen:
                 raise ValueError("all lists must be same length")
 
+    def get_effective_npix(self):
+        """
+        Because of the weight map, each pixel gets a different weight in the
+        chi^2.  This changes the effective degrees of freedom.  The extreme
+        case is when the weight is zero; these pixels are essentially not used.
+
+        We replace the number of pixels with
+
+            eff_npix = sum(weights)maxweight
+        """
+        if not hasattr(self, 'eff_npix'):
+            wtmax = 0.0
+            wtsum = 0.0
+            for wt in self.wtlist:
+                this_wtmax = wt.max()
+                if this_wtmax > wtmax:
+                    wtmax = this_wtmax
+
+                wtsum += wt.sum()
+
+            self.eff_npix=wtsum/wtmax
+        return self.eff_npix
+
+    def get_dof(self):
+        """
+        Effective def based on effective number of pixels
+        """
+        eff_npix=self.get_effective_npix()
+        dof = eff_npix-self.npars
+        if dof <= 0:
+            dof = 1.e-6
+        return dof
+
     def _scale_leastsq_cov(self, gmix_list, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
         """
         ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
-        dof   = self.totpix-self.npars
+        dof   = self.get_dof()
 
         s_sq = (ydiff**2).sum()/dof
         return pcov * s_sq 
@@ -564,6 +618,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
         self.totpix=self.nimage*self.imsize
+
+        self.use_cenprior=True
+        self.cenwidth=1.0
 
         self._fit_round_fixcen()
         self._fit_full()
@@ -717,14 +774,16 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         #if epars is None or epars[-1] < self.lowest_psum:
 
         if epars is None:
-            ydiffall = zeros(self.totpix, dtype='f8')
-            ydiffall[:] = -HIGHVAL
-            return ydiffall
+            return self._get_bad_ydiff()
 
         gmix_list=self._get_gmix_list(epars)
 
         # inherited
-        return self._get_lm_ydiff_gmix_list(gmix_list)
+        ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
+        
+        cen_ydiff = (epars[0:0+2]-0.0)/self.cenwidth
+        ydiff[-2:] = cen_ydiff
+        return ydiff
 
     def _get_round_fixcen_guess(self):
         guess=numpy.array([4.0, self.counts], dtype='f8')
@@ -784,6 +843,8 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         # we will fix this and only reset the fluxes as we go
         self._set_gmix_list()
 
+        self.use_cenprior=False
+
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
         self.totpix=self.nimage*self.imsize
@@ -829,12 +890,11 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         """
         pars1 are [counts]
         """
-        #if pars1[0] < self.lowest_psum:
-        #    ydiffall = zeros(self.totpix, dtype='f8')
-        #    ydiffall[:] = -HIGHVAL
-        #    return ydiffall
 
         self._set_psum(pars1)
+
+        # note we fixed the center, so no need to put in
+        # the cen_ydiff
         return self._get_lm_ydiff_gmix_list(self.gmix_list)
 
     def _set_psum(self, pars1):
@@ -897,6 +957,8 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         # we will fix this and only reset the fluxes as we go
         self._set_gmix_lists()
 
+        self.use_cenprior=False
+
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
         self.totpix=self.nimage*self.imsize
@@ -943,11 +1005,11 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         """
 
         if pars1[0] < 0 or pars1[0] > 1:
-            ydiffall = zeros(self.totpix, dtype='f8')
-            ydiffall[:] = HIGHVAL
-            return ydiffall
+            return self._get_bad_ydiff()
 
         gmix_list=self._get_gmix_list(pars1)
+        # note we fixed the center, so no need to put in
+        # the cen_ydiff
         return self._get_lm_ydiff_gmix_list(gmix_list)
 
 
@@ -1039,6 +1101,9 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
 
         self._copy_gmix_list(gmix_list)
 
+        self.use_cenprior=True
+        self.cenwidth=1.0
+
         self.nimage=len(self.imlist)
         self.imsize=self.imlist[0].size
         self.totpix=self.nimage*self.imsize
@@ -1078,13 +1143,14 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         pars3 are [rowcen,colcen,counts]
         """
 
-        #if pars3[2] < self.lowest_psum:
-        #    ydiffall = zeros(self.totpix, dtype='f8')
-        #    ydiffall[:] = -HIGHVAL
-        #    return ydiffall
-
         self._set_cen_psum(pars3)
-        return self._get_lm_ydiff_gmix_list(self.gmix_list)
+
+        ydiff = self._get_lm_ydiff_gmix_list(self.gmix_list)
+
+        cen_ydiff = (pars3[0:0+2]-0.0)/self.cenwidth
+        ydiff[-2:] = cen_ydiff
+
+        return ydiff
 
     def _set_cen_psum(self, pars3):
         new_row=pars3[0]
@@ -1160,6 +1226,9 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.jacobian=jacobian
         self.cen0=cen0  # starting center and center of coord system
 
+        self.use_cenprior=True
+        self.cenwidth=1.0
+
         self.imsize=self.image.size
         self.totpix=self.imsize
         self.counts=self.image.sum()
@@ -1186,24 +1255,29 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         return self._get_lm_ydiff_epars(epars)
  
     def _get_lm_ydiff_epars(self, epars):
-        #if (epars is None 
-        #        or epars[self.pstart:].sum() < self.lowest_psum):
-
+        """
+        epars is a coellip pars array
+        """
         if epars is None:
-            ydiff = zeros(self.totpix, dtype='f8')
-            ydiff[:] = -HIGHVAL
-            return ydiff
+            return self._get_bad_ydiff()
 
         gmix=GMixCoellip(epars)
-        return self._get_lm_ydiff_gmix(gmix)
 
+        ydiff = self._get_lm_ydiff_gmix(gmix)
+
+        cen_ydiff = (epars[0:0+2]-0.0)/self.cenwidth
+        ydiff[-2:] = cen_ydiff
+
+        return ydiff
 
     def _get_lm_ydiff_gmix(self, gmix):
         """
         Take in a list of full gmix objects and calculate
         the full ydiff vector across them all
         """
-        ydiff = zeros(self.imsize, dtype='f8')
+
+        n_ydiff=self._get_n_ydiff()
+        ydiff = zeros(n_ydiff, dtype='f8')
 
         # center of coord system is always the starting center
         _render.fill_ydiff_jacob(self.image,
@@ -1219,6 +1293,12 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
         return ydiff
 
+    def get_effective_npix(self):
+        """
+        Not using a weight map so this is simple
+        """
+        return self.totpix
+
     def _scale_leastsq_cov(self, gmix_list, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
@@ -1226,7 +1306,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         """
         gmix=gmix_list[0]
         ydiff = self._get_lm_ydiff_gmix(gmix)
-        dof   = self.totpix-self.npars
+        dof   = self.get_dof()
 
         s_sq = (ydiff**2).sum()/dof
         return pcov * s_sq 
@@ -1258,14 +1338,16 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         else:
             s2n=0.0
 
+        eff_npix=self.get_effective_npix()
+        dof=self.get_dof()
+
         chi2=loglike/(-0.5)
-        dof=self.totpix-npars
         chi2per = chi2/dof
 
         prob = scipy.stats.chisqprob(chi2, dof)
 
         aic = -2*loglike + 2*npars
-        bic = -2*loglike + npars*log(self.totpix)
+        bic = -2*loglike + npars*log(eff_npix)
 
         return {'s2n_w':s2n,
                 'loglike':loglike,
