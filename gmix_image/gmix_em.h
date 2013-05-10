@@ -3,13 +3,18 @@
 
 #include "image.h"
 #include "gvec.h"
+#include "jacobian.h"
 
-struct gmix {
+struct gmix_em {
     size_t maxiter;
     double tol;
     int coellip;
     int cocenter;
     int verbose;
+
+    int has_jacobian;
+    double row0, col0;
+    struct jacobian jacob;
 };
 
 struct sums {
@@ -43,32 +48,45 @@ struct iter {
     struct sums *sums;
 };
 
-int gmix_em(struct gmix* self,
-        struct image *image, 
-        struct gvec *gvec,
-        size_t *iter,
-        double *fdiff);
-int gmix_em_cocenter(struct gmix* self,
-        struct image *image, 
-        struct gvec *gvec,
-        size_t *iter,
-        double *fdiff);
+int gmix_em_run(struct gmix_em* self,
+                struct image *image, 
+                struct gvec *gvec,
+                size_t *iter,
+                double *fdiff);
+int gmix_em_cocenter_run(struct gmix_em* self,
+                         struct image *image, 
+                         struct gvec *gvec,
+                         size_t *iter,
+                         double *fdiff);
 
 /*
-int gmix_em_coellip(struct gmix* self,
+int gmix_em_coellip(struct gmix_em* self,
         struct image *image, 
         struct gvec *gvec,
         struct gvec *gvec_psf, // can be NULL
         size_t *iter,
         double *fdiff);
 */
-int gmix_get_sums(struct gmix* self,
+int gmix_get_sums(struct gmix_em* self,
                   struct image *image,
                   struct gvec *gvec,
                   struct iter* iter);
 
+int gmix_get_sums_pix(struct gmix_em* self,
+                      struct image *image,
+                      struct gvec *gvec,
+                      struct iter* iter);
+
 /*
-double gmix_evaluate_convolved(struct gmix* self,
+   Must set the jacobian and center
+*/
+int gmix_get_sums_jacobian(struct gmix_em* self,
+                           struct image *image,
+                           struct gvec *gvec,
+                           struct iter* iter);
+
+/*
+double gmix_evaluate_convolved(struct gmix_em* self,
                                struct gauss *gauss,
                                struct gvec *gvec_psf,
                                double u2, double uv, double v2,

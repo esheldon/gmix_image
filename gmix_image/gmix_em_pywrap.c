@@ -328,7 +328,7 @@ static int
 PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
 {
     int status=1;
-    struct gmix gmix = {0};
+    struct gmix_em conf = {0};
 
     PyObject* guess_lod=NULL;
     PyObject* bound_obj=NULL;
@@ -349,10 +349,10 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                      &counts, 
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
-                                     &gmix.tol,
+                                     &conf.tol,
                                      &bound_obj,
-                                     &gmix.cocenter,
-                                     &gmix.verbose)) {
+                                     &conf.cocenter,
+                                     &conf.verbose)) {
         return -1;
     }
 
@@ -378,16 +378,16 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
         goto _gmix_init_bail;
     }
 
-    gmix.maxiter = maxiter;
+    conf.maxiter = maxiter;
 
-    if (gmix.cocenter) {
-        self->flags = gmix_em_cocenter(&gmix, 
+    if (conf.cocenter) {
+        self->flags = gmix_em_cocenter_run(&conf, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
                 &self->fdiff);
     } else {
-        self->flags = gmix_em(&gmix, 
+        self->flags = gmix_em_run(&conf, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
