@@ -8,12 +8,10 @@
 struct gmix_em {
     size_t maxiter;
     double tol;
-    int coellip;
     int cocenter;
     int verbose;
 
     int has_jacobian;
-    double row0, col0;
     struct jacobian jacob;
 };
 
@@ -47,6 +45,19 @@ struct iter {
 
     struct sums *sums;
 };
+
+struct gmix_em *gmix_em_new(size_t maxiter,
+                            double tol,
+                            int cocenter,
+                            int verbose);
+
+void gmix_em_add_jacobian(struct gmix_em *self,
+                          double row0,
+                          double col0,
+                          double dudrow,
+                          double dudcol,
+                          double dvdrow,
+                          double dvdcol);
 
 int gmix_em_run(struct gmix_em* self,
                 struct image *image, 

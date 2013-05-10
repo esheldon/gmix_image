@@ -45,6 +45,40 @@
 
 #include "fmath.h"
 
+struct gmix_em *gmix_em_new(size_t maxiter,
+                            double tol,
+                            int cocenter,
+                            int verbose)
+{
+    struct gmix_em *self=NULL;
+
+    self=calloc(1, sizeof(struct gmix_em));
+    if (!self) {
+        fprintf(stderr,"could not allocate struct gmix_em\n");
+        exit(1);
+    }
+
+    self->maxiter=maxiter;
+    self->tol=tol;
+    self->cocenter=cocenter;
+    self->verbose=verbose;
+    return self;
+}
+
+void gmix_em_add_jacobian(struct gmix_em *self,
+                          double row0,
+                          double col0,
+                          double dudrow,
+                          double dudcol,
+                          double dvdrow,
+                          double dvdcol)
+{
+
+    self->has_jacobian=1;
+    jacobian_set(&self->jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
+}
+
+
 int gmix_em_run(struct gmix_em* self,
                 struct image *image, 
                 struct gvec *gvec,
@@ -364,8 +398,8 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
 
     iter_clear(iter);
     for (row=0; row<nrows; row++) {
-        uabs=JACOB_PIX2U(jacob, row-self->row0, 0-self->col0);
-        vabs=JACOB_PIX2V(jacob, row-self->row0, 0-self->col0);
+        uabs=JACOB_PIX2U(jacob, row, 0);
+        vabs=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
             imnorm = IM_GET(image, row, col);

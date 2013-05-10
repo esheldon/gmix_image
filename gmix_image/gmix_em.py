@@ -71,16 +71,6 @@ class GMixEM(_gmix_em.GMixEM):
         The total counts in the image.  If not sent it is calculated
         from the image, which is fine.
 
-    bound: dict
-        A boundary region over which to work.  The dictionary should have the
-        following integer entries
-            rowmin
-            rowmax
-            colmin
-            colmax
-        The values will be clipped to within the actual image boundaries, and
-        such that *max >= *min
-
     maxiter: number, optional
         The maximum number of iterations.
     tol: number, optional
@@ -150,9 +140,9 @@ class GMixEM(_gmix_em.GMixEM):
                  counts=None,
                  maxiter=5000,
                  tol=1.e-6,
-                 bound=None,
                  cocenter=False,
-                 verbose=False):
+                 verbose=False,
+                 jacobian=None):
 
         self._image = array(im, ndmin=2, dtype='f8', copy=False)
         self._guess = copy.deepcopy(guess)
@@ -160,14 +150,15 @@ class GMixEM(_gmix_em.GMixEM):
         self._counts=counts
         self._maxiter=maxiter
         self._tol=tol
-        self._bound=copy.deepcopy(bound)
         self._cocenter = cocenter
         self._verbose=verbose
+        self._jacobian=jacobian
 
         if self._sky is None:
             raise ValueError("send sky")
         if self._counts is None:
             self._counts = im.sum()
+        self._check_jacobian()
 
         verbosity  = 1 if self._verbose else 0
         do_cocenter = 1 if self._cocenter else 0
@@ -178,9 +169,10 @@ class GMixEM(_gmix_em.GMixEM):
                                     self._guess,
                                     self._maxiter,
                                     self._tol,
-                                    bound=self._bound,
                                     cocenter=do_cocenter,
-                                    verbose=verbosity)
+                                    verbose=verbosity,
+                                    jacobian=self._jacobian)
+        self.run()
 
     def get_gmix(self):
         """
@@ -198,6 +190,16 @@ class GMixEM(_gmix_em.GMixEM):
         model=gmix2image(gmix, self._image.shape)
         return model
 
+    def _check_jacobian(self):
+        j=self._jacobian
+        if j is None:
+            return
+
+        if not isinstance(j,dict):
+            raise ValueError("jacobian must be a dict")
+        for n in ['row0','col0','dudrow','dudcol','dvdrow','dvdcol']:
+            if n not in j:
+                raise ValueError("jacobian must contain '%s'" % n)
 
 class GMixEMBoot:
     """

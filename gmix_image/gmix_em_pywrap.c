@@ -3,8 +3,8 @@
 
 #include "gvec.h"
 #include "image.h"
-#include "bound.h"
 #include "gmix_em.h"
+#include "jacobian.h"
 
 
 struct PyGMixEMObject {
@@ -224,8 +224,41 @@ _gvec_copy_list_of_dicts_bail:
 
 
 
+int jacobian_from_dict(struct gmix_em *self, PyObject *jacobian_dict)
+{
+    int status=1;
+    double row0=0,col0=0,dudrow=0,dudcol=0,dvdrow=0,dvdcol=0;
 
+    if (!get_dict_double(jacobian_dict,"row0", &row0)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
+    if (!get_dict_double(jacobian_dict,"col0", &col0)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
+    if (!get_dict_double(jacobian_dict,"dudrow", &dudrow)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
+    if (!get_dict_double(jacobian_dict,"dudcol", &dudcol)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
+    if (!get_dict_double(jacobian_dict,"dvdrow", &dvdrow)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
+    if (!get_dict_double(jacobian_dict,"dvdcol", &dvdcol)) {
+        status=0;
+        goto _jacobian_from_dict_bail;
+    }
 
+    gmix_em_add_jacobian(self, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
+
+_jacobian_from_dict_bail:
+    return status;
+}
 
 
 static
@@ -283,6 +316,7 @@ struct image *associate_image(PyObject* image_obj, double counts)
     return image;
 }
 
+/*
 int add_mask_to_image(struct PyGMixEMObject* self, PyObject* bound_obj)
 {
     int status=1;
@@ -318,6 +352,7 @@ int add_mask_to_image(struct PyGMixEMObject* self, PyObject* bound_obj)
 _bound_copy_from_dict_bail:
     return status;
 }
+*/
 void gmix_cleanup(struct PyGMixEMObject* self)
 {
     self->image    = image_free(self->image);
@@ -331,18 +366,21 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     struct gmix_em conf = {0};
 
     PyObject* guess_lod=NULL;
-    PyObject* bound_obj=NULL;
     PyObject* image_obj=NULL;
+    PyObject* jacobian_dict=NULL;
+
     double sky=0, counts=0;
     unsigned int maxiter=0;
     self->image=NULL; self->gvec=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
-                               "maxiter", "tol", "bound", 
+                               "maxiter", "tol",
                                "cocenter",
-                               "verbose", NULL};
+                               "verbose",
+                               "jacobian",
+                               NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds,
-                                     (char*)"OddOId|Oii",
+                                     (char*)"OddOId|OiiO",
                                      argnames,
                                      &image_obj, 
                                      &sky, 
@@ -350,9 +388,9 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
                                      &conf.tol,
-                                     &bound_obj,
                                      &conf.cocenter,
-                                     &conf.verbose)) {
+                                     &conf.verbose,
+                                     &jacobian_dict)) {
         return -1;
     }
 
@@ -364,12 +402,10 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     }
     IM_SET_SKY(self->image, sky);
 
-    if (bound_obj != NULL && bound_obj != Py_None) {
-        if (!add_mask_to_image(self, bound_obj)) {
-            status=0;
-            goto _gmix_init_bail;
-        }
+    if (jacobian_dict != NULL) {
+       jacobian_from_dict(&conf, jacobian_dict); 
     }
+
     // copy all data from dict into the gvec as a starting point
     // need to free gvec in the destructor
     self->gvec = gvec_from_list_of_dicts(guess_lod,"guess");

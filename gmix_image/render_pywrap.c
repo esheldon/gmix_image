@@ -760,7 +760,6 @@ static int
 fill_ydiff_jacob(const struct image *image,
                  double ivar,
                  const struct jacobian *jacob,
-                 double row0, double col0,
                  const struct gvec *gvec,
                  struct image *diff_image)
 {
@@ -781,8 +780,8 @@ fill_ydiff_jacob(const struct image *image,
 
     ierr=sqrt(ivar);
     for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
-        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        u=JACOB_PIX2U(jacob, row, 0);
+        v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
             model_val=GVEC_EVAL(gvec, u, v);
@@ -812,7 +811,6 @@ static int
 fill_ydiff_wt_jacob(const struct image *image,
                     const struct image *weight,
                     const struct jacobian *jacob,
-                    double row0, double col0,
                     const struct gvec *gvec,
                     struct image *diff_image)
 {
@@ -831,8 +829,8 @@ fill_ydiff_wt_jacob(const struct image *image,
     }
 
     for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
-        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        u=JACOB_PIX2U(jacob, row, 0);
+        v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
             model_val=GVEC_EVAL(gvec, u, v);
@@ -1130,7 +1128,6 @@ static
 int calculate_loglike_wt_jacob(const struct image *image, 
                                const struct image *weight,
                                const struct jacobian *jacob,
-                               double row0, double col0,
                                const struct gvec *gvec, 
                                double *s2n_numer,
                                double *s2n_denom,
@@ -1156,8 +1153,8 @@ int calculate_loglike_wt_jacob(const struct image *image,
 
     (*loglike)=0;
     for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
-        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        u=JACOB_PIX2U(jacob, row, 0);
+        v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
             model_val=GVEC_EVAL(gvec, u, v);
@@ -1195,7 +1192,6 @@ static
 int calculate_loglike_jacob(const struct image *image, 
                             double ivar,
                             const struct jacobian *jacob,
-                            double row0, double col0,
                             const struct gvec *gvec, 
                             double *s2n_numer,
                             double *s2n_denom,
@@ -1220,8 +1216,8 @@ int calculate_loglike_jacob(const struct image *image,
 
     (*loglike)=0;
     for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row-row0, 0-col0);
-        v=JACOB_PIX2V(jacob, row-row0, 0-col0);
+        u=JACOB_PIX2U(jacob, row, 0);
+        v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
             model_val=GVEC_EVAL(gvec, u, v);
@@ -1720,12 +1716,9 @@ PyGMixFit_fill_ydiff_jacob(PyObject *self, PyObject *args)
     image = associate_image(image_obj, dims[0], dims[1]);
     diff = associate_image(diff_obj, dims[0], dims[1]);
 
-    jacob.dudrow=dudrow;
-    jacob.dudcol=dudcol;
-    jacob.dvdrow=dvdrow;
-    jacob.dvdcol=dvdcol;
+    jacobian_set(&jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
 
-    flags=fill_ydiff_jacob(image, ivar, &jacob, row0, col0,
+    flags=fill_ydiff_jacob(image, ivar, &jacob,
                            gvec_obj->gvec, diff);
     // does not free underlying array
     image  = image_free(image);
@@ -1790,12 +1783,9 @@ PyGMixFit_fill_ydiff_wt_jacob(PyObject *self, PyObject *args)
     weight = associate_image(weight_obj, dims[0], dims[1]);
     diff = associate_image(diff_obj, dims[0], dims[1]);
 
-    jacob.dudrow=dudrow;
-    jacob.dudcol=dudcol;
-    jacob.dvdrow=dvdrow;
-    jacob.dvdcol=dvdcol;
+    jacobian_set(&jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
 
-    flags=fill_ydiff_wt_jacob(image, weight, &jacob, row0, col0,
+    flags=fill_ydiff_wt_jacob(image, weight, &jacob,
                               gvec_obj->gvec, diff);
 
     // does not free underlying array
@@ -2273,15 +2263,11 @@ PyGMixFit_loglike_jacob(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    jacob.dudrow=dudrow;
-    jacob.dudcol=dudcol;
-    jacob.dvdrow=dvdrow;
-    jacob.dvdcol=dvdcol;
+    jacobian_set(&jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
 
     flags=calculate_loglike_jacob(image,
                                   ivar,
                                   &jacob,
-                                  row0,col0,
                                   gvec_obj->gvec,
                                   &s2n_numer,
                                   &s2n_denom,
@@ -2346,15 +2332,11 @@ PyGMixFit_loglike_wt_jacob(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    jacob.dudrow=dudrow;
-    jacob.dudcol=dudcol;
-    jacob.dvdrow=dvdrow;
-    jacob.dvdcol=dvdcol;
+    jacobian_set(&jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
 
     flags=calculate_loglike_wt_jacob(image,
                                      weight,
                                      &jacob,
-                                     row0,col0,
                                      gvec_obj->gvec,
                                      &s2n_numer,
                                      &s2n_denom,
