@@ -172,7 +172,6 @@ class GMixEM(_gmix_em.GMixEM):
                                     cocenter=do_cocenter,
                                     verbose=verbosity,
                                     jacobian=self._jacobian)
-        self.run()
 
     def get_gmix(self):
         """

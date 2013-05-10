@@ -363,7 +363,7 @@ static int
 PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
 {
     int status=1;
-    struct gmix_em conf = {0};
+    struct gmix_em gmix_em = {0};
 
     PyObject* guess_lod=NULL;
     PyObject* image_obj=NULL;
@@ -387,15 +387,15 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                      &counts, 
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
-                                     &conf.tol,
-                                     &conf.cocenter,
-                                     &conf.verbose,
+                                     &gmix_em.tol,
+                                     &gmix_em.cocenter,
+                                     &gmix_em.verbose,
                                      &jacobian_dict)) {
         return -1;
     }
 
     // no copying
-    self->image= associate_image(image_obj, counts);
+    self->image = associate_image(image_obj, counts);
     if (!self->image) {
         status=0;
         goto _gmix_init_bail;
@@ -403,7 +403,10 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     IM_SET_SKY(self->image, sky);
 
     if (jacobian_dict != NULL) {
-       jacobian_from_dict(&conf, jacobian_dict); 
+       if (!jacobian_from_dict(&gmix_em, jacobian_dict)) {
+           status=0;
+           goto _gmix_init_bail;
+       }
     }
 
     // copy all data from dict into the gvec as a starting point
@@ -414,16 +417,16 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
         goto _gmix_init_bail;
     }
 
-    conf.maxiter = maxiter;
+    gmix_em.maxiter = maxiter;
 
-    if (conf.cocenter) {
-        self->flags = gmix_em_cocenter_run(&conf, 
+    if (gmix_em.cocenter) {
+        self->flags = gmix_em_cocenter_run(&gmix_em, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
                 &self->fdiff);
     } else {
-        self->flags = gmix_em_run(&conf, 
+        self->flags = gmix_em_run(&gmix_em, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
