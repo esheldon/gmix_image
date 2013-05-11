@@ -79,22 +79,40 @@ void gmix_em_add_jacobian(struct gmix_em *self,
 }
 
 
+static double get_effective_scale(struct gmix_em* self)
+{
+    double scale=1.0;
+    if (self->has_jacobian) {
+        scale=sqrt(
+                self->jacob.dudrow*self->jacob.dvdcol
+                -
+                self->jacob.dudcol*self->jacob.dvdrow);
+    }
+    return scale;
+}
 int gmix_em_run(struct gmix_em* self,
-                struct image *image, 
+                const struct image *image, 
                 struct gvec *gvec,
                 size_t *iter,
                 double *fdiff)
 {
     int flags=0;
     double wmomlast=0, wmom=0;
+    double scale=1;
+    double eff_npoints=0;
+
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
     size_t npoints = IM_SIZE(image);
 
+    // we may not be working in pixel coordinates
+    scale=get_effective_scale(self);
+    eff_npoints = npoints*scale*scale;
+
     struct iter *iter_struct = iter_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
-    iter_struct->psky = sky/(counts/npoints);
+    iter_struct->psky = sky/(counts/eff_npoints);
 
     wmomlast=-9999;
     *iter=0;
@@ -108,7 +126,7 @@ int gmix_em_run(struct gmix_em* self,
         gmix_set_gvec_fromiter(gvec, iter_struct);
 
         iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/npoints;
+        iter_struct->nsky = iter_struct->psky/eff_npoints;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
@@ -207,24 +225,32 @@ static void set_means(struct gvec *gvec, struct vec2 *cen)
  * this could be cleaned up, some repeated code
  */
 int gmix_em_cocenter_run(struct gmix_em* self,
-                         struct image *image, 
+                         const struct image *image, 
                          struct gvec *gvec,
                          size_t *iter,
                          double *fdiff)
 {
     int flags=0;
     double wmomlast=0, wmom=0;
+    double scale=1;
+    double eff_npoints=0;
+
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
     size_t npoints = IM_SIZE(image);
+
     struct vec2 cen_new;
     struct gvec *gcopy=NULL;
     struct iter *iter_struct = iter_new(gvec->size);
 
+    // we may not be working in pixel coordinates
+    scale=get_effective_scale(self);
+    eff_npoints = npoints*scale*scale;
+
     gcopy = gvec_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
-    iter_struct->psky = sky/(counts/npoints);
+    iter_struct->psky = sky/(counts/eff_npoints);
 
 
     wmomlast=-9999;
@@ -259,7 +285,7 @@ int gmix_em_cocenter_run(struct gmix_em* self,
         set_means(gvec, &cen_new);
 
         iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/npoints;
+        iter_struct->nsky = iter_struct->psky/eff_npoints;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
@@ -285,19 +311,21 @@ _gmix_em_cocenter_bail:
 }
 
 int gmix_get_sums(struct gmix_em* self,
-                  struct image *image,
+                  const struct image *image,
                   struct gvec *gvec,
                   struct iter* iter)
 {
+    int flags=0;
     if (self->has_jacobian) {
-        gmix_get_sums_jacobian(self, image, gvec, iter);
+        flags=gmix_get_sums_jacobian(self, image, gvec, iter);
     } else {
-        gmix_get_sums_pix(self, image, gvec, iter);
+        flags=gmix_get_sums_pix(self, image, gvec, iter);
     }
+    return flags;
 }
 
 int gmix_get_sums_pix(struct gmix_em* self,
-                      struct image *image,
+                      const struct image *image,
                       struct gvec *gvec,
                       struct iter* iter)
 {
@@ -380,7 +408,7 @@ _gmix_get_sums_bail:
 
 
 int gmix_get_sums_jacobian(struct gmix_em* self,
-                           struct image *image,
+                           const struct image *image,
                            struct gvec *gvec,
                            struct iter* iter)
 {
@@ -432,8 +460,8 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
 
                 gtot += sums->gi;
 
-                sums->trowsum = row*sums->gi;
-                sums->tcolsum = col*sums->gi;
+                sums->trowsum = uabs*sums->gi;
+                sums->tcolsum = vabs*sums->gi;
                 sums->tu2sum  = u2*sums->gi;
                 sums->tuvsum  = uv*sums->gi;
                 sums->tv2sum  = v2*sums->gi;
@@ -441,8 +469,9 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
             }
             gtot += iter->nsky;
             igrat = imnorm/gtot;
-            sums = &iter->sums[0];
             for (i=0; i<gvec->size; i++) {
+                sums = &iter->sums[i];
+
                 // wtau is gi[pix]/gtot[pix]*imnorm[pix]
                 // which is Dave's tau*imnorm = wtau
                 wtau = sums->gi*igrat;  
@@ -457,7 +486,6 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
                 sums->u2sum  += sums->tu2sum*igrat;
                 sums->uvsum  += sums->tuvsum*igrat;
                 sums->v2sum  += sums->tv2sum*igrat;
-                sums++;
             }
             iter->skysum += iter->nsky*imnorm/gtot;
 

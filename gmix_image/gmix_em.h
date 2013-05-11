@@ -60,12 +60,12 @@ void gmix_em_add_jacobian(struct gmix_em *self,
                           double dvdcol);
 
 int gmix_em_run(struct gmix_em* self,
-                struct image *image, 
+                const struct image *image, 
                 struct gvec *gvec,
                 size_t *iter,
                 double *fdiff);
 int gmix_em_cocenter_run(struct gmix_em* self,
-                         struct image *image, 
+                         const struct image *image, 
                          struct gvec *gvec,
                          size_t *iter,
                          double *fdiff);
@@ -79,12 +79,12 @@ int gmix_em_coellip(struct gmix_em* self,
         double *fdiff);
 */
 int gmix_get_sums(struct gmix_em* self,
-                  struct image *image,
+                  const struct image *image,
                   struct gvec *gvec,
                   struct iter* iter);
 
 int gmix_get_sums_pix(struct gmix_em* self,
-                      struct image *image,
+                      const struct image *image,
                       struct gvec *gvec,
                       struct iter* iter);
 
@@ -92,7 +92,7 @@ int gmix_get_sums_pix(struct gmix_em* self,
    Must set the jacobian and center
 */
 int gmix_get_sums_jacobian(struct gmix_em* self,
-                           struct image *image,
+                           const struct image *image,
                            struct gvec *gvec,
                            struct iter* iter);
 

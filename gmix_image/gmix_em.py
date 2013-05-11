@@ -67,6 +67,12 @@ class GMixEM(_gmix_em.GMixEM):
         gaussian.  If not sent, the median of the image is used, so it is
         recommeded to send your best estimate.
 
+    jacobian: dict, optional
+        A dictionary describing a jacobian of a transformation between
+        pixel and some other coordinate
+            row0,col0 - center in pixel coords
+            dudrow,dudcol,dvdrow,dvdcol
+
     counts: number, optional
         The total counts in the image.  If not sent it is calculated
         from the image, which is fine.
@@ -154,13 +160,13 @@ class GMixEM(_gmix_em.GMixEM):
         self._verbose=verbose
         self._jacobian=jacobian
 
+        self._set_verbosity()
         if self._sky is None:
             raise ValueError("send sky")
         if self._counts is None:
             self._counts = im.sum()
         self._check_jacobian()
 
-        verbosity  = 1 if self._verbose else 0
         do_cocenter = 1 if self._cocenter else 0
 
         super(GMixEM,self).__init__(self._image,
@@ -170,7 +176,7 @@ class GMixEM(_gmix_em.GMixEM):
                                     self._maxiter,
                                     self._tol,
                                     cocenter=do_cocenter,
-                                    verbose=verbosity,
+                                    verbose=self._verbosity,
                                     jacobian=self._jacobian)
 
     def get_gmix(self):
@@ -199,6 +205,16 @@ class GMixEM(_gmix_em.GMixEM):
         for n in ['row0','col0','dudrow','dudcol','dvdrow','dvdcol']:
             if n not in j:
                 raise ValueError("jacobian must contain '%s'" % n)
+
+    def _set_verbosity(self):
+        verbose=self._verbose
+        if isinstance(verbose,int):
+            verbosity=verbose
+        elif isinstance(verbose,bool):
+            verbosity  = 1 if verbose else 0
+        else:
+            verbosity=0
+        self._verbosity=verbosity
 
 class GMixEMBoot:
     """

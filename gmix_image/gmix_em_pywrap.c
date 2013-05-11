@@ -26,6 +26,7 @@ struct PyGMixEMObject {
  * methods working on python objects
  */
 
+/*
 static int
 get_dict_ssize_t(PyObject* dict, const char *key, ssize_t *val)
 {
@@ -50,7 +51,7 @@ get_dict_ssize_t(PyObject* dict, const char *key, ssize_t *val)
 _get_dict_ssize_t_bail:
     return status;
 }
-
+*/
 
 
 static int
@@ -380,7 +381,7 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                "jacobian",
                                NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwds,
-                                     (char*)"OddOId|OiiO",
+                                     (char*)"OddOId|iiO",
                                      argnames,
                                      &image_obj, 
                                      &sky, 
@@ -402,7 +403,7 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     }
     IM_SET_SKY(self->image, sky);
 
-    if (jacobian_dict != NULL) {
+    if (jacobian_dict != Py_None) {
        if (!jacobian_from_dict(&gmix_em, jacobian_dict)) {
            status=0;
            goto _gmix_init_bail;

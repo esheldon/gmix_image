@@ -11,7 +11,7 @@ import gmix_fit
 from .render import gmix2image
 from .gmix_fit import print_pars, ellip2eta, eta2ellip
 from .gmix_em import gmix2image_em
-from .gmix import GMix
+from .gmix import GMix, GMixCoellip
 import copy
 
 import esutil as eu
@@ -224,6 +224,110 @@ def _em_prep(im0):
         sky = numpy.median(im)
 
     return im, sky
+
+
+
+
+def test_em_jacob(s2n=100.,
+                  ngauss=2,
+                  offcen=True,
+                  scale=0.27, # ''/pixel
+                  theta=20.0,
+                  show=False):
+    import fimage
+    import math
+    from math import cos,sin,sqrt
+    from lensing.util import rotate_shape
+
+    thetarad=math.radians(theta)
+    ctheta=cos(thetarad)
+    stheta=sin(thetarad)
+    c2theta=cos(2*thetarad)
+    s2theta=sin(2*thetarad)
+
+    e1=0.2
+    e2=0.1
+
+
+    counts=100.
+    sigma=5.0 # arcsec
+    T=2*sigma**2
+
+    # for simulation, in pixels
+
+    # rotate backwards to the pixel coords
+    e1pix,e2pix=rotate_shape(e1,e2,-theta)
+    sigma_pix=sigma/scale
+    Tpix=2*sigma_pix**2
+
+    counts_pix=counts/(scale*scale)
+
+    dim=2*5*sigma_pix
+    dims=[dim]*2
+    cenpix=[(dim-1.)/2.]*2
+
+    print 'sky'
+    print '  sigma(''):',sigma
+    print '  e1:',e1,'e2:',e2
+    print 'pix'
+    print '  sigma(pix):',sigma_pix
+    print '  e1:',e1pix,'e2:',e2pix
+    print 'dims:',dims
+    print
+
+
+    gmix_pix=GMixCoellip([cenpix[0], cenpix[1], e1pix, e2pix, Tpix, counts_pix])
+
+    
+    im0=gmix2image(gmix_pix, dims)
+    imnoise0,skysig=add_noise_matched(im0,s2n)
+    im,sky=_em_prep(imnoise0)
+
+    jacob={'row0':cenpix[0],
+           'col0':cenpix[1],
+           'dudrow':ctheta*scale, 'dudcol':-stheta*scale,
+           'dvdrow':stheta*scale, 'dvdcol': ctheta*scale}
+
+
+    guess_pix=[{'p':1.0, 'row':cenpix[0], 'col':cenpix[1],
+                'irr':Tpix/2., 'irc':0.0, 'icc':Tpix/2.}]
+
+    gm_pix=gmix_image.GMixEM(im, guess_pix, sky=sky)
+    print 'pixel result'
+    print gm_pix
+    gmix=gm_pix.get_gmix()
+    print gmix
+    e1m_pix,e2m_pix,Tm_pix=gmix.get_e1e2T()
+    sigma_meas_pix = sqrt(Tm_pix/2.)
+
+    print 'measured pixels'
+    print '  sigma:',sigma_meas_pix
+    print '  e1:',e1m_pix,'e2:',e2m_pix
+
+    print
+
+
+    guess=[{'p':1.0, 'row':0.0, 'col':0.0,
+            'irr':4., 'irc':0.0, 'icc':4.}]
+    pprint.pprint(guess)
+    gm=gmix_image.GMixEM(im,
+                         guess,
+                         sky=sky,
+                         jacobian=jacob,
+                         verbose=1)
+
+    print 'sky result'
+    print gm
+    gmix=gm.get_gmix()
+    print gmix
+    print 'measured:'
+    e1m,e2m,Tm=gmix.get_e1e2T()
+    sigma_meas = sqrt(Tm/2.)
+
+    print '  sigma:',sigma_meas
+    print '  e1:',e1m,'e2:',e2m
+
+
 
 
 def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
