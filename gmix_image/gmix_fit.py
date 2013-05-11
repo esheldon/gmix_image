@@ -1202,7 +1202,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
     set cen0 to initial guess in pixel space; it will be the
     center of the coordinate system
     """
-    def __init__(self, image, ivar, jacobian, cen0, ngauss, **keys):
+    def __init__(self, image, ivar, jacobian, ngauss, **keys):
         if ngauss > 3:
             raise ValueError("support ngauss>3")
 
@@ -1216,7 +1216,6 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.ivar=float(ivar)
 
         self.jacobian=jacobian
-        self.cen0=cen0  # starting center and center of coord system
 
         self.use_cenprior=True
         self.cenwidth=1.0
@@ -1278,8 +1277,8 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
                                  self.jacobian['dudcol'],
                                  self.jacobian['dvdrow'],
                                  self.jacobian['dvdcol'],
-                                 self.cen0[0], # coord system center
-                                 self.cen0[1],
+                                 self.jacobian['row0'], # coord system center
+                                 self.jacobian['col0'],
                                  gmix,
                                  ydiff)
 
@@ -1319,8 +1318,8 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
                                           self.jacobian['dudcol'],
                                           self.jacobian['dvdrow'],
                                           self.jacobian['dvdcol'],
-                                          self.cen0[0], # coord system center
-                                          self.cen0[1],
+                                          self.jacobian['row0'], # coord system center
+                                          self.jacobian['col0'],
                                           gmix)
 
         loglike,s2n_numer,s2n_denom,flags=tres
