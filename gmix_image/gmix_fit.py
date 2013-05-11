@@ -2070,8 +2070,6 @@ def test_multi(s2n=100.,
     rad=aperture/2.
 
     for i in xrange(nimages):
-        jacob={'dudrow':ctheta*scale, 'dudcol':-stheta*scale,
-               'dvdrow':stheta*scale, 'dvdcol': ctheta*scale}
         if randpsf:
             e1psf=0.1*srandu()
             e2psf=0.1*srandu()
@@ -2089,15 +2087,18 @@ def test_multi(s2n=100.,
         s2n_uw_sum += fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
                                                        ci['cen'], rad)
 
+
+        jacob={'row0':ci['cen'][0],'col0':ci['cen'][1],
+               'dudrow':ctheta*scale, 'dudcol':-stheta*scale,
+               'dvdrow':stheta*scale, 'dvdcol': ctheta*scale}
+
         psf_ivar=1./cin['skysig_psf']**2
-        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
+        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, psf_ngauss_fit)
         gmix_psf=gm_psf.get_gmix()
 
         wt=cin.image.copy()
         wt = 0.0*wt + 1./cin['skysig']**2
 
-        jacob['row0'] = ci['cen'][0]
-        jacob['col0'] = ci['cen'][1]
 
         imlist.append(cin.image) 
         wtlist.append(wt)
@@ -2127,17 +2128,20 @@ def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad,
     ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
     cin = fimage.convolved.NoisyConvolvedImage(ci, s2n, psf_s2n,
                                                 s2n_method=s2n_method)
+    jacob['row0'] = ci['cen'][0]
+    jacob['col0'] = ci['cen'][1]
+
     s2n_uw = fimage.noise.get_s2n_uw_aperture(ci.image, cin['skysig'],
                                               ci['cen'], rad)
 
     psf_ivar=1./cin['skysig_psf']**2
-    gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
+    gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, psf_ngauss_fit)
     gmix_psf=gm_psf.get_gmix()
 
     wt=cin.image.copy()
     wt = 0.0*wt + 1./cin['skysig']**2
 
-    return cin.image, wt, gmix_psf, s2n_uw, cin['cen']
+    return cin.image, wt, gmix_psf, s2n_uw
 
                 
 def test_multi_color(s2n=100.,
@@ -2201,22 +2205,16 @@ def test_multi_color(s2n=100.,
         # image 1
         jacob1={'dudrow':scale, 'dudcol':0.0,
                 'dvdrow':0.0,   'dvdcol':scale}
-        im1, wt1, gmix_psf1,s2n_uw1,cen1=\
+        im1, wt1, gmix_psf1,s2n_uw1=\
                 _make_data(jacob1,gmix1,Tpsf0_pix, s2n_per,psf_s2n,
                            psf_ngauss_fit,rad, s2n_method=s2n_method)
         jacob2={'dudrow':scale, 'dudcol':0.0,
                 'dvdrow':0.0,   'dvdcol':scale}
-        im2, wt2, gmix_psf2,s2n_uw2,cen2=\
+        im2, wt2, gmix_psf2,s2n_uw2=\
                 _make_data(jacob2,gmix2,Tpsf0_pix, s2n_per,psf_s2n,
                            psf_ngauss_fit,rad)
 
         s2n_uw_sum += s2n_uw1
-
-        jacob1['row0'] = cen1[0]
-        jacob1['col0'] = cen1[1]
-        jacob2['row0'] = cen2[0]
-        jacob2['col0'] = cen2[1]
-
 
         imlist1.append(im1) 
         wtlist1.append(wt1)
@@ -2289,8 +2287,6 @@ def test_psfflux_star(s2n=100.,
     aperture=1.5/scale # 1.5 arcsec diameter
     rad=aperture/2.
     for i in xrange(nimages):
-        jacob={'dudrow':scale, 'dudcol':0.0,
-               'dvdrow':0.0,   'dvdcol':scale}
 
         e1=0.1*srandu()
         e2=0.1*srandu()
@@ -2303,18 +2299,20 @@ def test_psfflux_star(s2n=100.,
         im_lown,skysig_lown=fimage.noise.add_noise_matched(im, 1.e6, cen)
         im_highn,skysig_highn=fimage.noise.add_noise_matched(im, s2n_per, cen)
 
+
+        jacob={'row0':cen[0],'col0':cen[1],
+               'dudrow':scale, 'dudcol':0.0,
+               'dvdrow':0.0,   'dvdcol':scale}
+
         # get psf model from low noise image
         ivar_lown=1./skysig_lown**2
-        gm_psf=GMixFitPSFJacob(im_lown, ivar_lown, jacob, cen, ngauss_fit)
+        gm_psf=GMixFitPSFJacob(im_lown, ivar_lown, jacob, ngauss_fit)
 
         gmix_psf=gm_psf.get_gmix()
 
         ivar_highn=1./skysig_highn**2
         wt=im_highn.copy()
         wt = 0.0*wt + ivar_highn
-
-        jacob['row0'] = cen[0]
-        jacob['col0'] = cen[1]
 
         imlist.append(im_highn) 
         wtlist.append(wt)
@@ -2399,6 +2397,12 @@ def test_cmodel(s2n=100.,
         ci = fimage.convolved.ConvolverGMix(gmix, gmix_psf_nopix)
         cin = fimage.convolved.NoisyConvolvedImage(ci, s2n_per, psf_s2n,
                                                    s2n_method=s2n_method)
+
+
+        jacob={'row0':ci['cen'][0],
+               'col0':ci['cen'][1],
+               'dudrow':scale, 'dudcol':0.0,
+               'dvdrow':0.0,   'dvdcol':scale}
         #import images
         #images.multiview(ci.image)
         #images.view(cin.image)
@@ -2407,14 +2411,11 @@ def test_cmodel(s2n=100.,
                                                        ci['cen'], rad)
 
         psf_ivar=1./cin['skysig_psf']**2
-        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, cin['cen'], psf_ngauss_fit)
+        gm_psf=GMixFitPSFJacob(cin.psf, psf_ivar, jacob, psf_ngauss_fit)
         gmix_psf=gm_psf.get_gmix()
 
         wt=cin.image.copy()
         wt = 0.0*wt + 1./cin['skysig']**2
-
-        jacob['row0'] = ci['cen'][0]
-        jacob['col0'] = ci['cen'][1]
 
         imlist.append(cin.image) 
         wtlist.append(wt)
