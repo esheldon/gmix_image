@@ -308,7 +308,6 @@ class GMixFitMultiBase:
 
         self.jacoblist=jacoblist
         self.psflist=psflist
-        self.cenlist=cenlist  # starting center and center of coord system
         self.model=model
 
         self._set_im_wt_sums()
@@ -364,7 +363,6 @@ class GMixFitMultiBase:
             wt=self.wtlist[i]
             jacob=self.jacoblist[i]
             gmix=gmix_list[i]
-            cen0=self.cenlist[i]
  
             # center of coord system is always the starting center
             _render.fill_ydiff_wt_jacob(im,
@@ -373,8 +371,8 @@ class GMixFitMultiBase:
                                         jacob['dudcol'],
                                         jacob['dvdrow'],
                                         jacob['dvdcol'],
-                                        cen0[0], # coord system center
-                                        cen0[1],
+                                        jacob['row0'], # coord system center
+                                        jacob['col0'],
                                         gmix,
                                         ydiff)
             ydiffall[i*imsize:(i+1)*imsize] = ydiff[:]
@@ -494,7 +492,6 @@ class GMixFitMultiBase:
             wt=self.wtlist[i]
             jacob=self.jacoblist[i]
             gmix=gmix_list[i]
-            cen0=self.cenlist[i]
  
             tres=render._render.loglike_wt_jacob(im,
                                                  wt,
@@ -502,8 +499,8 @@ class GMixFitMultiBase:
                                                  jacob['dudcol'],
                                                  jacob['dvdrow'],
                                                  jacob['dvdcol'],
-                                                 cen0[0], # coord system center
-                                                 cen0[1],
+                                                 jacob['row0'], # coord system center
+                                                 jacob['col0'],
                                                  gmix)
 
             tloglike,ts2n_numer,ts2n_denom,tflags=tres
@@ -596,7 +593,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
     images and equal the cen0 for that image.
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist, cenlist, model,
+    def __init__(self, imlist, wtlist, jacoblist, psflist, model,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
@@ -606,10 +603,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.psflist=psflist
-        self.cenlist=cenlist  # starting center and center of coord system
 
         self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist,self.cenlist)
+                          self.psflist)
 
         self.model=model
 
@@ -823,7 +819,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
     You can enter any GMix object.  
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist, cenlist, gmix0,
+    def __init__(self, imlist, wtlist, jacoblist, psflist, gmix0,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
@@ -833,11 +829,10 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.psflist=psflist
-        self.cenlist=cenlist  # starting center and center of coord system
         self.gmix0=gmix0.copy()
 
         self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist,self.cenlist)
+                          self.psflist)
 
 
         # we will fix this and only reset the fluxes as we go
@@ -933,7 +928,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
     You can enter any GMix object.  
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist, cenlist,
+    def __init__(self, imlist, wtlist, jacoblist, psflist,
                  gmix_exp, gmix_dev,
                  **keys):
 
@@ -946,10 +941,9 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
         self.psflist=psflist
-        self.cenlist=cenlist # for coord center
 
         self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist,self.cenlist)
+                          self.psflist)
 
         self.gmix_exp=gmix_exp.copy()
         self.gmix_dev=gmix_dev.copy()
@@ -1087,7 +1081,6 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
                  wtlist,
                  jacoblist,
                  gmix_list,
-                 cenlist, 
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
@@ -1096,8 +1089,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         self.imlist=self._get_imlist(imlist)
         self.wtlist=self._get_imlist(wtlist)
         self.jacoblist=jacoblist
-        self.cenlist=cenlist # starting center and center of coord system
-        self._check_lists(self.imlist,self.wtlist,self.jacoblist,self.cenlist)
+        self._check_lists(self.imlist,self.wtlist,self.jacoblist)
 
         self._copy_gmix_list(gmix_list)
 
@@ -2073,7 +2065,6 @@ def test_multi(s2n=100.,
     wtlist=[]
     psflist=[]
     jacoblist=[]
-    cenlist=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2106,11 +2097,13 @@ def test_multi(s2n=100.,
         wt=cin.image.copy()
         wt = 0.0*wt + 1./cin['skysig']**2
 
+        jacob['row0'] = ci['cen'][0]
+        jacob['col0'] = ci['cen'][1]
+
         imlist.append(cin.image) 
         wtlist.append(wt)
         psflist.append(gmix_psf)
         jacoblist.append(jacob)
-        cenlist.append( ci['cen'] )
         
     s2n_uw15_per = s2n_uw_sum/nimages
     s2n_uw15 = s2n_uw15_per*sqrt(nimages)
@@ -2121,7 +2114,6 @@ def test_multi(s2n=100.,
                           wtlist,
                           jacoblist,
                           psflist,
-                          cenlist,
                           model)
     return gm.get_result(), s2n_uw15
 
@@ -2196,13 +2188,11 @@ def test_multi_color(s2n=100.,
     wtlist1=[]
     psflist1=[]
     jacoblist1=[]
-    cenlist1=[]
 
     imlist2=[]
     wtlist2=[]
     psflist2=[]
     jacoblist2=[]
-    cenlist2=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2223,17 +2213,21 @@ def test_multi_color(s2n=100.,
 
         s2n_uw_sum += s2n_uw1
 
+        jacob1['row0'] = cen1[0]
+        jacob1['col0'] = cen1[1]
+        jacob2['row0'] = cen2[0]
+        jacob2['col0'] = cen2[1]
+
+
         imlist1.append(im1) 
         wtlist1.append(wt1)
         psflist1.append(gmix_psf1)
         jacoblist1.append(jacob1)
-        cenlist1.append(cen1)
 
         imlist2.append(im2) 
         wtlist2.append(wt2)
         psflist2.append(gmix_psf2)
         jacoblist2.append(jacob2)
-        cenlist2.append(cen2)
 
     s2n_uw15_per = s2n_uw_sum/nimages
     s2n_uw15 = s2n_uw15_per*sqrt(nimages)
@@ -2244,7 +2238,6 @@ def test_multi_color(s2n=100.,
                            wtlist1,
                            jacoblist1,
                            psflist1,
-                           cenlist1,
                            model)
     res1=gm1.get_result()
 
@@ -2255,7 +2248,6 @@ def test_multi_color(s2n=100.,
                           wtlist2,
                           jacoblist2,
                           psflist2,
-                          cenlist2,
                           gm1.get_gmix())
     res2=gm2.get_result()
     return res1,res2,s2n_uw15
@@ -2294,7 +2286,6 @@ def test_psfflux_star(s2n=100.,
     wtlist=[]
     psflist=[]
     jacoblist=[]
-    cenlist=[]
 
     aperture=1.5/scale # 1.5 arcsec diameter
     rad=aperture/2.
@@ -2323,19 +2314,20 @@ def test_psfflux_star(s2n=100.,
         wt=im_highn.copy()
         wt = 0.0*wt + ivar_highn
 
+        jacob['row0'] = cen[0]
+        jacob['col0'] = cen[1]
+
         imlist.append(im_highn) 
         wtlist.append(wt)
         psflist.append(gmix_psf)
         jacoblist.append(jacob)
-        cenlist.append(cen)
 
     # starting guess in pixel coords, origin in uv space
     print 'hello'
     gm=GMixFitMultiPSFFlux(imlist,
                            wtlist,
                            jacoblist,
-                           psflist,
-                           cenlist)
+                           psflist)
     return gm.get_result()
 
 
@@ -2392,7 +2384,6 @@ def test_cmodel(s2n=100.,
     wtlist=[]
     psflist=[]
     jacoblist=[]
-    cenlist=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2423,11 +2414,13 @@ def test_cmodel(s2n=100.,
         wt=cin.image.copy()
         wt = 0.0*wt + 1./cin['skysig']**2
 
+        jacob['row0'] = ci['cen'][0]
+        jacob['col0'] = ci['cen'][1]
+
         imlist.append(cin.image) 
         wtlist.append(wt)
         psflist.append(gmix_psf)
         jacoblist.append(jacob)
-        cenlist.append(ci['cen'])
 
 
     s2n_uw15_per = s2n_uw_sum/nimages
@@ -2441,7 +2434,6 @@ def test_cmodel(s2n=100.,
                                  wtlist,
                                  jacoblist,
                                  psflist,
-                                 cenlist,
                                  'gexp')
     exp_res=gm_expfit.get_result()
     if exp_res['flags'] != 0:
@@ -2451,7 +2443,6 @@ def test_cmodel(s2n=100.,
                                  wtlist,
                                  jacoblist,
                                  psflist,
-                                 cenlist,
                                  'gdev')
     dev_res=gm_devfit.get_result()
     if dev_res['flags'] != 0:
@@ -2466,7 +2457,6 @@ def test_cmodel(s2n=100.,
                           wtlist,
                           jacoblist,
                           psflist,
-                          cenlist,
                           exp_gmix,
                           dev_gmix)
 
