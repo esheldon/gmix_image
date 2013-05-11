@@ -99,7 +99,7 @@ int gmix_em_run(struct gmix_em* self,
     int flags=0;
     double wmomlast=0, wmom=0;
     double scale=1;
-    double eff_npoints=0;
+    double area=0;
 
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
@@ -107,12 +107,12 @@ int gmix_em_run(struct gmix_em* self,
 
     // we may not be working in pixel coordinates
     scale=get_effective_scale(self);
-    eff_npoints = npoints*scale*scale;
+    area = npoints*scale*scale;
 
     struct iter *iter_struct = iter_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
-    iter_struct->psky = sky/(counts/eff_npoints);
+    iter_struct->psky = sky/(counts/area);
 
     wmomlast=-9999;
     *iter=0;
@@ -126,7 +126,7 @@ int gmix_em_run(struct gmix_em* self,
         gmix_set_gvec_fromiter(gvec, iter_struct);
 
         iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/eff_npoints;
+        iter_struct->nsky = iter_struct->psky/area;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
@@ -233,7 +233,7 @@ int gmix_em_cocenter_run(struct gmix_em* self,
     int flags=0;
     double wmomlast=0, wmom=0;
     double scale=1;
-    double eff_npoints=0;
+    double area=0;
 
     double sky     = IM_SKY(image);
     double counts  = IM_COUNTS(image);
@@ -245,12 +245,12 @@ int gmix_em_cocenter_run(struct gmix_em* self,
 
     // we may not be working in pixel coordinates
     scale=get_effective_scale(self);
-    eff_npoints = npoints*scale*scale;
+    area = npoints*scale*scale;
 
     gcopy = gvec_new(gvec->size);
 
     iter_struct->nsky = sky/counts;
-    iter_struct->psky = sky/(counts/eff_npoints);
+    iter_struct->psky = sky/(counts/area);
 
 
     wmomlast=-9999;
@@ -285,7 +285,7 @@ int gmix_em_cocenter_run(struct gmix_em* self,
         set_means(gvec, &cen_new);
 
         iter_struct->psky = iter_struct->skysum;
-        iter_struct->nsky = iter_struct->psky/eff_npoints;
+        iter_struct->nsky = iter_struct->psky/area;
 
         wmom = gvec_wmomsum(gvec);
         wmom /= iter_struct->psum;
