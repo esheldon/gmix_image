@@ -35,6 +35,13 @@ def print_pars(pars, stream=stdout, fmt='%10.6g',front=None):
         stream.write(fmt % tuple(pars))
         stream.write('\n')
 
+def check_jacobian(j):
+    if not isinstance(j,dict):
+        raise ValueError("jacobian must be a dict")
+    for n in ['row0','col0','dudrow','dudcol','dvdrow','dvdcol']:
+        if n not in j:
+            raise ValueError("jacobian must contain '%s'" % n)
+
 
 def total_moms(gauss_list, psf=None):
     """

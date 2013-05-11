@@ -693,6 +693,83 @@ _fill_model_subgrid_bail:
 
 
 /*
+   fill a model with a gaussian mixture.  The model can be
+   on a sub-grid (n > 1)
+
+   Simply add to the existing pixel values!
+
+ */
+static int
+fill_model_subgrid_jacob(struct image *image, 
+                         const struct gvec *gvec, 
+                         const struct jacobian *jacob,
+                         int nsub)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0;
+    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;
+
+    double model_val=0, tval=0;
+    double stepsize=0, ucolstep=0, vcolstep=0, offset=0, trow=0, tcol=0;
+    int flags=0;
+
+    if (!gvec_verify(gvec)) {
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _fill_model_subgrid_bail;
+    }
+    if (nsub < 1) nsub=1;
+
+    stepsize = 1./nsub;
+    offset = (nsub-1)*stepsize/2.;
+
+    // sub-step sizes in column direction
+    ucolstep = stepsize*jacob->dudcol;
+    vcolstep = stepsize*jacob->dvdcol;
+
+    for (row=0; row<nrows; row++) {
+        for (col=0; col<ncols; col++) {
+
+            // start with existing value!
+            model_val=IM_GET(image, row, col);
+
+            // work over the subgrid
+            tval=0;
+            trow = row-offset;
+            for (irowsub=0; irowsub<nsub; irowsub++) {
+
+                tcol = col-offset;
+
+                u=JACOB_PIX2U(jacob, trow, tcol);
+                v=JACOB_PIX2V(jacob, trow, tcol);
+
+                for (icolsub=0; icolsub<nsub; icolsub++) {
+                    tval += GVEC_EVAL(gvec, u, v);
+                    u += ucolstep;
+                    v += vcolstep;
+                }
+                trow += stepsize;
+            }
+
+            tval /= (nsub*nsub);
+            model_val += tval;
+
+
+            if (!isfinite(model_val)) {
+                model_val=0;
+            }
+            IM_SETFAST(image, row, col, model_val);
+
+        } // cols
+    } // rows
+
+_fill_model_subgrid_bail:
+    return flags;
+}
+
+
+
+/*
    fill in (model-data)/err
 */
 static int
@@ -2595,6 +2672,47 @@ PyGMixFit_fill_model_bbox(PyObject *self, PyObject *args)
     return PyInt_FromLong(flags);
 }
 
+static PyObject *
+PyGMixFit_fill_model_jacob(PyObject *self, PyObject *args) 
+{
+    PyObject *image_obj=NULL;
+    PyObject *gvec_pyobj=NULL;
+    double dudrow, dudcol, dvdrow, dvdcol;
+    double row0=0, col0=0;
+    struct jacobian jacob;
+    struct PyGVecObject *gvec_obj=NULL;
+
+    int nsub=0;
+
+    struct image *image=NULL;
+    npy_intp *dims=NULL;
+
+    int flags=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OOddddddi",
+                &image_obj, 
+                &gvec_pyobj, 
+                &dudrow, &dudcol, &dvdrow, &dvdcol,
+                &row0,
+                &col0,
+                &nsub)) {
+        return NULL;
+    }
+    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
+
+    jacobian_set(&jacob, row0, col0, dudrow, dudcol, dvdrow, dvdcol);
+
+    dims = PyArray_DIMS((PyArrayObject*)image_obj);
+    image = associate_image(image_obj, dims[0], dims[1]);
+
+    flags=fill_model_subgrid_jacob(image, gvec_obj->gvec, &jacob, nsub);
+
+    // does not free underlying array
+    image = image_free(image);
+
+    return PyInt_FromLong(flags);
+}
+
 
 
 /* 
@@ -2625,6 +2743,7 @@ double randn()
 
 static PyMethodDef render_module_methods[] = {
     {"fill_model", (PyCFunction)PyGMixFit_fill_model,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
+    {"fill_model_jacob", (PyCFunction)PyGMixFit_fill_model_jacob,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_bbox", (PyCFunction)PyGMixFit_fill_model_bbox,  METH_VARARGS,  "fill the model image, possibly on a subgrid"},
     {"fill_model_coellip_Tfrac", (PyCFunction)PyGMixFit_coellip_fill_model_Tfrac,  METH_VARARGS,  "fill the model image"},
     {"fill_ydiff", (PyCFunction)PyGMixFit_fill_ydiff,  METH_VARARGS,  "fill diff from gmix"},

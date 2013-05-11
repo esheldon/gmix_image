@@ -26,7 +26,7 @@ import _gmix_em
 
 import gmix_image
 from .gmix import GMix
-from .util import srandu
+from .util import srandu, check_jacobian
 
 GMIXEM_ERROR_NEGATIVE_DET          = 0x1
 GMIXEM_ERROR_MAXIT                 = 0x2
@@ -187,24 +187,22 @@ class GMixEM(_gmix_em.GMixEM):
 
     def get_model(self):
         """
-        Model is not normalized
+        Model is not normalized.  Also, this will be in not pixel
+        coords if jacobian was sent
         """
         from .render import gmix2image
 
         gmix=self.get_gmix()
-        model=gmix2image(gmix, self._image.shape)
+        model=gmix2image(gmix,
+                         self._image.shape,
+                         jacobian=self._jacobian)
         return model
 
     def _check_jacobian(self):
         j=self._jacobian
         if j is None:
             return
-
-        if not isinstance(j,dict):
-            raise ValueError("jacobian must be a dict")
-        for n in ['row0','col0','dudrow','dudcol','dvdrow','dvdcol']:
-            if n not in j:
-                raise ValueError("jacobian must contain '%s'" % n)
+        check_jacobian(j)
 
     def _set_verbosity(self):
         verbose=self._verbose
@@ -223,6 +221,9 @@ class GMixEMBoot:
     intial guess of the center and size only.  Also it will retry up to a
     specified number of guesses until convergence is found.
 
+    If you send a jacobian, then note you probably want the center guess to be
+    near zero!
+
     parameters
     ----------
     image: ndarray
@@ -235,6 +236,8 @@ class GMixEMBoot:
     sigma_guess: number, optional
         An optional starting guess for the "sigma" of a single
         gausian.  Default sqrt(2) which is fwhm=0.9'' in DES
+    jacobian: dict, optional
+        Local transform between pixels and some other coords.
     ivar: number, optional
         To get a meaningful chi^2 in the returned statistics,
         send a correct ivar.  Default 1
@@ -259,6 +262,7 @@ class GMixEMBoot:
     """
     def __init__(self, image, ngauss, cen_guess,
                  sigma_guess=1.414, # fwhm=0.9'' in des
+                 jacobian=None,
                  ivar=1.0,
                  maxiter=5000, 
                  tol=1.e-6,
@@ -273,6 +277,7 @@ class GMixEMBoot:
         self.cen_guess=cen_guess
 
         self.sigma_guess=sigma_guess
+        self.jacobian=jacobian
         self.ivar=ivar
 
         self.maxiter=maxiter
@@ -295,6 +300,66 @@ class GMixEMBoot:
         """
         return self.result['gmix']
 
+    def get_model(self):
+        """
+        Model is not normalized
+        """
+        from .render import gmix2image
+
+        gmix=self.result['gmix']
+        model=gmix2image(gmix, self.image.shape,jacobian=self.jacobian)
+        return model
+
+
+    def get_normalized_model(self):
+        """
+        For jacobian models
+
+        Fit for a flux then run the ydiff on it
+        """
+        from gmix_image.gmix_fit import GMixFitMultiPSFFlux
+        from . import _render
+
+        if self.jacobian is None:
+            raise ValueError("only works for jacobian")
+
+        imlist=[self.image0]
+        wtlist=[self.image0*0 + self.ivar]
+        jacoblist=[self.jacobian]
+        gmix_list=[self.get_gmix()]
+
+        gm=GMixFitMultiPSFFlux(imlist,
+                               wtlist,
+                               jacoblist,
+                               gmix_list)
+
+        res=gm.get_result()
+        print 'pars:',res['pars']
+        print 'Flux:',res['F']
+        print 'counts:',self.counts
+
+        gmix=self.get_gmix()
+
+        gmix.set_psum(res['F'])
+
+        model = gmix_image.gmix2image(gmix, self.image0.shape, jacob=self.jacobian)
+        return model
+
+    def get_loglike(self):
+        """
+        Get the log likelihood.  The model is forced to have
+        the same counts as the image and the articial "sky" is
+        added
+        """
+
+        model=self.get_model()
+        model += self.sky
+
+        model *= self.counts/model.sum()
+        diff=(model-self.image)*sqrt(self.ivar)
+        loglike = -0.5*(diff**2).sum()
+        return loglike
+
     def _run_em(self):
         guess0=self._get_guess()
 
@@ -303,6 +368,7 @@ class GMixEMBoot:
             guess = self._perturb_dlist(guess0)
             gm = GMixEM(self.image,
                         guess,
+                        jacobian=self.jacobian,
                         sky=self.sky, 
                         maxiter=self.maxiter,
                         tol=self.tol,
@@ -403,30 +469,6 @@ class GMixEMBoot:
         self.image=im
         self.sky=sky
 
-    def get_model(self):
-        """
-        Model is not normalized
-        """
-        from .render import gmix2image
-
-        gmix=self.result['gmix']
-        model=gmix2image(gmix, self.image.shape)
-        return model
-
-    def get_loglike(self):
-        """
-        Get the log likelihood.  The model is forced to have
-        the same counts as the image and the articial "sky" is
-        added
-        """
-
-        model=self.get_model()
-        model += self.sky
-
-        model *= self.counts/model.sum()
-        diff=(model-self.image)*sqrt(self.ivar)
-        loglike = -0.5*(diff**2).sum()
-        return loglike
 
     def get_stats(self):
         """

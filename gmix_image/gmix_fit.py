@@ -1231,6 +1231,15 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self._fit_round_fixcen()
         self._fit_full()
 
+    def get_model(self):
+        """
+        This accounts for the jacobian
+        """
+        gmix=self.get_gmix()
+        return gmix2image(gmix,
+                          self.image.shape,
+                          jacobian=self.jacobian)
+
     def _get_lm_ydiff_round_fixcen(self, pars2):
         """
         pars are [T,counts]
@@ -1283,6 +1292,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
                                  ydiff)
 
         return ydiff
+
 
     def get_effective_npix(self):
         """

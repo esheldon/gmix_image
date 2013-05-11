@@ -9,7 +9,7 @@ gmix2image:
 import numpy
 from numpy import zeros
 
-from .util import gmix2pars
+from .util import gmix2pars, check_jacobian
 from . import _render
 from . import gmix
 from .gmix import GMix, togmix
@@ -18,6 +18,7 @@ def gmix2image(gmix, dims, psf=None,
                coellip=False, 
                Tfrac=False, 
                nsub=1, 
+               jacobian=None,
                getflags=False):
     """
     Create an image from the gaussian input mixture model.
@@ -50,7 +51,19 @@ def gmix2image(gmix, dims, psf=None,
         gmix=gmix.convolve(psf)
 
     im=zeros(dims,dtype='f8')
-    flags=_render.fill_model(im, gmix, nsub)
+    if jacobian is None:
+        flags=_render.fill_model(im, gmix, nsub)
+    else:
+        check_jacobian(jacobian)
+        flags=_render.fill_model_jacob(im,
+                                       gmix,
+                                       jacobian['dudrow'],
+                                       jacobian['dudcol'],
+                                       jacobian['dvdrow'],
+                                       jacobian['dvdcol'],
+                                       jacobian['row0'], # coord system center
+                                       jacobian['col0'],
+                                       nsub)
 
     if getflags:
         return im, flags
