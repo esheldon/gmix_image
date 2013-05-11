@@ -364,14 +364,18 @@ static int
 PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
 {
     int status=1;
-    struct gmix_em gmix_em = {0};
+
+    // should use gmix_em_new generally, but 
+    struct gmix_em *gmix_em = NULL;
+    double tol=0;
+    int cocenter=0, verbose=0;
+    unsigned int maxiter=0;
 
     PyObject* guess_lod=NULL;
     PyObject* image_obj=NULL;
     PyObject* jacobian_dict=NULL;
 
     double sky=0, counts=0;
-    unsigned int maxiter=0;
     self->image=NULL; self->gvec=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
@@ -388,12 +392,14 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
                                      &counts, 
                                      &guess_lod,  // this has the guesses
                                      &maxiter, 
-                                     &gmix_em.tol,
-                                     &gmix_em.cocenter,
-                                     &gmix_em.verbose,
+                                     &tol,
+                                     &cocenter,
+                                     &verbose,
                                      &jacobian_dict)) {
         return -1;
     }
+
+    gmix_em = gmix_em_new(maxiter, tol, cocenter, verbose);
 
     // no copying
     self->image = associate_image(image_obj, counts);
@@ -404,7 +410,7 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     IM_SET_SKY(self->image, sky);
 
     if (jacobian_dict != Py_None) {
-       if (!jacobian_from_dict(&gmix_em, jacobian_dict)) {
+       if (!jacobian_from_dict(gmix_em, jacobian_dict)) {
            status=0;
            goto _gmix_init_bail;
        }
@@ -418,22 +424,24 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
         goto _gmix_init_bail;
     }
 
-    gmix_em.maxiter = maxiter;
 
-    if (gmix_em.cocenter) {
-        self->flags = gmix_em_cocenter_run(&gmix_em, 
+    if (gmix_em->cocenter) {
+        self->flags = gmix_em_cocenter_run(gmix_em, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
                 &self->fdiff);
     } else {
-        self->flags = gmix_em_run(&gmix_em, 
+        self->flags = gmix_em_run(gmix_em, 
                 self->image, 
                 self->gvec, 
                 &self->numiter,
                 &self->fdiff);
     }
 _gmix_init_bail:
+
+    free(gmix_em);
+
     if (!status) {
         gmix_cleanup(self);
         return -1;

@@ -62,6 +62,12 @@ struct gmix_em *gmix_em_new(size_t maxiter,
     self->tol=tol;
     self->cocenter=cocenter;
     self->verbose=verbose;
+
+    // has_jacobian is not set, but make the jacobian default to something sane
+    // anyway, just in case someone tries to use it
+    self->jacob.dudrow=1;
+    self->jacob.dvdcol=1;
+
     return self;
 }
 
