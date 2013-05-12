@@ -1,7 +1,8 @@
 gmix_image
 ==========
 
-Python code to fit a gaussian mixture model to an image various techniques.
+Python code to fit a gaussian mixture model to an image using various
+techniques.
 
 - Expectation Maximization.
 - Levenberg-Marquardt optimization
