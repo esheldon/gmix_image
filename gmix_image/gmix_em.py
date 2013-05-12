@@ -18,6 +18,7 @@ ogrid_image:
     Create an image using the ogrid function from numpy
 """
 
+from sys import stderr
 import copy
 import pprint
 import numpy
@@ -334,9 +335,6 @@ class GMixEMBoot:
                                gmix_list)
 
         res=gm.get_result()
-        print 'pars:',res['pars']
-        print 'Flux:',res['F']
-        print 'counts:',self.counts
 
         gmix=self.get_gmix()
 
@@ -379,12 +377,13 @@ class GMixEMBoot:
                 break
 
         if flags != 0:
-            print 'em flags:'
+            print >>stderr,'em flags after',ntry,'tries:'
             gmix_image.printflags('em',flags)
 
         self._fitter=gm
         gmix=gm.get_gmix()
         self.result={'gmix':gmix,
+                     'pars':gmix.get_pars(),
                      'flags':flags,
                      'numiter':gm.get_numiter(),
                      'fdiff':gm.get_fdiff(),
@@ -587,7 +586,7 @@ class GMixEMPSF:
                 break
 
         if flags != 0:
-            print 'em flags:'
+            print >>stderr,'em flags after',ntry,'tries:'
             gmix_image.printflags('em',flags)
 
 
