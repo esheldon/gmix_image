@@ -19,7 +19,7 @@ Example using EM
              {'p':0.6,'row':15,'col':17,'irr':1.7,'irc':0.3,'icc':1.5}]
 
     # create the gaussian mixture
-    gm = gmix_image.GMixEm(image, guess, sky=100)
+    gm = gmix_image.GMixEM(image, guess, sky=100)
 
     # Work with the results
     flags=gm.get_flags()
