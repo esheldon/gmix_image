@@ -560,6 +560,10 @@ class GMixFitMultiBase:
                 wtsum += wt.sum()
 
             self.eff_npix=wtsum/wtmax
+
+        if self.eff_npix <= 0:
+            self.eff_npix=1.e-6
+
         return self.eff_npix
 
     def get_dof(self):
@@ -1298,7 +1302,10 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         """
         Not using a weight map so this is simple
         """
-        return self.totpix
+        if self.totpix <= 0:
+            return 1.e-6
+        else:
+            return self.totpix
 
     def _scale_leastsq_cov(self, gmix_list, pcov):
         """
