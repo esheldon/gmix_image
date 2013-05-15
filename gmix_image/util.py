@@ -13,13 +13,119 @@ from sys import stdout,stderr
 import math
 import numpy
 from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
-        tanh, arctanh, cos, sin, exp
+        tanh, arctanh, cos, sin, exp, pi
 
 from .gmix import GMix
 from .gmix import gmix2pars
 
 def srandu(n=1):
     return 2*(numpy.random.random(n)-0.5)
+
+
+def measure_gmix_width(gmix0, thresh_vals, expand=8, debug=False):
+    """
+    Measure light-fraction width, e.g. 0.5 would be FWHM
+
+    parameters
+    ----------
+    gmix: GMix
+        A gausian mixture object
+    thresh_vals: sequence
+        threshold is, e.g. [0.25,0.5,0.75] which indicate pixels at that
+        fraction of the max height
+    expand: int, optional
+        Expand the image by this factor to make pixelization less of an issue.
+
+    output
+    ------
+    widths: ndarray
+        sqrt(Area)/pi where Area is simply the number of pixels above
+        the indicated threshold.
+    """
+    from .render import gmix2image
+
+    expand=int(expand)
+    if expand <1:
+        expand=1
+
+    if expand != 1:
+        expand2 = expand**2
+        dl=gmix0.get_dlist()
+        for d in dl:
+            d['irr'] = expand2*d['irr']
+            d['irc'] = expand2*d['irc']
+            d['icc'] = expand2*d['icc']
+        gmix=GMix(dl)
+    else:
+        gmix=gmix0.copy()
+    
+    T=gmix.get_T()
+    sig=sqrt(T/2)
+    dim = 2*5*sig
+    if (dim % 2) == 0:
+        dim += 1
+
+    dims=[dim]*2
+    cen=[(dim-1)/2]*2
+
+    gmix.set_cen(cen[0], cen[1])
+    im=gmix2image(gmix, dims)
+
+    im /= im.max()
+
+    widths=numpy.zeros(len(thresh_vals))
+
+    for i,thresh in enumerate(thresh_vals):
+        w=numpy.where(im >= thresh)
+        if w[0].size > 0:
+            widths[i] = 2*sqrt(w[0].size/pi)
+
+            if debug:
+                print >>stderr,gmix
+                _plot_gmix_thresh(im, cen, thresh, prompt=True)
+
+    widths /= expand
+
+    return widths
+
+def _plot_gmix_thresh(im, cen, thresh, prompt=False):
+    import images
+    import biggles
+
+    tab=biggles.Table(1,2)
+    plt=biggles.FramedPlot()
+
+    im_cenrows = im[:,cen[1]]
+    im_cencols = im[cen[0],:]
+
+    wrow,=numpy.where(im_cenrows >= thresh)
+    wcol,=numpy.where(im_cencols >= thresh)
+
+    hrow=biggles.Histogram(im_cenrows, x0=0, binsize=1,color='blue')
+    hcol=biggles.Histogram(im_cencols, x0=0, binsize=1,color='red')
+    plt.add(hrow,hcol)
+
+    if wrow.size > 0:
+        hrow_t=biggles.Histogram(im_cenrows[wrow], x0=wrow[0], binsize=1,
+                                 color='blue',width=2)
+        plt.add(hrow_t)
+    if wcol.size > 0:
+        hcol_t=biggles.Histogram(im_cencols[wcol], x0=wcol[0], binsize=1,
+                                 color='red',width=2)
+        plt.add(hcol_t)
+
+    plt.title='thresh: %.2f' % thresh
+    plt.aspect_ratio=1
+
+    implt=images.view(im,show=False,type='dens-cont')
+    tab[0,0]= implt
+    tab[0,1] = plt
+    tab.show()
+
+    if prompt:
+        key=raw_input('hit a key (q to quit): ')
+        if key=='q':
+            stop
 
 def print_pars(pars, stream=stdout, fmt='%10.6g',front=None):
     """
