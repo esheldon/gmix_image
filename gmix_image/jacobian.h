@@ -33,4 +33,7 @@ void jacobian_set(struct jacobian *self,
                   double dudcol,
                   double dvdrow,
                   double dvdcol);
+
+void jacobian_set_identity(struct jacobian *self);
+
 #endif

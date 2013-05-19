@@ -44,3 +44,13 @@ void jacobian_set(struct jacobian *self,
     self->dvdcol=dvdcol;
 }
 
+void jacobian_set_identity(struct jacobian *self)
+{
+    self->row0=0;
+    self->col0=0;
+    self->dudrow=1;
+    self->dudcol=0;
+    self->dvdrow=0;
+    self->dvdcol=1;
+}
+

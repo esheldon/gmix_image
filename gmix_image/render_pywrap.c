@@ -520,88 +520,6 @@ struct image *associate_image(PyObject* image_obj, size_t nrows, size_t ncols)
 }
 
 
-/*
-   fill a model with a gaussian mixture.  The model can be
-   on a sub-grid (n > 1)
-
-   Simply add to the existing pixel values!
-
- */
-static int
-fill_model_subgrid(struct image *image, 
-                   struct gvec *gvec, 
-                   int nsub)
-{
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
-
-    struct gauss *gauss=NULL;
-    double u=0, v=0, uv=0, u2=0, v2=0;
-    double chi2=0, b=0;
-    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;
-
-    double model_val=0, tval=0;
-    double stepsize=0, offset=0, trow=0, tcol=0;
-    int flags=0;
-
-    if (!gvec_verify(gvec)) {
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _fill_model_subgrid_bail;
-    }
-    if (nsub < 1) nsub=1;
-
-    stepsize = 1./nsub;
-    offset = (nsub-1)*stepsize/2.;
-
-    for (row=0; row<nrows; row++) {
-        for (col=0; col<ncols; col++) {
-
-            // start with existing value!
-            model_val=IM_GET(image, row, col);
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-
-                // work over the subgrid
-                tval=0;
-                trow = row-offset;
-                for (irowsub=0; irowsub<nsub; irowsub++) {
-                    tcol = col-offset;
-                    for (icolsub=0; icolsub<nsub; icolsub++) {
-
-                        u = trow-gauss->row;
-                        v = tcol-gauss->col;
-
-                        u2 = u*u; v2 = v*v; uv = u*v;
-
-                        chi2=gauss->icc*u2 + gauss->irr*v2 - 2.0*gauss->irc*uv;
-                        chi2 /= gauss->det;
-                        if (chi2 < EXP_MAX_CHI2) {
-                            tval += gauss->p*expd( -0.5*chi2 );
-                        }
-
-                        tcol += stepsize;
-                    }
-                    trow += stepsize;
-                }
-
-                b = M_TWO_PI*sqrt(gauss->det);
-                tval /= (b*nsub*nsub);
-                model_val += tval;
-
-                gauss++;
-            } // gvec
-
-            if (!isfinite(model_val)) {
-                model_val=0;
-            }
-            IM_SETFAST(image, row, col, model_val);
-
-        } // cols
-    } // rows
-
-_fill_model_subgrid_bail:
-    return flags;
-}
-
 
 /*
    fill a model with a gaussian mixture.  The model can be
@@ -619,7 +537,7 @@ fill_model_subgrid_jacob(struct image *image,
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
     double u=0, v=0;
-    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;
+    size_t col=0, row=0, irowsub=0, icolsub=0;
 
     double model_val=0, tval=0;
     double stepsize=0, ucolstep=0, vcolstep=0, offset=0, trow=0, tcol=0;
@@ -678,137 +596,49 @@ _fill_model_subgrid_bail:
     return flags;
 }
 
-
-
 /*
-   fill in (model-data)/err
-*/
+   fill a model with a gaussian mixture.  The model can be
+   on a sub-grid (n > 1)
+
+   Simply add to the existing pixel values!
+
+ */
 static int
-fill_ydiff(struct image *image, double ivar, struct gvec *gvec, struct image *diff_image)
+fill_model_subgrid(struct image *image, 
+                   struct gvec *gvec, 
+                   int nsub)
 {
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    struct gauss *gauss=NULL;
-    double u=0, v=0;
-    double chi2=0, diff=0;
-    size_t i=0, col=0, row=0;
+    struct jacobian jacob;
 
-    double ierr=0;
+    jacobian_set_identity(&jacob);
 
-    double model_val=0;
-    double *rowdata=NULL;
-    int flags=0;
-
-    if (!gvec_verify(gvec)) {
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _fill_ydiff_bail;
-    }
-
-    ierr=sqrt(ivar);
-    for (row=0; row<nrows; row++) {
-        rowdata=IM_ROW(image, row);
-        for (col=0; col<ncols; col++) {
-
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-                u = row-gauss->row;
-                v = col-gauss->col;
-
-                chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
-                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-                if (chi2 < EXP_MAX_CHI2) {
-                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
-                }
-
-                gauss++;
-            } // gvec
-
-            diff = model_val - (*rowdata);
-            diff *= ierr;
-
-            if (!isfinite(diff)) {
-                diff=GMIX_IMAGE_BIGNUM;
-            }
-            IM_SETFAST(diff_image, row, col, diff);
-
-            rowdata++;
-        } // cols
-    } // rows
-
-
-_fill_ydiff_bail:
-    return flags;
-
+    return fill_model_subgrid_jacob(image,
+                                    gvec, 
+                                    &jacob,
+                                    nsub);
 }
 
+
+
+// internal generic routine with optional pars
 // fill in (model-data)/err
 // gvec centers should be in the u,v plane
 static int
-fill_ydiff_jacob(const struct image *image,
-                 double ivar,
-                 const struct jacobian *jacob,
-                 const struct gvec *gvec,
-                 struct image *diff_image)
+fill_ydiff_wt_jacob_generic(const struct image *image,
+                            const struct image *weight, // either
+                            double ivar,                // or
+                            const struct jacobian *jacob,
+                            const struct gvec *gvec,
+                            struct image *diff_image)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
     double u=0, v=0;
     double diff=0;
     ssize_t col=0, row=0;
-    double ierr=0;
 
     double model_val=0, pixval=0;
-    int flags=0;
-
-    if (!gvec_verify(gvec)) {
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _fill_ydiff_jacob_bail;
-    }
-
-    ierr=sqrt(ivar);
-    for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row, 0);
-        v=JACOB_PIX2V(jacob, row, 0);
-        for (col=0; col<ncols; col++) {
-
-            model_val=GVEC_EVAL(gvec, u, v);
-            pixval=IM_GET(image, row, col);
-
-            diff = model_val - pixval;
-            diff *= ierr;
-
-            if (!isfinite(diff)) {
-                diff=GMIX_IMAGE_BIGNUM;
-            }
-            IM_SETFAST(diff_image, row, col, diff);
-
-            u += jacob->dudcol; v += jacob->dvdcol;
-        } // cols
-    } // rows
-
-_fill_ydiff_jacob_bail:
-    return flags;
-
-}
-
-
-// fill in (model-data)/err
-// gvec centers should be in the u,v plane
-static int
-fill_ydiff_wt_jacob(const struct image *image,
-                    const struct image *weight,
-                    const struct jacobian *jacob,
-                    const struct gvec *gvec,
-                    struct image *diff_image)
-{
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
-
-    double u=0, v=0;
-    double diff=0;
-    ssize_t col=0, row=0;
-
-    double model_val=0, pixval=0, ivar=0;
     int flags=0;
 
     if (!gvec_verify(gvec)) {
@@ -823,7 +653,11 @@ fill_ydiff_wt_jacob(const struct image *image,
 
             model_val=GVEC_EVAL(gvec, u, v);
             pixval=IM_GET(image, row, col);
-            ivar=IM_GET(weight, row, col);
+
+            if (weight) {
+                // otherwise use input ivar
+                ivar=IM_GET(weight, row, col);
+            }
             if (ivar < 0) ivar=0.0; // fpack...
 
             diff = model_val - pixval;
@@ -842,6 +676,69 @@ fill_ydiff_wt_jacob(const struct image *image,
 _fill_ydiff_wt_jacob_bail:
     return flags;
 
+}
+
+// fill in (model-data)/err
+// gvec centers should be in the u,v plane
+static int
+fill_ydiff_jacob(const struct image *image,
+                 double ivar,
+                 const struct jacobian *jacob,
+                 const struct gvec *gvec,
+                 struct image *diff_image)
+{
+
+    struct image *junk_weight=NULL;
+    return fill_ydiff_wt_jacob_generic(image,
+                                       junk_weight,
+                                       ivar,
+                                       jacob,
+                                       gvec,
+                                       diff_image);
+
+}
+
+
+
+// fill in (model-data)/err
+// gvec centers should be in the u,v plane
+static int
+fill_ydiff_wt_jacob(const struct image *image,
+                    const struct image *weight,
+                    const struct jacobian *jacob,
+                    const struct gvec *gvec,
+                    struct image *diff_image)
+{
+
+    double junk_ivar=0;
+    return fill_ydiff_wt_jacob_generic(image,
+                                       weight,
+                                       junk_ivar,
+                                       jacob,
+                                       gvec,
+                                       diff_image);
+}
+
+/*
+   fill in (model-data)/err
+*/
+static int
+fill_ydiff(struct image *image,
+           double ivar,
+           struct gvec *gvec,
+           struct image *diff_image)
+{
+
+    struct image *junk_weight=NULL;
+    struct jacobian jacob;
+    jacobian_set_identity(&jacob);
+
+    return fill_ydiff_wt_jacob_generic(image,
+                                       junk_weight,
+                                       ivar,
+                                       &jacob,
+                                       gvec,
+                                       diff_image);
 }
 
 
@@ -918,76 +815,6 @@ _calculate_loglike_bail:
     return flags;
 }
 
-static int calculate_loglike(struct image *image, 
-                             struct gvec *gvec, 
-                             double ivar,
-                             double *s2n,
-                             double *loglike)
-{
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
-
-    struct gauss *gauss=NULL;
-    double u=0, v=0;
-    double chi2=0, diff=0;
-    size_t i=0, col=0, row=0;
-
-    double model_val=0;
-    double *rowdata=NULL;
-    double sum=0, w2sum=0;
-    int flags=0;
-
-    if (!gvec_verify(gvec)) {
-        *loglike=-9999.9e9;
-        *s2n=-9999.9e9;
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_bail;
-    }
-
-    (*loglike)=0;
-    (*s2n)=0;
-    for (row=0; row<nrows; row++) {
-        rowdata=IM_ROW(image, row);
-        for (col=0; col<ncols; col++) {
-
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-                u = row-gauss->row;
-                v = col-gauss->col;
-
-                // u is rowdiff, v is coldiff
-                chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
-                //model_val += gauss->norm*gauss->p*exp( -0.5*chi2 );
-                if (chi2 < EXP_MAX_CHI2) {
-                    model_val += gauss->norm*gauss->p*expd( -0.5*chi2 );
-                }
-
-                gauss++;
-            } // gvec
-
-            diff = model_val -(*rowdata);
-            (*loglike) += diff*diff*ivar;
-
-            sum += (*rowdata)*model_val;
-            w2sum += model_val*model_val;
-
-            rowdata++;
-        } // cols
-    } // rows
-
-    (*loglike) *= (-0.5);
-    if (!isfinite((*loglike))) {
-        (*loglike) = -GMIX_IMAGE_BIGNUM;
-    }
-    if (w2sum > 0) {
-        (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
-    }
-
-    //fprintf(stderr,"OK faster\n");
-_calculate_loglike_bail:
-    return flags;
-}
-
 
 // using a weight image and jacobian.  Not tested.
 // row0,col0 is center of coordinate system
@@ -997,13 +824,14 @@ _calculate_loglike_bail:
 //s2n = s2n_numer/sqrt(s2n_denom);
 
 static 
-int calculate_loglike_wt_jacob(const struct image *image, 
-                               const struct image *weight,
-                               const struct jacobian *jacob,
-                               const struct gvec *gvec, 
-                               double *s2n_numer,
-                               double *s2n_denom,
-                               double *loglike)
+int calculate_loglike_wt_jacob_generic(const struct image *image, 
+                                       const struct image *weight, // either
+                                       double ivar,                // or
+                                       const struct jacobian *jacob,
+                                       const struct gvec *gvec, 
+                                       double *s2n_numer,
+                                       double *s2n_denom,
+                                       double *loglike)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
@@ -1012,7 +840,7 @@ int calculate_loglike_wt_jacob(const struct image *image,
     ssize_t col=0, row=0;
 
     double model_val=0;
-    double pixval=0, ivar=0;
+    double pixval=0;
     int flags=0;
 
     (*s2n_numer)=0;
@@ -1032,7 +860,10 @@ int calculate_loglike_wt_jacob(const struct image *image,
             model_val=GVEC_EVAL(gvec, u, v);
 
             pixval=IM_GET(image, row, col);
-            ivar=IM_GET(weight, row, col);
+            if (weight) {
+                // otherwise use input ivar
+                ivar=IM_GET(weight, row, col);
+            }
             if (ivar < 0) ivar=0.0; // fpack...
 
             diff = model_val - pixval;
@@ -1054,6 +885,38 @@ _calculate_loglike_wt_jacob_bail:
     return flags;
 }
 
+
+
+
+// using a weight image and jacobian.  Not tested.
+// row0,col0 is center of coordinate system
+// gvec centers should be in the u,v plane
+// combine s2n_numer and s2n_denom as below
+// can sum over multiple images
+//s2n = s2n_numer/sqrt(s2n_denom);
+
+static 
+int calculate_loglike_wt_jacob(const struct image *image, 
+                               const struct image *weight,
+                               const struct jacobian *jacob,
+                               const struct gvec *gvec, 
+                               double *s2n_numer,
+                               double *s2n_denom,
+                               double *loglike)
+{
+
+    double junk_ivar=0;
+    return calculate_loglike_wt_jacob_generic(image, 
+                                              weight,
+                                              junk_ivar,
+                                              jacob,
+                                              gvec, 
+                                              s2n_numer,
+                                              s2n_denom,
+                                              loglike);
+
+}
+
 // row0,col0 is center of coordinate system
 // gvec centers should be in the u,v plane
 // combine s2n_numer and s2n_denom as below
@@ -1069,52 +932,19 @@ int calculate_loglike_jacob(const struct image *image,
                             double *s2n_denom,
                             double *loglike)
 {
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    double u=0, v=0;
-    double diff=0;
-    ssize_t col=0, row=0;
+    struct image *junk_weight=NULL;
 
-    double model_val=0, pixval=0;
-    int flags=0;
+    return calculate_loglike_wt_jacob_generic(image, 
+                                              junk_weight,
+                                              ivar,
+                                              jacob,
+                                              gvec, 
+                                              s2n_numer,
+                                              s2n_denom,
+                                              loglike);
 
-    (*s2n_numer)=0;
-    (*s2n_denom)=0;
-    if (!gvec_verify(gvec)) {
-        *loglike=-9999.9e9;
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_jacob_bail;
-    }
-
-    (*loglike)=0;
-    for (row=0; row<nrows; row++) {
-        u=JACOB_PIX2U(jacob, row, 0);
-        v=JACOB_PIX2V(jacob, row, 0);
-        for (col=0; col<ncols; col++) {
-
-            model_val=GVEC_EVAL(gvec, u, v);
-
-            pixval=IM_GET(image, row, col);
-
-            diff = model_val - pixval;
-            (*loglike) += diff*diff*ivar;
-
-            (*s2n_numer) += pixval*model_val*ivar;
-            (*s2n_denom) += model_val*model_val*ivar;
-
-            u += jacob->dudcol; v += jacob->dvdcol;
-        } // cols
-    } // rows
-
-    (*loglike) *= (-0.5);
-    if (!isfinite((*loglike))) {
-        (*loglike) = -GMIX_IMAGE_BIGNUM;
-    }
-
-_calculate_loglike_jacob_bail:
-    return flags;
 }
-
 
 // using a weight image.  Not tested.
 // combine s2n_numer and s2n_denom as below
@@ -1128,141 +958,61 @@ int calculate_loglike_wt(const struct image *image,
                          double *s2n_denom,
                          double *loglike)
 {
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    double u=0, v=0;
-    double diff=0;
-    size_t col=0, row=0;
+    double junk_ivar=0;
+    struct jacobian jacob;
+    jacobian_set_identity(&jacob);
 
-    double model_val=0, pixval=0, ivar=0;
-    int flags=0;
+    return calculate_loglike_wt_jacob_generic(image, 
+                                              weight,
+                                              junk_ivar,
+                                              &jacob,
+                                              gvec, 
+                                              s2n_numer,
+                                              s2n_denom,
+                                              loglike);
 
-    (*s2n_numer)=0;
-    (*s2n_denom)=0;
-    if (!gvec_verify(gvec)) {
-        *loglike=-9999.9e9;
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_wt_bail;
-    }
-
-    (*loglike)=0;
-    for (row=0; row<nrows; row++) {
-        for (col=0; col<ncols; col++) {
-
-            model_val=GVEC_EVAL(gvec, u, v);
-
-            pixval=IM_GET(image, row, col);
-            ivar=IM_GET(weight, row, col);
-            if (ivar < 0) ivar=0.0; // fpack...
-
-            diff = model_val - pixval;
-            (*loglike) += diff*diff*ivar;
-
-            (*s2n_numer) += pixval*model_val*ivar;
-            (*s2n_denom) += model_val*model_val*ivar;
-
-        } // cols
-    } // rows
-
-    (*loglike) *= (-0.5);
-    if (!isfinite((*loglike))) {
-        (*loglike) = -GMIX_IMAGE_BIGNUM;
-    }
-
-_calculate_loglike_wt_bail:
-    return flags;
 }
 
 
-static int calculate_loglike_subgrid(struct image *image, 
-                                     struct gvec *gvec, 
-                                     double ivar, 
-                                     int nsub,
-                                     double *s2n,
-                                     double *loglike)
+static int calculate_loglike(struct image *image, 
+                             struct gvec *gvec, 
+                             double ivar,
+                             double *s2n,
+                             double *loglike)
 {
-    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
 
-    struct gauss *gauss=NULL;
-    double u=0, v=0;
-    double chi2=0, diff=0;
-    size_t i=0, col=0, row=0, irowsub=0, icolsub=0;;
-
-    double model_val=0, tval=0, nsub_fac=0;
-    double stepsize=0, offset=0, trow=0, tcol=0;
-
-    double *rowdata=NULL;
-    double sum=0, w2sum=0;
     int flags=0;
+    struct image *junk_weight=NULL;
+    double s2n_numer=0, s2n_denom=0;
 
-    if (!gvec_verify(gvec)) {
-        *loglike=-9999.9e9;
-        *s2n=-9999.9e9;
-        flags |= GMIX_ERROR_NEGATIVE_DET;
-        goto _calculate_loglike_subgrid_bail;
+    struct jacobian jacob;
+    jacobian_set_identity(&jacob);
+
+    flags=calculate_loglike_wt_jacob_generic(image, 
+                                             junk_weight,
+                                             ivar,
+                                             &jacob,
+                                             gvec, 
+                                             &s2n_numer,
+                                             &s2n_denom,
+                                             loglike);
+
+    if (s2n_denom > 0) {
+        (*s2n) = s2n_numer/s2n_denom;
+    } else {
+        (*s2n)=0;
     }
 
-    if (nsub < 1) nsub=1;
-    stepsize = 1./nsub;
-    offset = (nsub-1)*stepsize/2.;
-    nsub_fac=1./(nsub*nsub);
-
-    (*loglike)=0;
-    (*s2n)=0;
-    for (row=0; row<nrows; row++) {
-        rowdata=IM_ROW(image, row);
-        for (col=0; col<ncols; col++) {
-
-            model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
-
-                // work over the subgrid
-                tval=0;
-                trow = row-offset;
-                for (irowsub=0; irowsub<nsub; irowsub++) {
-                    tcol = col-offset;
-                    for (icolsub=0; icolsub<nsub; icolsub++) {
-
-                        u = trow-gauss->row;
-                        v = tcol-gauss->col;
-
-                        chi2=gauss->dcc*u*u + gauss->drr*v*v - 2.0*gauss->drc*u*v;
-                        if (chi2 < EXP_MAX_CHI2) {
-                            tval += expd( -0.5*chi2 );
-                        }
-                        tcol += stepsize;
-                    }
-                    trow += stepsize;
-                }
-
-                model_val += nsub_fac*gauss->norm*gauss->p*tval;
-
-                gauss++;
-            } // gvec
-
-            diff = model_val -(*rowdata);
-            (*loglike) += diff*diff*ivar;
-
-            sum += (*rowdata)*model_val;
-            w2sum += model_val*model_val;
-
-            rowdata++;
-        } // cols
-    } // rows
-
-    (*loglike) *= (-0.5);
-    if (!isfinite((*loglike))) {
-        (*loglike) = -GMIX_IMAGE_BIGNUM;
-    }
-    if (w2sum > 0) {
-        (*s2n) = sum/sqrt(w2sum)*sqrt(ivar);
-    }
-
-    //fprintf(stderr,"OK faster\n");
-_calculate_loglike_subgrid_bail:
     return flags;
+
 }
+
+/*
+
+   The python interfaces
+
+*/
 
 
 /*
@@ -1270,7 +1020,9 @@ _calculate_loglike_subgrid_bail:
    (model-data)/err
 
    for use in the LM algorithm
+
 */
+
 static PyObject *
 PyGMixFit_fill_ydiff(PyObject *self, PyObject *args) 
 {
@@ -1668,51 +1420,6 @@ PyGMixFit_loglike_wt_jacob(PyObject *self, PyObject *args)
 
 
 
-static PyObject *
-PyGMixFit_loglike_subgrid(PyObject *self, PyObject *args) 
-{
-    PyObject* image_obj=NULL;
-    PyObject* gvec_pyobj=NULL;
-    struct PyGVecObject *gvec_obj=NULL;
-    double ivar=0;
-
-    double loglike=0, s2n=0;
-    PyObject *tup=NULL;
-
-    struct image *image=NULL;
-    npy_intp *dims=NULL;
-
-    int nsub=0;
-    int flags=0;
-
-    if (!PyArg_ParseTuple(args, (char*)"OOdi", 
-                                &image_obj, &gvec_pyobj, &ivar, &nsub)) {
-        return NULL;
-    }
-
-    if (!check_numpy_image(image_obj)) {
-        PyErr_SetString(PyExc_IOError, "image input must be a 2D double PyArrayObject");
-        return NULL;
-    }
-
-    dims = PyArray_DIMS((PyArrayObject*)image_obj);
-    image = associate_image(image_obj, dims[0], dims[1]);
-
-    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
-
-    flags=calculate_loglike_subgrid(image, gvec_obj->gvec, ivar, nsub, &s2n, &loglike);
-
-    // does not free underlying array
-    image = image_free(image);
-
-    tup = PyTuple_New(3);
-    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
-    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n));
-    PyTuple_SetItem(tup, 2, PyInt_FromLong((long)flags));
-
-    return tup;
-}
-
 
 
 
@@ -1758,41 +1465,6 @@ PyGMixFit_fill_model(PyObject *self, PyObject *args)
     return PyInt_FromLong(flags);
 }
 
-static PyObject *
-PyGMixFit_fill_model_bbox(PyObject *self, PyObject *args) 
-{
-    PyObject *image_obj=NULL;
-    PyObject *gvec_pyobj=NULL;
-    struct PyGVecObject *gvec_obj=NULL;
-
-    int nsub=0;
-    int row_low=0, row_high=0, col_low=0, col_high=0;
-
-    struct image *image=NULL;
-    npy_intp *dims=NULL;
-
-    int flags=0;
-
-    if (!PyArg_ParseTuple(args, (char*)"OOiiiii", 
-                &image_obj, &gvec_pyobj, &nsub, 
-                &row_low,&row_high,
-                &col_low,&col_high)) {
-        return NULL;
-    }
-    gvec_obj = (struct PyGVecObject *) gvec_pyobj;
-
-    dims = PyArray_DIMS((PyArrayObject*)image_obj);
-    image = associate_image(image_obj, dims[0], dims[1]);
-
-    flags=fill_model_subgrid_bbox(
-            image, gvec_obj->gvec, nsub,
-            row_low,row_high,col_low,col_high);
-
-    // does not free underlying array
-    image = image_free(image);
-
-    return PyInt_FromLong(flags);
-}
 
 static PyObject *
 PyGMixFit_fill_model_jacob(PyObject *self, PyObject *args) 
@@ -1876,7 +1548,6 @@ static PyMethodDef render_module_methods[] = {
     {"loglike", (PyCFunction)PyGMixFit_loglike,  METH_VARARGS,  "calc full log likelihood"},
     {"loglike_jacob", (PyCFunction)PyGMixFit_loglike_jacob,  METH_VARARGS,  "calc full log likelihood"},
     {"loglike_wt_jacob", (PyCFunction)PyGMixFit_loglike_wt_jacob,  METH_VARARGS,  "calc full log likelihood"},
-    {"loglike_subgrid", (PyCFunction)PyGMixFit_loglike_subgrid,  METH_VARARGS,  "calc full log likelihood"},
     {NULL}  /* Sentinel */
 };
 

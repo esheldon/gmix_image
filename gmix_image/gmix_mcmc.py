@@ -180,13 +180,8 @@ class MixMC:
 
         gmix=self._get_convolved_gmix(epars)
 
-        if self.nsub is not None:
-            loglike,s2n,flags=\
-                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
-                                               self.nsub)
-        else:
-            loglike,s2n,flags=\
-                render._render.loglike(self.image, gmix, self.ivar)
+        loglike,s2n,flags=\
+            render._render.loglike(self.image, gmix, self.ivar)
 
 
 
@@ -680,13 +675,8 @@ class MixMCStandAlone:
 
         gmix=self._get_convolved_gmix(epars)
 
-        if self.nsub is not None:
-            loglike,s2n,flags=\
-                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
-                                               self.nsub)
-        else:
-            loglike,s2n,flags=\
-                render._render.loglike(self.image, gmix, self.ivar)
+        loglike,s2n,flags=\
+            render._render.loglike(self.image, gmix, self.ivar)
 
         if flags != 0:
             return LOWVAL
@@ -1142,13 +1132,8 @@ class MixMCPSF:
 
         gmix=self._get_gmix(epars)
 
-        if self.nsub is not None:
-            loglike,s2n,flags=\
-                render._render.loglike_subgrid(self.image, gmix, self.ivar, 
-                                               self.nsub)
-        else:
-            loglike,s2n,flags=\
-                render._render.loglike(self.image, gmix, self.ivar)
+        loglike,s2n,flags=\
+            render._render.loglike(self.image, gmix, self.ivar)
 
 
 
