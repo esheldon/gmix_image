@@ -1,3 +1,6 @@
+"""
+Note tests of multi-fit code are in gmix_fit.py
+"""
 import os
 from sys import stderr
 import pprint

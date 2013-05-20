@@ -86,7 +86,30 @@ class GMixFitSimple:
         self._go()
 
     def get_result(self):
+        """
+        get a dict with all the results, stats
+        """
         return self._result
+
+    def get_gmix(self):
+        """
+        Get a gaussian mixture representing the model
+        """
+        epars=get_estyle_pars(self._result['pars'])
+        gmix=GMix(epars, type=self.model)
+        return gmix
+
+    def get_model(self):
+        """
+        Get the full model image, convolved with
+        the PSF
+
+        should rename this to get_model_image
+        or something
+        """
+        epars=get_estyle_pars(self._result['pars'])
+        gmix=self._get_convolved_gmix(epars)
+        return gmix2image(gmix, self.image.shape)
 
     def _go(self):
         """
@@ -195,14 +218,6 @@ class GMixFitSimple:
         gmix=gmix0.convolve(self.psf_gmix)
         return gmix
 
-    def get_gmix(self):
-        gmix=GMix(self._result['pars'], type=self.model)
-        return gmix
-
-    def get_model(self):
-        epars=get_estyle_pars(self._result['pars'])
-        gmix=self._get_convolved_gmix(epars)
-        return gmix2image(gmix, self.image.shape)
 
     def _calc_lm_results(self, lmres):
 
