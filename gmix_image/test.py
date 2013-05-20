@@ -328,12 +328,52 @@ def test_em_jacob(s2n=100.,
     print '  e1:',e1m,'e2:',e2m
 
 
+def test_fit_exp_simple(s2n=1.e5):
+    import biggles
+    import admom
+    import fimage
+    numpy.random.seed(35)
 
+    e = 0.2
+    theta = 23.7
+    e1,e2 = etheta2e1e2(e,theta)
+    sigma=4.0
 
-def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
-    """
-    Round object as a function of sigma
-    """
+    sigma_psf = sigma/2.
+
+    fwhm_psf = 2.35*sigma_psf
+
+    print >>stderr,"e:",e,"e1:",e1,"e2:",e2
+
+    print '-'*70
+    print 'sigma:',sigma
+    T = 2*sigma**2
+
+    cov = ellip2mom(T, e=e, theta=theta)
+
+    ci=fimage.convolved.ConvolverTurbulence({'model':'exp', 'cov':cov},
+                                            {'model':'turb','psf_fwhm':fwhm_psf})
+    cin=fimage.convolved.NoisyConvolvedImage(ci, s2n, 1.e6)
+
+    cen=cin['cen']
+
+    gmpsf=gmix_image.gmix_em.GMixEMBoot(cin.psf, 2, cen)
+    gmix_psf=gmpsf.get_gmix()
+
+    ares = admom.admom(cin.image,cen[0],cen[1],guess=T/2,nsub=16)
+
+    verbose=False
+
+    skysig=cin['skysig']
+    gf=gmix_fit.GMixFitSimple(cin.image, 1./skysig**2, gmix_psf, 'exp', ares)
+
+    res=gf.get_result()
+    print 'chi2/deg:',res['chi2per']
+
+    model = gf.get_model()
+    images.compare_images(cin.image,model)
+
+def test_fit_dev_e1e2(ngauss=4, s2n=1.e5):
     import biggles
     import admom
     import fimage
@@ -353,8 +393,6 @@ def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
     nsigma_vals=20
 
     f='test-opt-dev-bysigma'
-    if not use_jacob:
-        f += '-nojacob'
     f += '-s2n%d' % s2n
     f += '.rec'
     pngf=f.replace('.rec','.png')
@@ -418,7 +456,6 @@ def test_fit_dev_e1e2(use_jacob=False, ngauss=4, s2n=1.e5):
             verbose=False
             gf=gmix_fit.GMixFitCoellip(im, p0, 
                                        ptype=ptype,
-                                       use_jacob=use_jacob, 
                                        verbose=verbose)
 
             chi2per = gf.get_chi2per(gf.popt,skysig)
@@ -574,7 +611,7 @@ def test_fit_dev_eta_bysigma():
     tab.show()
     tab.write_img(1024,1024,pngf)
 
-def test_fit_1gauss_fix(imove, use_jacob=True):
+def test_fit_1gauss_fix(imove):
 
     import images
     numpy.random.seed(45)
@@ -618,14 +655,13 @@ def test_fit_1gauss_fix(imove, use_jacob=True):
     print_pars(p0,  front='guess: ')
 
     gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, ptype='eta',
-                                  use_jacob=use_jacob,
                                   verbose=True)
 
     print 'numiter:',gf.numiter
     print gf.popt
     print gf.pcov
 
-def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
+def test_fit_1gauss_psf_fix(imove, seed=45):
     from fimage import ellip2mom
     import images
     numpy.random.seed(seed)
@@ -681,7 +717,6 @@ def test_fit_1gauss_psf_fix(imove, use_jacob=True, seed=45):
     gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, 
                                   psf=psf,
                                   ptype='eta',
-                                  use_jacob=use_jacob,
                                   verbose=True)
 
     print 'numiter:',gf.numiter
@@ -867,15 +902,13 @@ def test_fit_1gauss(ellip=0.2):
     print gf.perr
     images.imprint(gf.pcov)
 
-def test_fit_1gauss_psf(use_jacob=True, seed=45):
+def test_fit_1gauss_psf(seed=45):
     from fimage import ellip2mom
     import images
 
     print >>stderr,"seed:",seed
     numpy.random.seed(seed)
 
-    if not use_jacob:
-        print >>stderr,"NOT using jacobian"
 
     Tpsf = 2.0
     epsf = 0.2
@@ -923,7 +956,6 @@ def test_fit_1gauss_psf(use_jacob=True, seed=45):
     gf=gmix_fit.GMixFitCoellip(im, p0, 
                                psf=psf,
                                ptype='eta',
-                               use_jacob=use_jacob,
                                verbose=True)
 
     print 'numiter:',gf.numiter
@@ -931,7 +963,6 @@ def test_fit_1gauss_psf(use_jacob=True, seed=45):
     print gf.pcov
 
 def test_fit_2gauss_e1e2_errors(ntrial, ellip, s2n, 
-                                use_jacob=True, 
                                 dopsf=False):
     import esutil as eu
     import biggles
@@ -946,9 +977,6 @@ def test_fit_2gauss_e1e2_errors(ntrial, ellip, s2n,
     if dopsf:
         title += ' PSF'
         outfile += '-psf'
-    if not use_jacob:
-        title += ' No Jacob'
-        outfile += '-nojacob'
 
     outfile += '.rec'
 
@@ -969,7 +997,6 @@ def test_fit_2gauss_e1e2_errors(ntrial, ellip, s2n,
                     test_fit_2gauss_e1e2(ellip=ellip, 
                                          seed=newseed, 
                                          s2n=s2n, 
-                                         use_jacob=use_jacob, 
                                          dopsf=dopsf)
             ntry+= 1
             if perr is not None:
@@ -1033,7 +1060,6 @@ def test_fit_2gauss_e1e2_errors(ntrial, ellip, s2n,
 def test_fit_2gauss_e1e2(ellip=0.2, 
                          seed=35, 
                          s2n=-9999, 
-                         use_jacob=True, 
                          dopsf=False):
     import images
     from fimage import etheta2e1e2, add_noise, ellip2mom
@@ -1090,7 +1116,6 @@ def test_fit_2gauss_e1e2(ellip=0.2,
     print_pars(pars,front='pars:  ')
     print_pars(p0,  front='guess: ')
     gf=gmix_fit.GMixFitCoellip(im, p0, 
-                               use_jacob=use_jacob,
                                ptype=ptype,
                                psf=psf,
                                verbose=True)
@@ -1102,15 +1127,12 @@ def test_fit_2gauss_e1e2(ellip=0.2,
 
     return pars, gf.popt, gf.perr, gf.pcov
 
-def test_fit_2gauss_2psf(use_jacob=True, seed=45):
+def test_fit_2gauss_2psf(seed=45):
     import images
     from fimage import ellip2mom
 
     print >>stderr,"seed:",seed
     numpy.random.seed(seed)
-
-    if not use_jacob:
-        print >>stderr,"NOT using jacobian"
 
     Tpsf1 = 2.0
     Tpsf2 = 4.0
@@ -1159,7 +1181,6 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
                                p0, 
                                psf=psf,
                                ptype='eta',
-                               use_jacob=use_jacob,
                                verbose=True)
 
     print 'numiter:',gf.numiter
@@ -1167,7 +1188,7 @@ def test_fit_2gauss_2psf(use_jacob=True, seed=45):
     for i in xrange(len(pars)):
         print '%10.6f %10.6f' % (pars[i],gf.popt[i])
 
-def test_fit_exp_e1e2(use_jacob=True):
+def test_fit_exp_e1e2():
     import admom
     import biggles
     numpy.random.seed(35)
@@ -1219,7 +1240,6 @@ def test_fit_exp_e1e2(use_jacob=True):
         print_pars(p0,  front='guess: ')
         gf=gmix_fit.GMixFitCoellip(im, p0, 
                                    ptype=ptype, 
-                                   use_jacob=use_jacob, 
                                    verbose=True)
 
         print_pars(gf.popt,  front='popt:  ')
@@ -1242,8 +1262,6 @@ def test_fit_exp_e1e2(use_jacob=True):
     model = gmix2image_em(gmix,im.shape)
 
     title=None
-    if not use_jacob:
-        title='no jacobian'
     plt=images.compare_images(im,model,title=title)
 
     epsfile='test-opt-exp.eps'
@@ -1267,7 +1285,7 @@ def test_fit_exp_e1e2(use_jacob=True):
 
 
 
-def test_fit_exp_eta(use_jacob=True):
+def test_fit_exp_eta():
     import biggles
     from fimage import model_image
     numpy.random.seed(35)
@@ -1315,7 +1333,6 @@ def test_fit_exp_eta(use_jacob=True):
 
         gf=gmix_fit.GMixFitCoellip(im, p0, 
                                    ptype='eta', 
-                                   use_jacob=use_jacob, 
                                    verbose=True)
         if gf.flags != 0:
             raise RuntimeError("failed")
@@ -1503,7 +1520,6 @@ def get_exp_guess(cen,cov,ngauss):
 def test_fit_1gauss_e1e2(ellip=0.2, 
                          seed=35, 
                          s2n=-9999, 
-                         use_jacob=True, 
                          dopsf=False):
     import images
     from fimage import etheta2e1e2, add_noise, ellip2mom
@@ -1575,7 +1591,6 @@ def test_fit_1gauss_e1e2(ellip=0.2,
     gf=gmix_fit.GMixFitCoellip(im, p0, 
                                psf=psf,
                                ptype=ptype,
-                               use_jacob=use_jacob,
                                verbose=True)
 
     print >>stderr,'numiter:',gf.numiter
@@ -1583,7 +1598,7 @@ def test_fit_1gauss_e1e2(ellip=0.2,
     print_pars(gf.perr,front='perr:  ')
     #images.imprint(gf.pcov)
 
-def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
+def test_fit_1gauss_e1e2_fix(imove, dopsf=False):
 
     import images
     from fimage import etheta2e1e2, ellip2mom
@@ -1645,7 +1660,6 @@ def test_fit_1gauss_e1e2_fix(imove, use_jacob=True, dopsf=False):
 
     gf=gmix_fit.GMixFitCoellipFix(im, p0, imove, ptype=ptype,
                                   psf=psf,
-                                  use_jacob=use_jacob,
                                   verbose=True)
 
     print >>stderr,'numiter:',gf.numiter

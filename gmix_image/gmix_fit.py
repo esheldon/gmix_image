@@ -195,6 +195,10 @@ class GMixFitSimple:
         gmix=gmix0.convolve(self.psf_gmix)
         return gmix
 
+    def get_gmix(self):
+        gmix=GMix(self._result['pars'], type=self.model)
+        return gmix
+
     def get_model(self):
         epars=get_estyle_pars(self._result['pars'])
         gmix=self._get_convolved_gmix(epars)
