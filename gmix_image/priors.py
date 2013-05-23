@@ -74,6 +74,7 @@ class GPrior(object):
         From Bernstein & Armstrong
 
         P is simply this prior times the jacobian at shear==0
+
         Q is the gradient of P*J at shear==0
 
             [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
@@ -104,7 +105,7 @@ class GPrior(object):
         R12 = (R11_1 - Q1_1 - Q2_1 + 2*P - Q1_2 - Q2_2 + R11_2)*hsq*0.5
 
         Q = numpy.array([Q1, Q2], dtype='f8')
-        R = numpy.zeror( (2,2) )
+        R = numpy.zeros( (2,2) )
         R[0,0] = R11
         R[0,1] = R12
         R[1,0] = R12
