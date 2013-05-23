@@ -793,32 +793,10 @@ class MixMCStandAlone:
         """
         import lensing
 
-        g1vals=self.trials[:,2]
-        g2vals=self.trials[:,3]
+        g1=self.trials[:,2]
+        g2=self.trials[:,3]
 
-        npoints=g1vals.size
-
-        # PJ/P
-        Pvals = numpy.zeros(npoints)
-        # Q/P
-        Qvals = numpy.zeros( (npoints, 2) )
-        # R/P
-        Rvals = numpy.zeros( (npoints, 2, 2) )
-
-        for i in xrange(npoints):
-            g1=g1vals[i]
-            g2=g2vals[i]
-            pi,Qi,Ri = lensing.shear.get_ba_vals(g1,g2)
-
-            Pvals[i] = pi
-
-            Qvals[i,0] = Qi[0]
-            Qvals[i,1] = Qi[1]
-
-            Rvals[i,0,0] = Ri[0,0]
-            Rvals[i,0,1] = Ri[0,1]
-            Rvals[i,1,0] = Ri[1,0]
-            Rvals[i,1,1] = Ri[1,1]
+        Pvals,Qvals,Rvals = lensing.shear.get_ba_vals(g1,g2)
 
         P = Pvals.mean()
         Q = Qvals.sum(axis=0)/npoints
