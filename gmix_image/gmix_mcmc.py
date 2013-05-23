@@ -492,7 +492,7 @@ class MixMC:
         if key=='q':
             stop
 
-
+ 
 class MixMCStandAlone:
     def __init__(self, image, ivar, psf, gprior, model, **keys):
         """
@@ -763,6 +763,8 @@ class MixMCStandAlone:
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
+        P,Q,R = self._get_PQR()
+
         self._result={'flags':0,
                       'model':self.model,
                       'g':g,
@@ -771,6 +773,9 @@ class MixMCStandAlone:
                       'pars':pars,
                       'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
+                      'P':P,
+                      'Q':Q,
+                      'R':R,
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
@@ -778,6 +783,48 @@ class MixMCStandAlone:
 
         for k in stats:
             self._result[k] = stats[k]
+
+    def _get_PQR(self):
+        """
+        We get the marginalized P,Q,R from Bernstein & Armstrong
+
+        Note the prior is already in our mcmc chain, so we just evaluate
+        the PJ/P, Q/P, and R/P from the jacobian at all our points
+        """
+        import lensing
+
+        g1vals=self.trials[:,2]
+        g2vals=self.trials[:,3]
+
+        npoints=g1vals.size
+
+        # PJ/P
+        Pvals = numpy.zeros(npoints)
+        # Q/P
+        Qvals = numpy.zeros( (npoints, 2) )
+        # R/P
+        Rvals = numpy.zeros( (npoints, 2, 2) )
+
+        for i in xrange(npoints):
+            g1=g1vals[i]
+            g2=g2vals[i]
+            pi,Qi,Ri = lensing.shear.get_ba_vals(g1,g2)
+
+            Pvals[i] = pi
+
+            Qvals[i,0] = Qi[0]
+            Qvals[i,1] = Qi[1]
+
+            Rvals[i,0,0] = Ri[0,0]
+            Rvals[i,0,1] = Ri[0,1]
+            Rvals[i,1,0] = Ri[1,0]
+            Rvals[i,1,1] = Ri[1,1]
+
+        P = Pvals.mean()
+        Q = Qvals.sum(axis=0)/npoints
+        R = Rvals.sum(axis=0)/npoints
+        return P,Q,R
+
 
     def get_maxprob_epars(self):
         wmax=self.lnprobs.argmax()

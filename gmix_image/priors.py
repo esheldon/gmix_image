@@ -65,69 +65,6 @@ class GPrior(object):
         fb = self(g1, g2-h/2)
         return (ff - fb)/h
 
-    def get_ba_vals(self, g1, g2, h=1.e-6):
-        """
-        Evaluate 
-            P
-            Q
-            R
-        From Bernstein & Armstrong
-
-        P is simply this prior times the jacobian at shear==0
-
-        Q is the gradient of P*J at shear==0
-
-            [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
-
-        R is grad of grad of P*J at shear==0
-            [ d(P*J)/dg1dg1  d(P*J)/dg1dg2 ]
-            [ d(P*J)/dg1dg2  d(P*J)/dg2dg2 ]_{g=0}
-        """
-
-        P = self.get_p_j(g1, g2, 0.0, 0.0)
-
-        h2=1/2*h
-        hsq=1/h**2
-
-        Q1_1 = self.get_p_j(g1, g2, +h, 0.0)
-        Q1_2 = self.get_p_j(g1, g2, -h, 0.0)
-        Q1 = (Q1_1 - Q1_2)*h2
-
-        Q2_1 = self.get_p_j(g1, g2, 0.0, +h)
-        Q2_2 = self.get_p_j(g1, g2, 0.0, -h)
-        Q2 = (Q2_1 - Q2_2)*h2
-
-        R11_1 = self.get_p_j(g1, g2, +h, +h)
-        R11_2 = self.get_p_j(g1, g2, -h, -h)
-
-        R11 = (Q1_1 - 2*P + Q1_2)*hsq
-        R22 = (Q2_1 - 2*P + Q2_2)*hsq
-        R12 = (R11_1 - Q1_1 - Q2_1 + 2*P - Q1_2 - Q2_2 + R11_2)*hsq*0.5
-
-        Q = numpy.array([Q1, Q2], dtype='f8')
-        R = numpy.zeros( (2,2) )
-        R[0,0] = R11
-        R[0,1] = R12
-        R[1,0] = R12
-        R[1,1] = R22
-
-        return P, Q, R
-
-    def get_p_j(self, g1, g2, s1, s2):
-        """
-        Evaluate
-            P*J
-        where P is this prior and J is the jacobian from
-        source to observed evaluated at -shear
-        """
-        from lensing import shear
-
-        p = self(g1,g2)
-        j = shear.dgs_by_dgo_jacob(g1, g2, s1, s2)
-
-        return p*j
-
-
     def sample1d(self, nrand):
         """
         Get random |g| from the 1d distribution
