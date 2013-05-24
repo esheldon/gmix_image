@@ -1,3 +1,4 @@
+import numpy
 from numpy import sqrt, cos, sin, exp, pi, zeros,  \
         random, where, array
 import math
@@ -65,6 +66,136 @@ class GPrior(object):
         fb = self(g1, g2-h/2)
         return (ff - fb)/h
 
+
+    def get_pqr(self, g1in, g2in, h=1.e-6):
+        """
+        Evaluate 
+            P
+            Q
+            R
+        From Bernstein & Armstrong
+
+        P is this prior times the jacobian at shear==0
+
+        Q is the gradient of P*J evaluated at shear==0
+
+            [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
+
+        R is grad of grad of P*J at shear==0
+            [ d(P*J)/dg1dg1  d(P*J)/dg1dg2 ]
+            [ d(P*J)/dg1dg2  d(P*J)/dg2dg2 ]_{g=0}
+
+        Derivatives are calculated using finite differencing
+        """
+        if numpy.isscalar(g1in):
+            isscalar=True
+        else:
+            isscalar=False
+
+        g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
+        g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
+        h2=1./(2.*h)
+        hsq=1./h**2
+
+        P=self.get_pj(g1, g2, 0.0, 0.0)
+
+        Q1_1 = self.get_pj(g1, g2, +h, 0.0)
+        Q1_2 = self.get_pj(g1, g2, -h, 0.0)
+        Q1 = (Q1_1 - Q1_2)*h2
+
+        Q2_1 = self.get_pj(g1, g2, 0.0, +h)
+        Q2_2 = self.get_pj(g1, g2, 0.0, -h)
+        Q2 = (Q2_1 - Q2_2)*h2
+
+        R11_1 = self.get_pj(g1, g2, +h, +h)
+        R11_2 = self.get_pj(g1, g2, -h, -h)
+
+        R11 = (Q1_1 - 2*P + Q1_2)*hsq
+        R22 = (Q2_1 - 2*P + Q2_2)*hsq
+        R12 = (R11_1 - Q1_1 - Q2_1 + 2*P - Q1_2 - Q2_2 + R11_2)*hsq*0.5
+
+        np=g1.size
+        Q = numpy.zeros( (np,2) )
+        R = numpy.zeros( (np,2,2) )
+
+        Q[:,0] = Q1
+        Q[:,1] = Q2
+        R[:,0,0] = R11
+        R[:,0,1] = R12
+        R[:,1,0] = R12
+        R[:,1,1] = R22
+
+        if isscalar:
+            Q = Q[0,:]
+            R = R[0,:,:]
+
+        return P, Q, R
+
+    def get_pj(self, g1, g2, s1, s2):
+        """
+        PJ = p(g,-shear)*jacob
+
+        where jacob is d(es)/d(eo) and
+        es=eo(+)(-g)
+        """
+        import lensing
+
+        # note sending negative shear to jacob
+        s1m=-s1
+        s2m=-s2
+        J=lensing.shear.dgs_by_dgo_jacob(g1, g2, s1m, s2m)
+
+        # evaluating at negative shear
+        g1new,g2new=lensing.shear.gadd(g1, g2, s1m, s2m)
+        P=self(g1new,g2new)
+
+        return P*J
+
+    def sample2d_pj(self, nrand, s1, s2):
+        """
+        Get random g1,g2 values from an approximate
+        sheared distribution
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from .util import srandu
+
+        maxval_2d = self(0.0,0.0)
+        g1,g2=zeros(nrand),zeros(nrand)
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            #print 'ngood/ntot: %d/%d' % (ngood,nrand)
+
+            # generate on cube [-1,1,h]
+            g1rand=srandu(nleft)
+            g2rand=srandu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            h = 1.1*maxval_2d*random.random(nleft)
+
+            pjvals = self.get_pj(g1rand,g2rand,s1,s2)
+            
+            #wbad,=where(pjvals > 1.1*maxval_2d)
+            #if wbad.size > 0:
+            #    raise ValueError("found %d > maxval" % wbad.size)
+
+            w,=where(h < pjvals)
+            if w.size > 0:
+                g1[ngood:ngood+w.size] = g1rand[w]
+                g2[ngood:ngood+w.size] = g2rand[w]
+                ngood += w.size
+                nleft -= w.size
+   
+        return g1,g2
+
+
+
     def sample1d(self, nrand):
         """
         Get random |g| from the 1d distribution
@@ -125,9 +256,11 @@ class GPrior(object):
         distribution
         """
         import scipy.optimize
-        
+
         (minvalx, fval, iterations, fcalls, warnflag) \
-                = scipy.optimize.fmin(self.prior1dneg, 0.1, full_output=True, 
+                = scipy.optimize.fmin(self.prior1dneg,
+                                      0.1,
+                                      full_output=True, 
                                       disp=False)
         if warnflag != 0:
             raise ValueError("failed to find min: warnflag %d" % warnflag)
@@ -139,6 +272,48 @@ class GPrior(object):
         """
         return -self.prior1d(g)
 
+
+    def test_pj_predict(self):
+        """
+        Test how well the formalism predicts the sheared distribution
+        """
+        import lensing
+        import esutil as eu
+        import gmix_image
+
+        s1=0.05
+        s2=0.0
+
+        rng=[-0.2,0.2]
+
+        pars=[87.2156230877,
+              1.30395318005,
+              0.0641620331281,
+              0.864555484617]
+
+        gpe = gmix_image.priors.GPriorExp(pars)
+
+        nr=1000000
+
+        rg1,rg2 = gpe.sample2d(nr)
+
+        sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+
+        sheared_rg1_predict,sheared_rg2_predict = gpe.sample2d_pj(nr, s1, s2)
+
+
+        binsize=0.01
+        plt=eu.plotting.bhist(sheared_rg1,
+                              min=rng[0],max=rng[1],
+                              binsize=binsize,
+                              show=False)
+
+        eu.plotting.bhist(sheared_rg1_predict,
+                          min=rng[0],max=rng[1],
+                          binsize=binsize,
+                          color='red',
+                          xrange=rng,
+                          plt=plt,title='full')
 
 
 
@@ -154,7 +329,10 @@ class GPriorExp(GPrior):
         """
         Get the 2d prior for the input |g| value(s)
         """
-        return gprior2d_exp_vec(self.pars, g)
+        if numpy.isscalar(g):
+            return gprior2d_exp_scalar(self.pars, g)
+        else:
+            return gprior2d_exp_vec(self.pars, g)
 
     def prior2d_gabs_scalar(self, g):
         """
@@ -176,7 +354,7 @@ def gprior2d_exp_vec(pars, g):
         numer = A*(1-exp( (g-gmax)/a ))
         denom = (1+g)*sqrt(g**2 + g0**2)
 
-        prior[w]=numer/denom
+        prior[w]=numer[w]/denom[w]
 
     return prior
 
@@ -345,7 +523,12 @@ class GPriorDev(GPrior):
         """
         Get the 2d prior for the input |g| value(s)
         """
-        return gprior2d_dev_vec(self.pars, g)
+        if numpy.isscalar(g):
+            return gprior2d_vec_scalar(self.pars, g)
+        else:
+            return gprior2d_vec_vec(self.pars, g)
+
+
 
     def prior2d_gabs_scalar(self, g):
         """
