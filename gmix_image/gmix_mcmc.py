@@ -536,6 +536,7 @@ class MixMCStandAlone:
         """
         
         self.make_plots=keys.get('make_plots',False)
+        self.do_pqr=keys.get('do_pqr',False)
 
         # cen1,cen2,e1,e2,T,p
         self.npars=6
@@ -763,7 +764,6 @@ class MixMCStandAlone:
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
 
-        P,Q,R = self._get_PQR()
 
         self._result={'flags':0,
                       'model':self.model,
@@ -781,26 +781,49 @@ class MixMCStandAlone:
                       'Ts2n':Ts2n,
                       'arate':arate}
 
+        if self.do_pqr:
+            P,Q,R = self._get_PQR()
+            self._result['P']=P
+            self._result['Q']=Q
+            self._result['R']=R
+
         for k in stats:
             self._result[k] = stats[k]
 
     def _get_PQR(self):
         """
-        We get the marginalized P,Q,R from Bernstein & Armstrong
+        get the marginalized P,Q,R from Bernstein & Armstrong
 
-        Note the prior is already in our mcmc chain, so we just evaluate
-        the PJ/P, Q/P, and R/P from the jacobian at all our points
+        Note the prior is already in our mcmc chain, so we need
+        to divide by the prior everywhere
         """
         import lensing
 
         g1=self.trials[:,2]
         g2=self.trials[:,3]
 
-        Pvals,Qvals,Rvals = lensing.shear.get_ba_vals(g1,g2)
+        prior = self.gprior(g1,g2)
+        Pvals,Qvals,Rvals = self.gprior.get_pqr(g1,g2)
+
+        w,=numpy.where(prior > 0)        
+        P = P[w]
+        Q = Q[w,:]
+        R = R[w,:,:]
+
+        pinv = 1/prior[w]
+        P *= pinv[w]
+        Q[:,0] *= pinv[w]
+        Q[:,1] *= pinv[w]
+
+        R[:,0,0] *= pinv[w]
+        R[:,0,1] *= pinv[w]
+        R[:,1,0] *= pinv[w]
+        R[:,1,1] *= pinv[w]
 
         P = Pvals.mean()
         Q = Qvals.sum(axis=0)/npoints
         R = Rvals.sum(axis=0)/npoints
+
         return P,Q,R
 
 

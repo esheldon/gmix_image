@@ -364,7 +364,7 @@ def test_pj_predict(type='exp', rng=[-0.2,0.2]):
                       xrange=rng,
                       plt=plt,title='full')
 
-def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03):
+def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03,h=1.e-6):
     """
     Shear a bunch of shapes drawn from the prior and try to
     recover using Bernstein & Armstrong
@@ -375,7 +375,7 @@ def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03):
         gsigma=0.3
         gpe = GPriorBA(gsigma)
     else:
-        raise ValueError("implement another differentiable prior")
+        raise ValueError("implement %s as differentiable prior" % type)
 
     rg1,rg2 = gpe.sample2d(nr)
 
