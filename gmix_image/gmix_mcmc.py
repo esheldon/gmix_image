@@ -773,9 +773,6 @@ class MixMCStandAlone:
                       'pars':pars,
                       'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
-                      'P':P,
-                      'Q':Q,
-                      'R':R,
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
@@ -803,7 +800,7 @@ class MixMCStandAlone:
         g2=self.trials[:,3]
 
         prior = self.gprior(g1,g2)
-        Pvals,Qvals,Rvals = self.gprior.get_pqr(g1,g2)
+        P,Q,R = self.gprior.get_pqr(g1,g2)
 
         w,=numpy.where(prior > 0)        
         P = P[w]
@@ -820,9 +817,9 @@ class MixMCStandAlone:
         R[:,1,0] *= pinv[w]
         R[:,1,1] *= pinv[w]
 
-        P = Pvals.mean()
-        Q = Qvals.sum(axis=0)/npoints
-        R = Rvals.sum(axis=0)/npoints
+        P = P.mean()
+        Q = Q.sum(axis=0)/w.size
+        R = R.sum(axis=0)/w.size
 
         return P,Q,R
 

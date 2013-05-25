@@ -417,6 +417,21 @@ class GPriorBA(GPrior):
 
 
 
+    def prior2d_gabs_scalar(self, g):
+        """
+        version for scalars
+        """
+        from math import exp
+
+        if g < 1.0:
+            g2=g**2
+            prior = (1-g2)**2*exp(-g2/2/self.pars**2)
+        else:
+            prior = 0.0
+
+        return prior
+
+
 
 
 class GPriorExp(GPrior):
