@@ -170,18 +170,17 @@ class GPrior(object):
         nleft=nrand
         while ngood < nrand:
 
-            #print 'ngood/ntot: %d/%d' % (ngood,nrand)
-
             # generate on cube [-1,1,h]
             g1rand=srandu(nleft)
             g2rand=srandu(nleft)
 
             # a bit of padding since we are modifying the distribution
-            h = 1.1*maxval_2d*random.random(nleft)
+            fac=1.3
+            h = fac*maxval_2d*random.random(nleft)
 
             pjvals = self.get_pj(g1rand,g2rand,s1,s2)
             
-            #wbad,=where(pjvals > 1.1*maxval_2d)
+            #wbad,=where(pjvals > fac*maxval_2d)
             #if wbad.size > 0:
             #    raise ValueError("found %d > maxval" % wbad.size)
 
@@ -236,7 +235,8 @@ class GPrior(object):
 
     def sample2d(self, nrand):
         """
-        Get random g1,g2 values
+        Get random g1,g2 values by first drawing
+        from the 1-d distribution
 
         parameters
         ----------
@@ -249,6 +249,49 @@ class GPrior(object):
         g1rand = grand*cos(rangle)
         g2rand = grand*sin(rangle)
         return g1rand, g2rand
+
+    def sample2d_brute(self, nrand):
+        """
+        Get random g1,g2 values using 2-d brute
+        force method
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from .util import srandu
+
+        maxval_2d = self(0.0,0.0)
+        g1,g2=zeros(nrand),zeros(nrand)
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            # generate on cube [-1,1,h]
+            g1rand=srandu(nleft)
+            g2rand=srandu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            h = maxval_2d*random.random(nleft)
+
+            vals = self(g1rand,g2rand)
+            
+            #wbad,=where(vals > maxval_2d)
+            #if wbad.size > 0:
+            #    raise ValueError("found %d > maxval" % wbad.size)
+
+            w,=where(h < vals)
+            if w.size > 0:
+                g1[ngood:ngood+w.size] = g1rand[w]
+                g2[ngood:ngood+w.size] = g2rand[w]
+                ngood += w.size
+                nleft -= w.size
+   
+        return g1,g2
+
+
 
     def set_maxval1d(self):
         """
@@ -273,47 +316,106 @@ class GPrior(object):
         return -self.prior1d(g)
 
 
-    def test_pj_predict(self):
-        """
-        Test how well the formalism predicts the sheared distribution
-        """
-        import lensing
-        import esutil as eu
-        import gmix_image
+def test_pj_predict(type='exp', rng=[-0.2,0.2]):
+    """
+    Test how well the formalism predicts the sheared distribution
+    """
+    import lensing
+    import esutil as eu
+    import gmix_image
 
-        s1=0.05
-        s2=0.0
+    s1=0.05
+    s2=0.0
 
-        rng=[-0.2,0.2]
-
+    if type=='exp':
         pars=[87.2156230877,
               1.30395318005,
               0.0641620331281,
               0.864555484617]
 
         gpe = gmix_image.priors.GPriorExp(pars)
+    elif type=='BA':
+        gsigma=0.3
+        gpe = gmix_image.priors.GPriorBA(gsigma)
 
-        nr=1000000
+    nr=1000000
+    binsize=0.01
 
-        rg1,rg2 = gpe.sample2d(nr)
+    rg1,rg2 = gpe.sample2d(nr)
+    #rg1_bf,rg2_bf = gpe.sample2d_brute(nr)
+    #plt=eu.plotting.bhist(rg1,binsize=binsize,show=False)
+    #eu.plotting.bhist(rg1_bf,binsize=binsize,color='red',plt=plt)
+    #stop
 
-        sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+    sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
 
-        sheared_rg1_predict,sheared_rg2_predict = gpe.sample2d_pj(nr, s1, s2)
+    sheared_rg1_predict,sheared_rg2_predict = gpe.sample2d_pj(nr, s1, s2)
 
 
-        binsize=0.01
-        plt=eu.plotting.bhist(sheared_rg1,
-                              min=rng[0],max=rng[1],
-                              binsize=binsize,
-                              show=False)
-
-        eu.plotting.bhist(sheared_rg1_predict,
+    plt=eu.plotting.bhist(sheared_rg1,
                           min=rng[0],max=rng[1],
                           binsize=binsize,
-                          color='red',
-                          xrange=rng,
-                          plt=plt,title='full')
+                          show=False)
+
+    eu.plotting.bhist(sheared_rg1_predict,
+                      min=rng[0],max=rng[1],
+                      binsize=binsize,
+                      color='red',
+                      xrange=rng,
+                      plt=plt,title='full')
+
+def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03):
+    """
+    Shear a bunch of shapes drawn from the prior and try to
+    recover using Bernstein & Armstrong
+    """
+    import lensing
+
+    if type=='BA':
+        gsigma=0.3
+        gpe = GPriorBA(gsigma)
+    else:
+        raise ValueError("implement another differentiable prior")
+
+    rg1,rg2 = gpe.sample2d(nr)
+
+    sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+
+    Pa,Qa,Ra=gpe.get_pqr(sheared_rg1,sheared_rg2,h=1.e-6)
+
+    sh,C=lensing.shear.get_shear_pqr(Pa,Qa,Ra)
+    print 'input shear:',s1,s2
+    print 'meas shear: %g +/- %g  %g +/- %g' % (sh[0],sqrt(C[0,0]),sh[1],sqrt(C[1,1]))
+
+
+
+class GPriorBA(GPrior):
+    def __init__(self, pars):
+        """
+        pars are scalar gsigma from B&A 
+        """
+        super(GPriorBA,self).__init__(pars)
+
+    def prior2d_gabs(self, gin):
+        """
+        Get the 2d prior for the input |g| value(s)
+        """
+        iss=numpy.isscalar(gin)
+
+        g=numpy.array(gin,dtype='f8',ndmin=1,copy=False)
+
+        prior=zeros(g.size)
+
+        w,=where(g < 1.0)
+        if w.size > 0:
+            g2=g[w]**2
+            prior[w] = (1-g2)**2*exp(-g2/2/self.pars**2)
+
+        if iss:
+            prior=prior[0]
+        return prior
+
+
 
 
 
