@@ -99,20 +99,19 @@ class GPrior(object):
 
         P=self.get_pj(g1, g2, 0.0, 0.0)
 
-        Q1_1 = self.get_pj(g1, g2, +h, 0.0)
-        Q1_2 = self.get_pj(g1, g2, -h, 0.0)
-        Q1 = (Q1_1 - Q1_2)*h2
+        Q1_p = self.get_pj(g1, g2, +h, 0.0)
+        Q1_m = self.get_pj(g1, g2, -h, 0.0)
+        Q2_p = self.get_pj(g1, g2, 0.0, +h)
+        Q2_m = self.get_pj(g1, g2, 0.0, -h)
+        R12_pp = self.get_pj(g1, g2, +h, +h)
+        R12_mm = self.get_pj(g1, g2, -h, -h)
 
-        Q2_1 = self.get_pj(g1, g2, 0.0, +h)
-        Q2_2 = self.get_pj(g1, g2, 0.0, -h)
-        Q2 = (Q2_1 - Q2_2)*h2
+        Q1 = (Q1_p - Q1_m)*h2
+        Q2 = (Q2_p - Q2_m)*h2
 
-        R11_1 = self.get_pj(g1, g2, +h, +h)
-        R11_2 = self.get_pj(g1, g2, -h, -h)
-
-        R11 = (Q1_1 - 2*P + Q1_2)*hsq
-        R22 = (Q2_1 - 2*P + Q2_2)*hsq
-        R12 = (R11_1 - Q1_1 - Q2_1 + 2*P - Q1_2 - Q2_2 + R11_2)*hsq*0.5
+        R11 = (Q1_p - 2*P + Q1_m)*hsq
+        R22 = (Q2_p - 2*P + Q2_m)*hsq
+        R12 = (R12_pp - Q1_p - Q2_p + 2*P - Q1_m - Q2_m + R12_mm)*hsq*0.5
 
         np=g1.size
         Q = numpy.zeros( (np,2) )

@@ -8,6 +8,7 @@ for now
         MixMC
 
 """
+from sys import stderr
 import math
 import numpy
 from numpy import sqrt, log, log10, zeros, \
@@ -730,23 +731,17 @@ class MixMCStandAlone:
         g1diff = g[0]-g1vals
         g2diff = g[1]-g2vals
 
-        w,=where(prior > 0)
-        if w.size == 0:
-            print self.psf_gmix
-            print_pars(pars,front='pars:')
-            for i in xrange(self.nwalkers):
-                print_pars(self._guess[i,:], front=' guess:')
-            print 'median g1:',median(g1vals)
-            print self.image.min(), self.image.max()
-            print 'image counts:',self.counts
-            raise ValueError("no prior values > 0!")
 
         if self.when_prior=="during":
+            w,=where(prior > 0)
+            if w.size == 0:
+                raise ValueError("no prior values > 0!")
+
             gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
             gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
         else:
-            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]).mean()
-            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]).mean()
+            gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
+            gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
  
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
@@ -763,6 +758,7 @@ class MixMCStandAlone:
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
         Ts2n=pars[4]/sqrt(pcov[4,4])
+        Fs2n=pars[5]/sqrt(pcov[5,5])
 
 
         self._result={'flags':0,
@@ -776,6 +772,7 @@ class MixMCStandAlone:
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
+                      'Fs2n':Fs2n,
                       'arate':arate}
 
         if self.do_pqr:
@@ -801,15 +798,18 @@ class MixMCStandAlone:
         g1=self.trials[:,2]
         g2=self.trials[:,3]
 
-        prior = self.gprior(g1,g2)
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
-        w,=numpy.where(prior > 0)        
-        P = P[w]
-        Q = Q[w,:]
-        R = R[w,:,:]
-
         if self.when_prior=="during":
+            prior = self.gprior(g1,g2)
+            w,=numpy.where(prior > 0)
+            if w.size == 0:
+                raise ValueError("no prior values > 0!")
+
+            P = P[w]
+            Q = Q[w,:]
+            R = R[w,:,:]
+
             pinv = 1/prior[w]
             P *= pinv[w]
             Q[:,0] *= pinv[w]
@@ -821,8 +821,8 @@ class MixMCStandAlone:
             R[:,1,1] *= pinv[w]
 
         P = P.mean()
-        Q = Q.sum(axis=0)/w.size
-        R = R.sum(axis=0)/w.size
+        Q = Q.mean(axis=0)
+        R = R.mean(axis=0)
 
         return P,Q,R
 
