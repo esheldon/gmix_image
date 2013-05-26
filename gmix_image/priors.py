@@ -126,6 +126,7 @@ class GPrior(object):
         R[:,1,1] = R22
 
         if isscalar:
+            P = P[0]
             Q = Q[0,:]
             R = R[0,:,:]
 

@@ -537,6 +537,7 @@ class MixMCStandAlone:
         
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',False)
+        self.when_prior = keys.get('when_prior',"during")
 
         # cen1,cen2,e1,e2,T,p
         self.npars=6
@@ -655,9 +656,10 @@ class MixMCStandAlone:
 
         logprob = self._get_loglike_c(epars)
 
-        g1,g2=pars[2],pars[3]
-        gp = self._get_lngprior(g1,g2)
-        logprob += gp
+        if self.when_prior=="during":
+            g1,g2=pars[2],pars[3]
+            gp = self._get_lngprior(g1,g2)
+            logprob += gp
 
         cp = self.cenprior.lnprob(pars[0:2])
         logprob += cp
@@ -717,7 +719,10 @@ class MixMCStandAlone:
         # points.  This is simpler for most things but
         # for sensitivity we need a factor of (1/P)dP/de
 
-        pars,pcov = mcmc.extract_stats(self.trials)
+        if self.when_prior=="during":
+            pars,pcov = mcmc.extract_stats(self.trials)
+        else:
+            pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
 
         g[:] = pars[2:4]
         gcov[:,:] = pcov[2:4, 2:4]
@@ -736,8 +741,12 @@ class MixMCStandAlone:
             print 'image counts:',self.counts
             raise ValueError("no prior values > 0!")
 
-        gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
-        gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
+        if self.when_prior=="during":
+            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
+            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
+        else:
+            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]).mean()
+            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]).mean()
  
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
@@ -750,15 +759,6 @@ class MixMCStandAlone:
                                    gmix,
                                    self.npars,
                                    nsub=self.nsub)
-        """
-        nsigma=1
-        stats=util.calculate_some_stats_thresh(self.image, 
-                                          self.ivar, 
-                                          gmix,
-                                          self.npars,
-                                          nsigma,
-                                          nsub=self.nsub)
-        """
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -791,8 +791,10 @@ class MixMCStandAlone:
         """
         get the marginalized P,Q,R from Bernstein & Armstrong
 
-        Note the prior is already in our mcmc chain, so we need
-        to divide by the prior everywhere
+        Note if the prior is already in our mcmc chain, so we need to divide by
+        the prior everywhere.  Because P*J=P at shear==0 this means P is always
+        1
+
         """
         import lensing
 
@@ -807,15 +809,16 @@ class MixMCStandAlone:
         Q = Q[w,:]
         R = R[w,:,:]
 
-        pinv = 1/prior[w]
-        P *= pinv[w]
-        Q[:,0] *= pinv[w]
-        Q[:,1] *= pinv[w]
+        if self.when_prior=="during":
+            pinv = 1/prior[w]
+            P *= pinv[w]
+            Q[:,0] *= pinv[w]
+            Q[:,1] *= pinv[w]
 
-        R[:,0,0] *= pinv[w]
-        R[:,0,1] *= pinv[w]
-        R[:,1,0] *= pinv[w]
-        R[:,1,1] *= pinv[w]
+            R[:,0,0] *= pinv[w]
+            R[:,0,1] *= pinv[w]
+            R[:,1,0] *= pinv[w]
+            R[:,1,1] *= pinv[w]
 
         P = P.mean()
         Q = Q.sum(axis=0)/w.size
