@@ -684,6 +684,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             res['gerr'] = sqrt(diag(gcov))
             res['Terr']  = res['perr'][4]
             res['Ts2n']  = res['Tmean']/res['Terr']
+            res['Fs2n']  = res['pars'][5]/sqrt(res['pcov'][5,5])
             res['arate'] = 1.
 
     def _fit_round_fixcen(self):

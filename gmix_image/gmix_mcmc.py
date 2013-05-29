@@ -842,14 +842,17 @@ class MixMCStandAlone:
     def _run_admom(self, image, ivar, cen, Tguess):
         import admom
 
-        ntry=10
+        ntry=20
         for i in xrange(ntry):
+            cen0=cen[0] + 0.1*srandu()
+            cen1=cen[1] + 0.1*srandu()
+            guess=Tguess/2.0*(1.0 + 0.10*srandu())
             ares = admom.admom(image,
-                                    cen[0],
-                                    cen[1],
-                                    sigsky=sqrt(1/ivar),
-                                    guess=Tguess/2,
-                                    nsub=1)
+                               cen0,
+                               cen1,
+                               sigsky=sqrt(1/ivar),
+                               guess=guess,
+                               nsub=1)
             if ares['whyflag']==0:
                 break
         if i==(ntry-1):
@@ -859,12 +862,13 @@ class MixMCStandAlone:
 
 
     def _get_guess(self):
-
+        """
+        Note for model coellip this only does one gaussian
+        """
         if self.ares is None:
             self.ares=self._run_admom(self.image, self.ivar, 
                                       self.cen_guess, 8.0)
 
-        
         cen=[self.ares['wrow'],self.ares['wcol']]
         self.cenprior=CenPrior(cen, [self.cen_width]*2)
 

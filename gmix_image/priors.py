@@ -67,7 +67,8 @@ class GPrior(object):
         return (ff - fb)/h
 
 
-    def get_pqr(self, g1in, g2in, h=1.e-6):
+ 
+    def get_pqr_num(self, g1in, g2in, h=1.e-6):
         """
         Evaluate 
             P
@@ -364,7 +365,7 @@ def test_pj_predict(type='exp', rng=[-0.2,0.2]):
                       xrange=rng,
                       plt=plt,title='full')
 
-def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03,h=1.e-6):
+def test_shear_recover_pqr(type='BA', nchunk=10, nper=1000000, s1=0.04,s2=0.00):
     """
     Shear a bunch of shapes drawn from the prior and try to
     recover using Bernstein & Armstrong
@@ -377,16 +378,48 @@ def test_shear_recover_pqr(type='BA', nr=1000000, s1=0.05,s2=-0.03,h=1.e-6):
     else:
         raise ValueError("implement %s as differentiable prior" % type)
 
-    rg1,rg2 = gpe.sample2d(nr)
+    g1sum=0.0
+    g2sum=0.0
+    for i in xrange(nchunk):
+        print '-'*70
+        print '%d/%d' % (i+1,nchunk)
+        print 'getting sample'
+        rg1,rg2 = gpe.sample2d(nper)
 
-    sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+        print 'shearing'
+        sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
 
-    Pa,Qa,Ra=gpe.get_pqr(sheared_rg1,sheared_rg2,h=1.e-6)
+        g1sum += sheared_rg1.sum()
+        g2sum += sheared_rg2.sum()
 
-    sh,C=lensing.shear.get_shear_pqr(Pa,Qa,Ra)
+        print 'getting P,Q,R'
+        Pa,Qa,Ra=gpe.get_pqr(sheared_rg1,sheared_rg2)
+
+        print 'getting measured shear\n'
+        shi,Ci,Q_sumi, Cinv_sumi =lensing.shear.get_shear_pqr(Pa,Qa,Ra,get_sums=True)
+
+        if i==0:
+            Q_sum = Q_sumi.copy()
+            Cinv_sum = Cinv_sumi.copy()
+        else:
+            Q_sum += Q_sumi
+            Cinv_sum += Cinv_sumi
+
+    C = numpy.linalg.inv(Cinv_sum)
+    sh = numpy.dot(C,Q_sum)
+
+    err1=sqrt(C[0,0])
+    err2=sqrt(C[1,1])
     print 'input shear:',s1,s2
-    print 'meas shear: %g +/- %g  %g +/- %g' % (sh[0],sqrt(C[0,0]),sh[1],sqrt(C[1,1]))
+    print 'meas shear: %g +/- %g  %g +/- %g' % (sh[0],err1,sh[1],err2)
+    if s1 != 0:
+        print 's1meas/s1-1 %g +/- %g:' % (sh[0]/s1-1, err1/s1)
+    if s2 != 0:
+        print 's2meas/s1-1 %g +/- %g:' % (sh[1]/s2-1, err2/s2)
 
+    ntot = nchunk*nper
+    print '<g1>:',g1sum/ntot
+    print '<g2>:',g2sum/ntot
 
 
 class GPriorBA(GPrior):
@@ -431,6 +464,84 @@ class GPriorBA(GPrior):
 
         return prior
 
+
+    def get_pqr(self, g1in, g2in):
+        """
+        Evaluate 
+            P
+            Q
+            R
+        From Bernstein & Armstrong
+
+        P is this prior times the jacobian at shear==0
+
+        Q is the gradient of P*J evaluated at shear==0
+
+            [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
+
+        R is grad of grad of P*J at shear==0
+            [ d(P*J)/dg1dg1  d(P*J)/dg1dg2 ]
+            [ d(P*J)/dg1dg2  d(P*J)/dg2dg2 ]_{g=0}
+        """
+
+        if numpy.isscalar(g1in):
+            isscalar=True
+        else:
+            isscalar=False
+
+        #g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
+        #g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
+        g1 = numpy.array(g1in, dtype='f16', ndmin=1, copy=False)
+        g2 = numpy.array(g2in, dtype='f16', ndmin=1, copy=False)
+
+        # these are the same
+        #P=self.get_pj(g1, g2, 0.0, 0.0)
+        P=self(g1, g2)
+
+        #g=sqrt(g1**2 + g2**2)
+        #w,=numpy.where(g >= 1)
+        #if w.size > 0:
+        #    print 'g > 1:',w.size
+        #    stop
+
+        sigma = self.pars
+        s2 = sigma**2
+        s4 = sigma**4
+        s2inv = 1./sigma**2
+        s4inv = 1./sigma**4
+
+        gsq = g1**2 + g2**2
+        omgsq = 1. - gsq
+
+        fac = exp(-0.5*gsq*s2inv)*omgsq**2
+
+        Qf = fac*(omgsq + 8*s2)*s2inv
+
+        Q1 = g1*Qf
+        Q2 = g2*Qf
+
+        R11 = (fac * (g1**6 + g1**4*(-2 + 2*g2**2 - 19*s2) + (1 + g2**2)*s2*(-1 + g2**2 - 8*s2) + g1**2*(1 + g2**4 + 20*s2 + 72*s4 - 2*g2**2*(1 + 9*s2))))*s4inv
+        R22 = (fac * (g2**6 + g2**4*(-2 + 2*g1**2 - 19*s2) + (1 + g1**2)*s2*(-1 + g1**2 - 8*s2) + g2**2*(1 + g1**4 + 20*s2 + 72*s4 - 2*g1**2*(1 + 9*s2))))*s4inv
+
+        R12 = fac * g1*g2 * (80 + omgsq**2*s4inv + 20*omgsq*s2inv)
+
+        np=g1.size
+        Q = numpy.zeros( (np,2) )
+        R = numpy.zeros( (np,2,2) )
+
+        Q[:,0] = Q1
+        Q[:,1] = Q2
+        R[:,0,0] = R11
+        R[:,0,1] = R12
+        R[:,1,0] = R12
+        R[:,1,1] = R22
+
+        if isscalar:
+            P = P[0]
+            Q = Q[0,:]
+            R = R[0,:,:]
+
+        return P, Q, R
 
 
 
