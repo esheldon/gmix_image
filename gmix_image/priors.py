@@ -317,7 +317,98 @@ class GPrior(object):
         return -self.prior1d(g)
 
 
-def test_pj_predict(type='exp', rng=[-0.2,0.2]):
+def plot_pqr(gsigma=0.3, other=0.0):
+    import biggles
+    biggles.configure('default','fontsize_min',1.0)
+    gp = GPriorBA(gsigma)
+
+    n=100
+    z=numpy.zeros(n) + other
+    gmin=-1
+    gmax=1
+    g1=numpy.linspace(gmin,gmax,n)
+    g2=numpy.linspace(gmin,gmax,n)
+
+    P_g1,Q_g1,R_g1=gp.get_pqr(g1,z)
+    P_g2,Q_g2,R_g2=gp.get_pqr(z,g2)
+
+    tab=biggles.Table(3,2)
+
+    plt_P_g1 = biggles.FramedPlot()
+    pts_P_g1 = biggles.Points(g1, P_g1, type='filled circle')
+    plt_P_g1.add(pts_P_g1)
+    plt_P_g1.xlabel='g1'
+    plt_P_g1.ylabel='P'
+
+    plt_P_g2 = biggles.FramedPlot()
+    pts_P_g2 = biggles.Points(g2, P_g1, type='filled circle')
+    plt_P_g2.add(pts_P_g2)
+    plt_P_g2.xlabel='g2'
+    plt_P_g2.ylabel='P'
+
+
+    plt_Q_g1 = biggles.FramedPlot()
+    pts_Q1_g1 = biggles.Points(g1, Q_g1[:,0], type='filled circle', color='red')
+    pts_Q2_g1 = biggles.Points(g1, Q_g1[:,1], type='filled circle', color='blue')
+    pts_Q1_g1.label='Q1'
+    pts_Q2_g1.label='Q2'
+
+    Qkey_g1 = biggles.PlotKey(0.9,0.2,[pts_Q1_g1,pts_Q2_g1],halign='right')
+    plt_Q_g1.add(pts_Q1_g1,pts_Q2_g1,Qkey_g1)
+    plt_Q_g1.xlabel='g1'
+    plt_Q_g1.ylabel='Q'
+
+
+    plt_Q_g2 = biggles.FramedPlot()
+    pts_Q1_g2 = biggles.Points(g2, Q_g2[:,0], type='filled circle', color='red')
+    pts_Q2_g2 = biggles.Points(g2, Q_g2[:,1], type='filled circle', color='blue')
+    pts_Q1_g2.label='Q1'
+    pts_Q2_g2.label='Q2'
+
+    Qkey_g2 = biggles.PlotKey(0.9,0.2,[pts_Q1_g2,pts_Q2_g2],halign='right')
+    plt_Q_g2.add(pts_Q1_g2,pts_Q2_g2,Qkey_g2)
+    plt_Q_g2.xlabel='g2'
+    plt_Q_g2.ylabel='Q'
+
+    
+    plt_R_g1 = biggles.FramedPlot()
+    pts_R11_g1 = biggles.Points(g1, R_g1[:,0,0], type='filled circle', color='red')
+    pts_R12_g1 = biggles.Points(g1, R_g1[:,0,1], type='filled circle', color='darkgreen')
+    pts_R22_g1 = biggles.Points(g1, R_g1[:,1,1], type='filled circle', color='blue')
+    pts_R11_g1.label = 'R11'
+    pts_R12_g1.label = 'R12'
+    pts_R22_g1.label = 'R22'
+    Rkey_g1 = biggles.PlotKey(0.9,0.2,[pts_R11_g1,pts_R12_g1,pts_R22_g1],halign='right')
+
+    plt_R_g1.add(pts_R11_g1,pts_R12_g1,pts_R22_g1,Rkey_g1)
+    plt_R_g1.xlabel='g1'
+    plt_R_g1.ylabel='R'
+
+    plt_R_g2 = biggles.FramedPlot()
+    pts_R11_g2 = biggles.Points(g2, R_g2[:,0,0], type='filled circle', color='red')
+    pts_R12_g2 = biggles.Points(g2, R_g2[:,0,1], type='filled circle', color='darkgreen')
+    pts_R22_g2 = biggles.Points(g2, R_g2[:,1,1], type='filled circle', color='blue')
+
+    pts_R11_g2.label = 'R11'
+    pts_R12_g2.label = 'R12'
+    pts_R22_g2.label = 'R22'
+    Rkey_g2 = biggles.PlotKey(0.9,0.2,[pts_R11_g2,pts_R12_g2,pts_R22_g2],halign='right')
+
+    plt_R_g2.add(pts_R11_g2,pts_R12_g2,pts_R22_g2,Rkey_g2)
+    plt_R_g2.xlabel='g2'
+    plt_R_g2.ylabel='R'
+ 
+    tab[0,0] = plt_P_g1
+    tab[1,0] = plt_Q_g1
+    tab[2,0] = plt_R_g1
+
+    tab[0,1] = plt_P_g2
+    tab[1,1] = plt_Q_g2
+    tab[2,1] = plt_R_g2
+
+    tab.show()
+
+def test_pj_predict(type='BA', rng=[-0.2,0.2]):
     """
     Test how well the formalism predicts the sheared distribution
     """
@@ -340,7 +431,7 @@ def test_pj_predict(type='exp', rng=[-0.2,0.2]):
         gpe = gmix_image.priors.GPriorBA(gsigma)
 
     nr=1000000
-    binsize=0.01
+    binsize=0.005
 
     rg1,rg2 = gpe.sample2d(nr)
     #rg1_bf,rg2_bf = gpe.sample2d_brute(nr)
@@ -365,18 +456,14 @@ def test_pj_predict(type='exp', rng=[-0.2,0.2]):
                       xrange=rng,
                       plt=plt,title='full')
 
-def test_shear_recover_pqr(type='BA', nchunk=10, nper=1000000, s1=0.04,s2=0.00):
+def test_shear_recover_pqr(gsigma=0.3, nchunk=10, nper=1000000, s1=0.04, s2=0.00):
     """
     Shear a bunch of shapes drawn from the prior and try to
     recover using Bernstein & Armstrong
     """
     import lensing
 
-    if type=='BA':
-        gsigma=0.3
-        gpe = GPriorBA(gsigma)
-    else:
-        raise ValueError("implement %s as differentiable prior" % type)
+    gpe = GPriorBA(gsigma)
 
     g1sum=0.0
     g2sum=0.0
@@ -404,6 +491,10 @@ def test_shear_recover_pqr(type='BA', nchunk=10, nper=1000000, s1=0.04,s2=0.00):
         else:
             Q_sum += Q_sumi
             Cinv_sum += Cinv_sumi
+
+    print '-'*70
+    print 'Q_sum:',Q_sum
+    print 'Cinv_sum:',Cinv_sum
 
     C = numpy.linalg.inv(Cinv_sum)
     sh = numpy.dot(C,Q_sum)
@@ -489,14 +580,15 @@ class GPriorBA(GPrior):
         else:
             isscalar=False
 
-        #g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
-        #g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
-        g1 = numpy.array(g1in, dtype='f16', ndmin=1, copy=False)
-        g2 = numpy.array(g2in, dtype='f16', ndmin=1, copy=False)
+        g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
+        g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
+        #g1 = numpy.array(g1in, dtype='f16', ndmin=1, copy=False)
+        #g2 = numpy.array(g2in, dtype='f16', ndmin=1, copy=False)
 
         # these are the same
         #P=self.get_pj(g1, g2, 0.0, 0.0)
         P=self(g1, g2)
+
 
         #g=sqrt(g1**2 + g2**2)
         #w,=numpy.where(g >= 1)
@@ -505,25 +597,25 @@ class GPriorBA(GPrior):
         #    stop
 
         sigma = self.pars
-        s2 = sigma**2
-        s4 = sigma**4
-        s2inv = 1./sigma**2
-        s4inv = 1./sigma**4
+        sig2 = sigma**2
+        sig4 = sigma**4
+        sig2inv = 1./sigma**2
+        sig4inv = 1./sigma**4
 
         gsq = g1**2 + g2**2
         omgsq = 1. - gsq
 
-        fac = exp(-0.5*gsq*s2inv)*omgsq**2
+        fac = exp(-0.5*gsq*sig2inv)*omgsq**2
 
-        Qf = fac*(omgsq + 8*s2)*s2inv
+        Qf = fac*(omgsq + 8*sig2)*sig2inv
 
         Q1 = g1*Qf
         Q2 = g2*Qf
 
-        R11 = (fac * (g1**6 + g1**4*(-2 + 2*g2**2 - 19*s2) + (1 + g2**2)*s2*(-1 + g2**2 - 8*s2) + g1**2*(1 + g2**4 + 20*s2 + 72*s4 - 2*g2**2*(1 + 9*s2))))*s4inv
-        R22 = (fac * (g2**6 + g2**4*(-2 + 2*g1**2 - 19*s2) + (1 + g1**2)*s2*(-1 + g1**2 - 8*s2) + g2**2*(1 + g1**4 + 20*s2 + 72*s4 - 2*g1**2*(1 + 9*s2))))*s4inv
+        R11 = (fac * (g1**6 + g1**4*(-2 + 2*g2**2 - 19*sig2) + (1 + g2**2)*sig2*(-1 + g2**2 - 8*sig2) + g1**2*(1 + g2**4 + 20*sig2 + 72*sig4 - 2*g2**2*(1 + 9*sig2))))*sig4inv
+        R22 = (fac * (g2**6 + g2**4*(-2 + 2*g1**2 - 19*sig2) + (1 + g1**2)*sig2*(-1 + g1**2 - 8*sig2) + g2**2*(1 + g1**4 + 20*sig2 + 72*sig4 - 2*g1**2*(1 + 9*sig2))))*sig4inv
 
-        R12 = fac * g1*g2 * (80 + omgsq**2*s4inv + 20*omgsq*s2inv)
+        R12 = fac * g1*g2 * (80 + omgsq**2*sig4inv + 20*omgsq*sig2inv)
 
         np=g1.size
         Q = numpy.zeros( (np,2) )

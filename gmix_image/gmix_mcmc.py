@@ -801,24 +801,7 @@ class MixMCStandAlone:
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
         if self.when_prior=="during":
-            prior = self.gprior(g1,g2)
-            w,=numpy.where(prior > 0)
-            if w.size == 0:
-                raise ValueError("no prior values > 0!")
-
-            P = P[w]
-            Q = Q[w,:]
-            R = R[w,:,:]
-
-            pinv = 1/prior[w]
-            P *= pinv[w]
-            Q[:,0] *= pinv[w]
-            Q[:,1] *= pinv[w]
-
-            R[:,0,0] *= pinv[w]
-            R[:,0,1] *= pinv[w]
-            R[:,1,0] *= pinv[w]
-            R[:,1,1] *= pinv[w]
+            P,Q,R = self._fix_pqr_for_during(g1,g2,P,Q,R)
 
         P = P.mean()
         Q = Q.mean(axis=0)
@@ -826,6 +809,27 @@ class MixMCStandAlone:
 
         return P,Q,R
 
+    def _fix_pqr_for_during(self, g1, g2, P, Q, R):
+        prior = self.gprior(g1,g2)
+        w,=numpy.where(prior > 0)
+        if w.size == 0:
+            raise ValueError("no prior values > 0!")
+
+        P = P[w]
+        Q = Q[w,:]
+        R = R[w,:,:]
+
+        pinv = 1/prior[w]
+        P *= pinv[w]
+        Q[:,0] *= pinv[w]
+        Q[:,1] *= pinv[w]
+
+        R[:,0,0] *= pinv[w]
+        R[:,0,1] *= pinv[w]
+        R[:,1,0] *= pinv[w]
+        R[:,1,1] *= pinv[w]
+
+        return P, Q, R
 
     def get_maxprob_epars(self):
         wmax=self.lnprobs.argmax()

@@ -18,12 +18,8 @@ from numpy import zeros, array, where, ogrid, diag, sqrt, isfinite, \
 from .gmix import GMix
 from .gmix import gmix2pars
 
-def srandu(num=1):
-    if num==1:
-        return 2*(numpy.random.random()-0.5)
-    else:
-        return 2*(numpy.random.random(num)-0.5)
-
+def srandu(num=None):
+    return 2*(numpy.random.random(num)-0.5)
 
 
 def measure_gmix_width(gmix0, thresh_vals, expand=8, debug=False):

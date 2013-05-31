@@ -251,6 +251,7 @@ class GMixFitSimple:
         res['pcov']=pcov
         res['perr']=perr
         res['flags']=flags
+        res['fit_prob']=-9999.
 
         res['gciv']=None
         res['gsens']=1.0
@@ -466,6 +467,7 @@ class GMixFitMultiBase:
         res['pcov']=pcov
         res['perr']=perr
         res['flags']=flags
+        res['fit_prob'] = -9999.
 
         if res['flags']==0:
             if gmix_list is None:
@@ -641,6 +643,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         if self._rfc_res['flags'] != 0:
             self._result={'flags':self._rfc_res['flags'],
+                          'fit_prob':-9999.,
                           'model':self.model,
                           'restype':'lm',
                           'errmsg':'round fixcen fit failed',
