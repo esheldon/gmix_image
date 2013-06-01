@@ -846,11 +846,11 @@ class MixMCStandAlone:
     def _run_admom(self, image, ivar, cen, Tguess):
         import admom
 
-        ntry=20
+        ntry=40
         for i in xrange(ntry):
             cen0=cen[0] + 0.1*srandu()
             cen1=cen[1] + 0.1*srandu()
-            guess=Tguess/2.0*(1.0 + 0.10*srandu())
+            guess=Tguess/2.0*(1.0 + 0.20*srandu())
             ares = admom.admom(image,
                                cen0,
                                cen1,
