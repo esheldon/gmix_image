@@ -537,7 +537,7 @@ class MixMCStandAlone:
         """
         
         self.make_plots=keys.get('make_plots',False)
-        self.do_pqr=keys.get('do_pqr',False)
+        self.do_pqr=keys.get('do_pqr',True)
         self.when_prior = keys.get('when_prior',"during")
 
         # cen1,cen2,e1,e2,T,p
@@ -757,9 +757,11 @@ class MixMCStandAlone:
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
-        Ts2n=pars[4]/sqrt(pcov[4,4])
-        Fs2n=pars[5]/sqrt(pcov[5,5])
+        Ts2n=Tmean/Terr
 
+        Flux=pars[5]
+        Ferr=sqrt(pcov[5,5])
+        Fs2n=Flux/Ferr
 
         self._result={'flags':0,
                       'model':self.model,
@@ -772,6 +774,8 @@ class MixMCStandAlone:
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
+                      'Flux':Flux,
+                      'Ferr':Ferr,
                       'Fs2n':Fs2n,
                       'arate':arate}
 
@@ -1044,7 +1048,8 @@ class MixMCStandAlone:
 class MixMCCoellip:
     def __init__(self, image, ivar, psf, gprior, ngauss, **keys):
         self.make_plots=keys.get('make_plots',False)
-        self.do_pqr=keys.get('do_pqr',False)
+        self.do_pqr=keys.get('do_pqr',True)
+        self.when_prior = "after"
 
         # cen1,cen2,e1,e2,Ti,pi
         self.model='coellip'
@@ -1088,9 +1093,6 @@ class MixMCCoellip:
         self._go()
 
     def _get_guess(self):
-        """
-        Note for model coellip this only does one gaussian
-        """
         if self.ares is None:
             self.ares=self._run_admom(self.image, self.ivar, 
                                       self.cen_guess, 8.0)
@@ -1145,6 +1147,134 @@ class MixMCCoellip:
         return guess
 
 
+    def _calc_result(self):
+        """
+        We marginalize over all parameters but g1,g2, which
+        are index 0 and 1 in the pars array
+        """
+        import mcmc
+
+        g=zeros(2)
+        gcov=zeros((2,2))
+        gsens = zeros(2)
+
+        g1vals=self.trials[:,2]
+        g2vals=self.trials[:,3]
+
+        prior = self.gprior(g1vals,g2vals)
+        dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
+        dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
+
+        psum = prior.sum()
+
+        # prior is already in the distribution of
+        # points.  This is simpler for most things but
+        # for sensitivity we need a factor of (1/P)dP/de
+
+        pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
+
+        g[:] = pars[2:4]
+        gcov[:,:] = pcov[2:4, 2:4]
+
+        g1diff = g[0]-g1vals
+        g2diff = g[1]-g2vals
+
+        gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
+        gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+ 
+        arates = self.sampler.acceptance_fraction
+        arate = arates.mean()
+
+        max_epars=self.get_maxprob_epars()
+        gmix=self._get_convolved_gmix(max_epars)
+
+        stats=calculate_some_stats(self.image, 
+                                   self.ivar, 
+                                   gmix,
+                                   self.npars,
+                                   nsub=self.nsub)
+
+        cdiag = diag(pcov)
+        Fvals=pars[4+self.ngauss:]
+        Flux=Fvals.sum()
+        Fcovs = cdiag[4+self.ngauss:]
+        Ferr=sqrt( Fcovs.sum() )
+
+        Tvals=pars[4:4+self.ngauss]
+        Tmean=(Tvals*Fvals).sum()/Flux
+
+        Tcovs = cdiag[4:4+self.ngauss]
+        Fvals2 = Fvals**2
+        Terr2 = (Tcovs*Fvals2).sum()/Fvals2.sum()
+        Terr = sqrt(Terr2)
+
+        Ts2n=Tmean/Terr
+        Fs2n=Flux/Ferr
+
+        self._result={'flags':0,
+                      'model':self.model,
+                      'g':g,
+                      'gcov':gcov,
+                      'gsens':gsens,
+                      'pars':pars,
+                      'perr':sqrt(diag(pcov)),
+                      'pcov':pcov,
+                      'Tmean':Tmean,
+                      'Terr':Terr,
+                      'Ts2n':Ts2n,
+                      'Flux':Flux,
+                      'Ferr':Ferr,
+                      'Fs2n':Fs2n,
+                      'arate':arate}
+
+        if self.do_pqr:
+            P,Q,R = self._get_PQR()
+            self._result['P']=P
+            self._result['Q']=Q
+            self._result['R']=R
+
+        for k in stats:
+            self._result[k] = stats[k]
+
+    def _doplots(self):
+        import mcmc
+        import biggles
+        import esutil as eu
+
+        ngauss=self.ngauss
+        biggles.configure("default","fontsize_min",1.2)
+
+        tab=biggles.Table(self.npars,2)
+
+        labels=[r'$cen_1$',r'$cen_2$',r'$g_1$',r'$g_2$']
+        Tlabs = [r'$T_{%s}$' % (i+1) for i in xrange(ngauss)]
+        Flabs = [r'$F_{%s}$' % (i+1) for i in xrange(ngauss)]
+
+        labels += Tlabs
+        labels += Flabs
+
+        ind=numpy.arange(self.trials.shape[0])
+        for i in xrange(self.npars):
+            vals = self.trials[:,i]
+
+            burn_plt=biggles.FramedPlot()
+            burn_plt.add(biggles.Curve(ind, vals))
+
+            burn_plt.ylabel=labels[i]
+
+            bsize=vals.std()*0.2
+            hplt = eu.plotting.bhist(vals,binsize=bsize, show=False)
+            hplt.xlabel=labels[i]
+
+            tab[i,0] = burn_plt
+            tab[i,1] = hplt
+
+        tab.show()
+
+        key=raw_input('hit a key (q to quit): ')
+        if key=='q':
+            stop
+        print
 
 
 class MixMCPSF:
