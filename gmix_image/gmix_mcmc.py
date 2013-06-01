@@ -497,7 +497,7 @@ class MixMC:
 class MixMCStandAlone:
     def __init__(self, image, ivar, psf, gprior, model, **keys):
         """
-        mcmc sampling of posterior.
+        mcmc sampling of posterior, simple model.
 
         Two modes of operation - send a center guess and admom will
         be run internally, or send ares=, with wrow,wcol,Irr,Irc,Icc
@@ -1039,6 +1039,112 @@ class MixMCStandAlone:
         if key=='q':
             stop
         print
+
+
+class MixMCCoellip:
+    def __init__(self, image, ivar, psf, gprior, ngauss, **keys):
+        self.make_plots=keys.get('make_plots',False)
+        self.do_pqr=keys.get('do_pqr',False)
+
+        # cen1,cen2,e1,e2,Ti,pi
+        self.model='coellip'
+        self.ngauss=ngauss
+        self.npars=2*ngauss+4
+
+        self.image=image
+        self.ivar=float(ivar)
+
+        self.psf_gmix=psf
+
+        self.gprior=gprior
+
+        # doesn't currently make sense
+        self.Tprior=None
+
+        self.nwalkers=keys.get('nwalkers',20)
+        self.nstep=keys.get('nstep',200)
+        self.burnin=keys.get('burnin',400)
+        self.draw_gprior=keys.get('draw_gprior',True)
+        self.mca_a=keys.get('mca_a',2.0)
+        self.doiter=keys.get('iter',True)
+        
+        self.cen_guess=keys.get('cen',None)
+        self.ares=keys.get('ares',None)
+
+        self.cen_width=keys.get('cen_width',1.0)
+
+        if self.cen_guess is None and self.ares is None:
+            raise ValueError("send cen= or ares=")
+        if self.ares is not None and self.ares['whyflag']!=0:
+            raise ValueError("If you enter ares it must have "
+                             "whyflag==0")
+
+        self.counts=self.image.sum()
+
+        self.nsub=keys.get("nsub",None)
+        if self.nsub is not None:
+            self.nsub=int(self.nsub)
+
+        self._go()
+
+    def _get_guess(self):
+        """
+        Note for model coellip this only does one gaussian
+        """
+        if self.ares is None:
+            self.ares=self._run_admom(self.image, self.ivar, 
+                                      self.cen_guess, 8.0)
+
+        cen=[self.ares['wrow'],self.ares['wcol']]
+        self.cenprior=CenPrior(cen, [self.cen_width]*2)
+
+        T0=self.ares['Irr'] + self.ares['Icc']
+
+        guess=zeros( (self.nwalkers,self.npars) )
+
+        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+
+        if self.draw_gprior:
+            g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
+            guess[:,2] = g1rand
+            guess[:,3] = g2rand
+        else:
+            # (0,0) with some scatter
+            guess[:,2]=0.1*srandu(self.nwalkers)
+            guess[:,3]=0.1*srandu(self.nwalkers)
+
+        ngauss=self.ngauss
+        counts0=self.counts
+        if ngauss==1:
+            guess[4] = T0*(1 + 0.05*srandu())
+            guess[5] = counts0*(1 + 0.05*srandu())
+        else:
+            if ngauss==2:
+                Texamp=array([12.6,3.8])
+                pexamp=array([0.30, 0.70])
+
+                Tfrac=Texamp/Texamp.sum()
+                pfrac=pexamp/pexamp.sum()
+
+            elif ngauss==3:
+                Texamp=array([0.46,5.95,2.52])
+                pexamp=array([0.1,0.7,0.22])
+
+                Tfrac=Texamp/Texamp.sum()
+                pfrac=pexamp/pexamp.sum()
+            else:
+                raise ValueError("support ngauss>3")
+
+            guess[4:4+ngauss] = T0*Tfrac 
+            guess[4+ngauss:] = counts0*pfrac
+
+            guess[4:npars] = guess[4:npars]*(1+0.05*srandu(2*ngauss))
+
+        self._guess=guess
+        return guess
+
+
 
 
 class MixMCPSF:
