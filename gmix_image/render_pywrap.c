@@ -999,7 +999,7 @@ static int calculate_loglike(struct image *image,
                                              loglike);
 
     if (s2n_denom > 0) {
-        (*s2n) = s2n_numer/s2n_denom;
+        (*s2n) = s2n_numer/sqrt(s2n_denom);
     } else {
         (*s2n)=0;
     }

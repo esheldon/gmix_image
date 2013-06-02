@@ -536,7 +536,7 @@ class MixMCStandAlone:
             Default is broad, 1.0
         """
         
-        self.make_plots=keys.get('make_plots',False)
+        self.make_plots=keys.get('make_plots',True)
         self.do_pqr=keys.get('do_pqr',True)
         self.when_prior = keys.get('when_prior',"during")
 

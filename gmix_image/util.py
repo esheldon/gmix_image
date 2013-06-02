@@ -438,6 +438,7 @@ def get_estyle_pars(pars, check_T=False):
         return None
 
     if check_T:
+        # only works for simple models
         T=pars[4]
         if T < 0:
             return None
