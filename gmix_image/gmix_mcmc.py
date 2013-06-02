@@ -628,25 +628,29 @@ class MixMCStandAlone:
             pos, prob, state = sampler.run_mcmc(pos, self.nstep)
 
         else:
-            while True:
-                sampler = self._get_sampler()
-                guess=self._get_guess()
-                pos, prob, state = sampler.run_mcmc(guess, self.burnin)
-                sampler.reset()
-                pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+            sampler = self._get_sampler()
+            guess=self._get_guess()
 
+            pos, prob, state = sampler.run_mcmc(guess, self.burnin)
+            sampler.reset()
+            pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+
+            i=0
+            while True:
+                i+=1
                 try:
                     acor=sampler.acor
                     tau = (sampler.acor/self.nstep).max()
                     if tau > tau_max:
-                        print "tau",tau,"greater than",tau_max
-                        self.nwalkers = self.nwalkers*2
-                        sampler = self._get_sampler()
+                        print >>stderr,"tau",tau,"greater than",tau_max,"iter:",i
                     else:
                         break
                 except:
-                    # something went wrong with acor, run some more
-                    pass
+                    print >>stderr,"err in acor, retrying"
+
+                sampler.reset()
+                pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+
             self._tau=tau
         return sampler
 
@@ -1045,7 +1049,7 @@ class MixMCStandAlone:
         print
 
 
-class MixMCCoellip:
+class MixMCCoellip(MixMCStandAlone):
     def __init__(self, image, ivar, psf, gprior, ngauss, **keys):
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',True)
@@ -1119,29 +1123,39 @@ class MixMCCoellip:
         ngauss=self.ngauss
         counts0=self.counts
         if ngauss==1:
-            guess[4] = T0*(1 + 0.05*srandu())
-            guess[5] = counts0*(1 + 0.05*srandu())
+            guess[:,4] = T0*(1 + 0.05*srandu(self.nwalkers))
+            guess[:,5] = counts0*(1 + 0.05*srandu(self.nwalkers))
         else:
+            # these are tuned ~ for exp
             if ngauss==2:
-                Texamp=array([12.6,3.8])
-                pexamp=array([0.30, 0.70])
+                #Texamp=array([12.6,3.8])
+                #pexamp=array([0.30, 0.70])
+                Texamp=array([0.77, 0.23])
+                pexamp=array([0.44, 0.53])
 
                 Tfrac=Texamp/Texamp.sum()
                 pfrac=pexamp/pexamp.sum()
 
             elif ngauss==3:
-                Texamp=array([0.46,5.95,2.52])
-                pexamp=array([0.1,0.7,0.22])
+                #Texamp=array([0.46,5.95,2.52])
+                #pexamp=array([0.1,0.7,0.22])
+                #Texamp = array([1.0,0.3,0.06])
+                #pexamp = array([0.26,0.55,0.18])
+
+                Texamp =array([0.79,  0.2,  0.03])
+                pexamp = array([0.44, 0.48, 0.08])
 
                 Tfrac=Texamp/Texamp.sum()
                 pfrac=pexamp/pexamp.sum()
             else:
                 raise ValueError("support ngauss>3")
 
-            guess[4:4+ngauss] = T0*Tfrac 
-            guess[4+ngauss:] = counts0*pfrac
-
-            guess[4:npars] = guess[4:npars]*(1+0.05*srandu(2*ngauss))
+            fac=1.5
+            if self.make_plots:
+                print 'Tguess:',fac*T0*Tfrac
+            for i in xrange(ngauss):
+                guess[:,4+i] = fac*T0*Tfrac[i]*(1. + 0.1*srandu(self.nwalkers))
+                guess[:,4+ngauss+i] = counts0*pfrac[i]*(1. + 0.1*srandu(self.nwalkers))
 
         self._guess=guess
         return guess
@@ -1241,9 +1255,11 @@ class MixMCCoellip:
         import biggles
         import esutil as eu
 
-        ngauss=self.ngauss
+        biggles.configure('screen','width',1100)
+        biggles.configure('screen','height',1100)
         biggles.configure("default","fontsize_min",1.2)
 
+        ngauss=self.ngauss
         tab=biggles.Table(self.npars,2)
 
         labels=[r'$cen_1$',r'$cen_2$',r'$g_1$',r'$g_2$']
@@ -1269,6 +1285,16 @@ class MixMCCoellip:
             tab[i,0] = burn_plt
             tab[i,1] = hplt
 
+        Tmeans = self.trials[:,4:4+self.ngauss].mean(axis=0)
+        Fmeans = self.trials[:,4+self.ngauss:].mean(axis=0)
+
+        Tfracs=Tmeans/Tmeans.sum()
+        Ffracs=Fmeans/Fmeans.sum()
+
+        print 'arate:',self._result['arate']
+        print 'Tvals:',Tmeans
+        print 'Tfracs:',Tfracs
+        print 'Ffracs:',Ffracs
         tab.show()
 
         key=raw_input('hit a key (q to quit): ')

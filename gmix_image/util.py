@@ -428,18 +428,19 @@ def randomize_e1e2(e1start,e2start, width=0.1):
 
     return e1rand, e2rand
 
-def get_estyle_pars(pars):
+def get_estyle_pars(pars, check_T=False):
     epars = pars.copy()
 
-    T=pars[4]
     g1,g2=pars[2],pars[3]
 
     e1,e2,ok = g1g2_to_e1e2(g1,g2)
     if not ok:
         return None
 
-    if T < 0:
-        return None
+    if check_T:
+        T=pars[4]
+        if T < 0:
+            return None
 
     epars[2] = e1
     epars[3] = e2
