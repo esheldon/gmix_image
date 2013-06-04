@@ -724,6 +724,48 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size)
     return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
 }
 
+struct gvec *gvec_from_pars_bdc(double *pars, int size)
+{
+    int ngauss_exp=6, ngauss_dev=10;
+
+    double pars_exp[6], pars_dev[6];
+    struct gvec *gvec_exp=NULL, *gvec_dev=NULL, *gvec=NULL;
+
+    if (size != 8) {
+        return NULL;
+    }
+
+    pars_exp[0] = pars[0];
+    pars_exp[1] = pars[1];
+    pars_exp[2] = pars[2];
+    pars_exp[3] = pars[3];
+    pars_exp[4] = pars[4];
+    pars_exp[5] = pars[6];
+
+    pars_dev[0] = pars[0];
+    pars_dev[1] = pars[1];
+    pars_dev[2] = pars[2];
+    pars_dev[3] = pars[3];
+    pars_dev[4] = pars[5];
+    pars_dev[5] = pars[7];
+
+    gvec_exp=gvec_from_pars_exp6(pars_exp, 6);
+    gvec_dev=gvec_from_pars_dev10(pars_dev, 6);
+
+    gvec=gvec_new(16);
+    memcpy(gvec->data,
+           gvec_exp->data,
+           ngauss_exp*sizeof(struct gauss));
+    memcpy(gvec->data+ngauss_exp,
+           gvec_dev->data,
+           ngauss_dev*sizeof(struct gauss));
+
+    gvec_exp=gvec_free(gvec_exp);
+    gvec_dev=gvec_free(gvec_dev);
+
+    return gvec;
+}
+
 struct gvec *gvec_from_pars_turb(double *pars, int size)
 {
     if (size != 6) {

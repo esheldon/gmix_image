@@ -162,6 +162,16 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             }
             break;
 
+        case 6:
+            self->gvec = gvec_from_pars_bdc(pars, size);
+            if (self->gvec == NULL) {
+                PyErr_Format(PyExc_ValueError, 
+                        "bdc pars not size 8: %ld", size);
+            }
+            break;
+
+
+
         default:
             PyErr_Format(PyExc_ValueError, "bad pars type value: %d", type);
             return -1;

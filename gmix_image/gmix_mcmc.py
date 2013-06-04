@@ -966,16 +966,20 @@ class MixMCStandAlone:
         errs = sqrt(diag(gcov))
 
         res=self.get_result()
+
+        Flux=res['pars'][5]
+        Flux_err=sqrt(res['pcov'][5,5])
+        print 'Flux: %g +/- %g' % (Flux,Flux_err)
+        print 'T:  %g +/- %g' % (Tvals.mean(), Tvals.std())
         print 's2n weighted:',res['s2n_w']
         print 'acceptance rate:',res['arate'],'mca_a',self.mca_a
-        print 'T:  %.16g +/- %.16g' % (Tvals.mean(), Tvals.std())
 
         print_pars(self._result['pars'])
         print_pars(sqrt(diag(self._result['pcov'])))
-        print 'g1sens:',self._result['gsens'][0]
-        print 'g2sens:',self._result['gsens'][1]
-        print 'g1: %.16g +/- %.16g' % (g[0],errs[0])
-        print 'g2: %.16g +/- %.16g' % (g[1],errs[1])
+        #print 'g1sens:',self._result['gsens'][0]
+        #print 'g2sens:',self._result['gsens'][1]
+        #print 'g1: %.16g +/- %.16g' % (g[0],errs[0])
+        #print 'g2: %.16g +/- %.16g' % (g[1],errs[1])
         print 'chi^2/dof: %.3f/%i = %f' % (res['chi2per']*res['dof'],res['dof'],res['chi2per'])
         print 'probrand:',res['fit_prob']
 
@@ -1047,6 +1051,254 @@ class MixMCStandAlone:
         if key=='q':
             stop
         print
+
+
+class MixMCBDC(MixMCStandAlone):
+    """
+    bulge+disk, coelliptical
+    """
+    def __init__(self, image, ivar, psf, gprior, **keys):
+        self.make_plots=keys.get('make_plots',False)
+        self.do_pqr=keys.get('do_pqr',True)
+        self.when_prior = "after"
+
+        # cen1,cen2,e1,e2,Ti,pi
+        self.model='bdc'
+        self.npars=8
+
+        self.image=image
+        self.ivar=float(ivar)
+
+        self.psf_gmix=psf
+
+        self.gprior=gprior
+
+        # doesn't currently make sense
+        self.Tprior=None
+
+        self.nwalkers=keys.get('nwalkers',20)
+        self.nstep=keys.get('nstep',200)
+        self.burnin=keys.get('burnin',400)
+        self.draw_gprior=keys.get('draw_gprior',True)
+        self.mca_a=keys.get('mca_a',2.0)
+        self.doiter=keys.get('iter',True)
+        
+        self.cen_guess=keys.get('cen',None)
+        self.ares=keys.get('ares',None)
+
+        self.cen_width=keys.get('cen_width',1.0)
+
+        if self.cen_guess is None and self.ares is None:
+            raise ValueError("send cen= or ares=")
+        if self.ares is not None and self.ares['whyflag']!=0:
+            raise ValueError("If you enter ares it must have "
+                             "whyflag==0")
+
+        self.counts=self.image.sum()
+
+        self.nsub=keys.get("nsub",None)
+        if self.nsub is not None:
+            self.nsub=int(self.nsub)
+
+        self._go()
+
+    def _get_guess(self):
+        if self.ares is None:
+            self.ares=self._run_admom(self.image, self.ivar, 
+                                      self.cen_guess, 8.0)
+
+        cen=[self.ares['wrow'],self.ares['wcol']]
+        self.cenprior=CenPrior(cen, [self.cen_width]*2)
+
+        T0=self.ares['Irr'] + self.ares['Icc']
+
+        guess=zeros( (self.nwalkers,self.npars) )
+
+        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+
+        if self.draw_gprior:
+            g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
+            guess[:,2] = g1rand
+            guess[:,3] = g2rand
+        else:
+            # (0,0) with some scatter
+            guess[:,2]=0.1*srandu(self.nwalkers)
+            guess[:,3]=0.1*srandu(self.nwalkers)
+
+        counts0=self.counts
+
+        fac=1
+        if self.make_plots:
+            print 'T0 guess:',fac*T0
+        """
+        guess[:,4] = fac*T0*( 1 + 0.1*srandu(self.nwalkers) )
+        guess[:,5] = fac*T0*( 1 + 0.1*srandu(self.nwalkers) )
+
+        guess[:,6] = 0.5*counts0*( 1 + 0.1*srandu(self.nwalkers) )
+        guess[:,7] = 0.5*counts0*( 1 + 0.1*srandu(self.nwalkers) )
+        """
+
+        guess[:,4] = fac*T0*( 1 + 0.4*srandu(self.nwalkers) )
+        guess[:,5] = fac*T0*( 1 + 0.4*srandu(self.nwalkers) )
+
+        guess[:,6] = counts0*(0.2+0.6*numpy.random.random(self.nwalkers))
+        guess[:,7] = counts0*(0.2+0.6*numpy.random.random(self.nwalkers))
+
+        self._guess=guess
+        return guess
+
+
+    def _calc_result(self):
+        """
+        We marginalize over all parameters but g1,g2, which
+        are index 0 and 1 in the pars array
+        """
+        import mcmc
+
+        g=zeros(2)
+        gcov=zeros((2,2))
+        gsens = zeros(2)
+
+        g1vals=self.trials[:,2]
+        g2vals=self.trials[:,3]
+
+        prior = self.gprior(g1vals,g2vals)
+        dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
+        dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
+
+        psum = prior.sum()
+
+        # prior is already in the distribution of
+        # points.  This is simpler for most things but
+        # for sensitivity we need a factor of (1/P)dP/de
+
+        pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
+
+        g[:] = pars[2:4]
+        gcov[:,:] = pcov[2:4, 2:4]
+
+        g1diff = g[0]-g1vals
+        g2diff = g[1]-g2vals
+
+        gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
+        gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+ 
+        arates = self.sampler.acceptance_fraction
+        arate = arates.mean()
+
+        max_epars=self.get_maxprob_epars()
+        gmix=self._get_convolved_gmix(max_epars)
+
+        stats=calculate_some_stats(self.image, 
+                                   self.ivar, 
+                                   gmix,
+                                   self.npars,
+                                   nsub=self.nsub)
+
+        cdiag = diag(pcov)
+
+        Fvals=pars[[6,7]].copy()
+        Fcov = pcov[6:6+2, 6:6+2].copy()
+
+        Flux=Fvals.sum()
+        Ferr=sqrt( Fcov[0,0] + Fcov[1,1] + 2*Fcov[0,1] )
+
+        Tvals=pars[[4,5]].copy()
+        Tcov=pcov[4:4+2, 4:4+2].copy()
+
+        Tmean=(Tvals*Fvals).sum()/Flux
+        Terr = sqrt(  Fvals[0]**2*Tcov[0,0]
+                    + Fvals[1]**2*Tcov[1,1]
+                    + 2*Fvals[0]*Fvals[1]*Tcov[0,1] )
+
+
+        Ts2n=Tmean/Terr
+        Fs2n=Flux/Ferr
+
+        self._result={'flags':0,
+                      'model':self.model,
+                      'g':g,
+                      'gcov':gcov,
+                      'gsens':gsens,
+                      'pars':pars,
+                      'perr':sqrt(diag(pcov)),
+                      'pcov':pcov,
+                      'Tmean':Tmean,
+                      'Terr':Terr,
+                      'Ts2n':Ts2n,
+                      'Flux':Flux,
+                      'Ferr':Ferr,
+                      'Fs2n':Fs2n,
+                      'arate':arate}
+
+        if self.do_pqr:
+            P,Q,R = self._get_PQR()
+            self._result['P']=P
+            self._result['Q']=Q
+            self._result['R']=R
+
+        for k in stats:
+            self._result[k] = stats[k]
+
+    def _doplots(self):
+        import mcmc
+        import biggles
+        import esutil as eu
+
+        res=self.get_result()
+
+        biggles.configure('screen','width',1100)
+        biggles.configure('screen','height',1100)
+        biggles.configure("default","fontsize_min",1.2)
+
+        tab=biggles.Table(self.npars,2)
+
+        labels=[r'$cen_1$',r'$cen_2$',
+                r'$g_1$',r'$g_2$',
+                r'$T_{exp}$',r'$T_{dev}$',
+                r'$F_{exp}',r'$F_{dev}$']
+
+        ind=numpy.arange(self.trials.shape[0])
+        for i in xrange(self.npars):
+            vals = self.trials[:,i]
+
+            burn_plt=biggles.FramedPlot()
+            burn_plt.add(biggles.Curve(ind, vals))
+
+            burn_plt.ylabel=labels[i]
+
+            bsize=vals.std()*0.2
+            hplt = eu.plotting.bhist(vals,binsize=bsize, show=False)
+            hplt.xlabel=labels[i]
+
+            tab[i,0] = burn_plt
+            tab[i,1] = hplt
+
+        Tmeans = self.trials[:,4:4+2].mean(axis=0)
+        Fmeans = self.trials[:,6:6+2].mean(axis=0)
+
+        Tfracs=Tmeans/Tmeans.sum()
+        Ffracs=Fmeans/Fmeans.sum()
+
+        print 'Flux: %g +/- %g' % (res['Flux'],res['Ferr'])
+        print 'T:    %g +/- %g' % (res['Tmean'],res['Terr'])
+        Fcov=res['pcov'][6:6+2, 6:6+2]
+
+        print 'flux cov:',Fcov
+        print 'Ffracs:',Ffracs
+        print 'Tvals:',Tmeans
+        print 'Tfracs:',Tfracs
+        print 'exp Tmin,max:',self.trials[:,4].min(), self.trials[:,4].max()
+        print 'dev Tmin,max:',self.trials[:,5].min(), self.trials[:,5].max()
+        print 'arate:',self._result['arate']
+        tab.show()
+
+        key=raw_input('hit a key (q to quit): ')
+        if key=='q':
+            stop
+        print
+
 
 
 class MixMCCoellip(MixMCStandAlone):
@@ -1737,5 +1989,7 @@ def g1g2_to_e1e2(g1, g2):
     fac = e/g
     e1, e2 = fac*g1, fac*g2
     return e1,e2,True
+
+
 
 
