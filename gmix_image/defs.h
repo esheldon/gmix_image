@@ -9,7 +9,13 @@
 
 # define M_TWO_PI   6.28318530717958647693
 
-#define EXP_MAX_CHI2 200
+// this is for exp(-0.5*chi2) and corresponds to
+// about sqrt(200) ~ 14 sigma
+//#define EXP_MAX_CHI2 200
+// 6 sigma
+//#define EXP_MAX_CHI2 36
+// 8 sigma
+#define EXP_MAX_CHI2 64
 
 #define GMIX_IMAGE_BIGNUM 9.999e9
 

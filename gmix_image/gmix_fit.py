@@ -270,6 +270,7 @@ class GMixFitSimple:
         res['pcov']=pcov
         res['perr']=perr
         res['flags']=flags
+        res['fit_prob']=-9999.
 
         res['gciv']=None
         res['gsens']=1.0
@@ -322,17 +323,17 @@ class GMixFitMultiBase:
         you do want to call this with the keywords
 
         self.npars=6
-        self.imlist=self._get_imlist(imlist)
-        self.wtlist=self._get_imlist(wtlist)
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
 
-        self.jacoblist=jacoblist
-        self.psflist=psflist
+        self.jacob_list=jacob_list
+        self.psf_list=psf_list
         self.model=model
 
         self._set_im_wt_sums()
 
-        self.nimage=len(self.imlist)
-        self.imsize=self.imlist[0].size
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
 
         self._fit_round_fixcen()
@@ -378,9 +379,9 @@ class GMixFitMultiBase:
         ydiff = zeros(imsize, dtype='f8')
 
         for i in xrange(self.nimage):
-            im=self.imlist[i]
-            wt=self.wtlist[i]
-            jacob=self.jacoblist[i]
+            im=self.im_list[i]
+            wt=self.wt_list[i]
+            jacob=self.jacob_list[i]
             gmix=gmix_list[i]
  
             # center of coord system is always the starting center
@@ -406,26 +407,26 @@ class GMixFitMultiBase:
         gmix=gmix0.convolve(psf)
         return gmix
 
-    def _get_imlist(self, imlist0):
+    def _get_im_list(self, im_list0):
         """
         Make a new list with images that are C contiguous
         and type 'f8' native
         """
-        imlist=[]
-        for im0 in imlist0:
+        im_list=[]
+        for im0 in im_list0:
             im=numpy.array(im0, dtype='f8', order='C', copy=False)
-            imlist.append(im)
-        return imlist
+            im_list.append(im)
+        return im_list
 
     def _set_im_wt_sums(self):
         """
         median of the counts across all input images
         """
-        clist=numpy.zeros(len(self.imlist))
+        clist=numpy.zeros(len(self.im_list))
         wtsum=0.0
-        for i,im in enumerate(self.imlist):
+        for i,im in enumerate(self.im_list):
             clist[i] = im.sum()
-            wtsum += self.wtlist[i].sum()
+            wtsum += self.wt_list[i].sum()
         
         self.counts=numpy.median(clist)
         self.wtsum=wtsum
@@ -485,6 +486,7 @@ class GMixFitMultiBase:
         res['pcov']=pcov
         res['perr']=perr
         res['flags']=flags
+        res['fit_prob'] = -9999.
 
         if res['flags']==0:
             if gmix_list is None:
@@ -507,9 +509,9 @@ class GMixFitMultiBase:
         loglike=0.
 
         for i in xrange(self.nimage):
-            im=self.imlist[i]
-            wt=self.wtlist[i]
-            jacob=self.jacoblist[i]
+            im=self.im_list[i]
+            wt=self.wt_list[i]
+            jacob=self.jacob_list[i]
             gmix=gmix_list[i]
  
             tres=render._render.loglike_wt_jacob(im,
@@ -571,7 +573,7 @@ class GMixFitMultiBase:
         if not hasattr(self, 'eff_npix'):
             wtmax = 0.0
             wtsum = 0.0
-            for wt in self.wtlist:
+            for wt in self.wt_list:
                 this_wtmax = wt.max()
                 if this_wtmax > wtmax:
                     wtmax = this_wtmax
@@ -616,26 +618,26 @@ class GMixFitMultiSimple(GMixFitMultiBase):
     images and equal the cen0 for that image.
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist, model,
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, model,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
 
         self.npars=6
-        self.imlist=self._get_imlist(imlist)
-        self.wtlist=self._get_imlist(wtlist)
-        self.jacoblist=jacoblist
-        self.psflist=psflist
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
+        self.jacob_list=jacob_list
+        self.psf_list=psf_list
 
-        self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist)
+        self._check_lists(self.im_list,self.wt_list,self.jacob_list,
+                          self.psf_list)
 
         self.model=model
 
         self._set_im_wt_sums()
 
-        self.nimage=len(self.imlist)
-        self.imsize=self.imlist[0].size
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
 
         self.use_cenprior=True
@@ -660,6 +662,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         if self._rfc_res['flags'] != 0:
             self._result={'flags':self._rfc_res['flags'],
+                          'fit_prob':-9999.,
                           'model':self.model,
                           'restype':'lm',
                           'errmsg':'round fixcen fit failed',
@@ -703,6 +706,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             res['gerr'] = sqrt(diag(gcov))
             res['Terr']  = res['perr'][4]
             res['Ts2n']  = res['Tmean']/res['Terr']
+            res['Fs2n']  = res['pars'][5]/sqrt(res['pcov'][5,5])
             res['arate'] = 1.
 
     def _fit_round_fixcen(self):
@@ -755,7 +759,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         the psf in the individual images
         """
         gmix_list=[]
-        for psf in self.psflist:
+        for psf in self.psf_list:
             gmix=self._get_convolved_gmix(pars, psf)
             gmix_list.append(gmix)
 
@@ -842,20 +846,20 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
     You can enter any GMix object.  
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist, gmix0,
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, gmix0,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
 
-        self.imlist=self._get_imlist(imlist)
-        self.wtlist=self._get_imlist(wtlist)
-        self.jacoblist=jacoblist
-        self.psflist=psflist
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
+        self.jacob_list=jacob_list
+        self.psf_list=psf_list
         self.gmix0=gmix0.copy()
 
-        self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist)
+        self._check_lists(self.im_list,self.wt_list,self.jacob_list,
+                          self.psf_list)
 
 
         # we will fix this and only reset the fluxes as we go
@@ -863,8 +867,8 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
 
         self.use_cenprior=False
 
-        self.nimage=len(self.imlist)
-        self.imsize=self.imlist[0].size
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
         self.model='amponly'
 
@@ -928,7 +932,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         return self.gmix_list
     def _set_gmix_list(self):
         gmix_list=[]
-        for psf in self.psflist:
+        for psf in self.psf_list:
             g = self.gmix0.convolve(psf)
             gmix_list.append(g)
         self.gmix_list=gmix_list
@@ -951,22 +955,22 @@ class GMixFitMultiCModel(GMixFitMultiBase):
     You can enter any GMix object.  
 
     """
-    def __init__(self, imlist, wtlist, jacoblist, psflist,
+    def __init__(self, im_list, wt_list, jacob_list, psf_list,
                  gmix_exp, gmix_dev,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
 
-        self._check_lists(imlist,wtlist,jacoblist,psflist)
+        self._check_lists(im_list,wt_list,jacob_list,psf_list)
 
-        self.imlist=self._get_imlist(imlist)
-        self.wtlist=self._get_imlist(wtlist)
-        self.jacoblist=jacoblist
-        self.psflist=psflist
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
+        self.jacob_list=jacob_list
+        self.psf_list=psf_list
 
-        self._check_lists(self.imlist,self.wtlist,self.jacoblist,
-                          self.psflist)
+        self._check_lists(self.im_list,self.wt_list,self.jacob_list,
+                          self.psf_list)
 
         self.gmix_exp=gmix_exp.copy()
         self.gmix_dev=gmix_dev.copy()
@@ -976,8 +980,8 @@ class GMixFitMultiCModel(GMixFitMultiBase):
 
         self.use_cenprior=False
 
-        self.nimage=len(self.imlist)
-        self.imsize=self.imlist[0].size
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
         self.model='composite'
 
@@ -1064,7 +1068,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         exp_fluxes=[]
         dev_fluxes=[]
 
-        for psf in self.psflist:
+        for psf in self.psf_list:
             gexp = self.gmix_exp.convolve(psf)
             gdev = self.gmix_dev.convolve(psf)
             exp_list.append(gexp)
@@ -1100,27 +1104,27 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
     the flux
     """
     def __init__(self, 
-                 imlist,
-                 wtlist,
-                 jacoblist,
+                 im_list,
+                 wt_list,
+                 jacob_list,
                  gmix_list,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=3
 
-        self.imlist=self._get_imlist(imlist)
-        self.wtlist=self._get_imlist(wtlist)
-        self.jacoblist=jacoblist
-        self._check_lists(self.imlist,self.wtlist,self.jacoblist)
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
+        self.jacob_list=jacob_list
+        self._check_lists(self.im_list,self.wt_list,self.jacob_list)
 
         self._copy_gmix_list(gmix_list)
 
         self.use_cenprior=True
         self.cenwidth=1.0
 
-        self.nimage=len(self.imlist)
-        self.imsize=self.imlist[0].size
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
 
         self.model='psf'
@@ -2096,10 +2100,10 @@ def test_multi(s2n=100.,
     epars=get_estyle_pars(pars)
     gmix=GMix(epars,type=model)
 
-    imlist=[]
-    wtlist=[]
-    psflist=[]
-    jacoblist=[]
+    im_list=[]
+    wt_list=[]
+    psf_list=[]
+    jacob_list=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2136,20 +2140,20 @@ def test_multi(s2n=100.,
         wt = 0.0*wt + 1./cin['skysig']**2
 
 
-        imlist.append(cin.image) 
-        wtlist.append(wt)
-        psflist.append(gmix_psf)
-        jacoblist.append(jacob)
+        im_list.append(cin.image) 
+        wt_list.append(wt)
+        psf_list.append(gmix_psf)
+        jacob_list.append(jacob)
         
     s2n_uw15_per = s2n_uw_sum/nimages
     s2n_uw15 = s2n_uw15_per*sqrt(nimages)
 
     # starting guess in pixel coords, origin in uv space
 
-    gm=GMixFitMultiSimple(imlist,
-                          wtlist,
-                          jacoblist,
-                          psflist,
+    gm=GMixFitMultiSimple(im_list,
+                          wt_list,
+                          jacob_list,
+                          psf_list,
                           model)
     return gm.get_result(), s2n_uw15
 
@@ -2223,15 +2227,15 @@ def test_multi_color(s2n=100.,
     gmix1=GMix(epars1,type=model)
     gmix2=GMix(epars2,type=model)
 
-    imlist1=[]
-    wtlist1=[]
-    psflist1=[]
-    jacoblist1=[]
+    im_list1=[]
+    wt_list1=[]
+    psf_list1=[]
+    jacob_list1=[]
 
-    imlist2=[]
-    wtlist2=[]
-    psflist2=[]
-    jacoblist2=[]
+    im_list2=[]
+    wt_list2=[]
+    psf_list2=[]
+    jacob_list2=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2252,35 +2256,35 @@ def test_multi_color(s2n=100.,
 
         s2n_uw_sum += s2n_uw1
 
-        imlist1.append(im1) 
-        wtlist1.append(wt1)
-        psflist1.append(gmix_psf1)
-        jacoblist1.append(jacob1)
+        im_list1.append(im1) 
+        wt_list1.append(wt1)
+        psf_list1.append(gmix_psf1)
+        jacob_list1.append(jacob1)
 
-        imlist2.append(im2) 
-        wtlist2.append(wt2)
-        psflist2.append(gmix_psf2)
-        jacoblist2.append(jacob2)
+        im_list2.append(im2) 
+        wt_list2.append(wt2)
+        psf_list2.append(gmix_psf2)
+        jacob_list2.append(jacob2)
 
     s2n_uw15_per = s2n_uw_sum/nimages
     s2n_uw15 = s2n_uw15_per*sqrt(nimages)
 
     # starting guess in pixel coords, origin in uv space
     # all are the same for this simple test
-    gm1=GMixFitMultiSimple(imlist1,
-                           wtlist1,
-                           jacoblist1,
-                           psflist1,
+    gm1=GMixFitMultiSimple(im_list1,
+                           wt_list1,
+                           jacob_list1,
+                           psf_list1,
                            model)
     res1=gm1.get_result()
 
     if res1['flags'] != 0:
         return {}, {}, -1
 
-    gm2=GMixFitMultiMatch(imlist2,
-                          wtlist2,
-                          jacoblist2,
-                          psflist2,
+    gm2=GMixFitMultiMatch(im_list2,
+                          wt_list2,
+                          jacob_list2,
+                          psf_list2,
                           gm1.get_gmix())
     res2=gm2.get_result()
     return res1,res2,s2n_uw15
@@ -2315,10 +2319,10 @@ def test_psfflux_star(s2n=100.,
     dims = [dim]*2
     cen=[(dim-1)/2]*2
 
-    imlist=[]
-    wtlist=[]
-    psflist=[]
-    jacoblist=[]
+    im_list=[]
+    wt_list=[]
+    psf_list=[]
+    jacob_list=[]
 
     aperture=1.5/scale # 1.5 arcsec diameter
     rad=aperture/2.
@@ -2350,17 +2354,17 @@ def test_psfflux_star(s2n=100.,
         wt=im_highn.copy()
         wt = 0.0*wt + ivar_highn
 
-        imlist.append(im_highn) 
-        wtlist.append(wt)
-        psflist.append(gmix_psf)
-        jacoblist.append(jacob)
+        im_list.append(im_highn) 
+        wt_list.append(wt)
+        psf_list.append(gmix_psf)
+        jacob_list.append(jacob)
 
     # starting guess in pixel coords, origin in uv space
     print 'hello'
-    gm=GMixFitMultiPSFFlux(imlist,
-                           wtlist,
-                           jacoblist,
-                           psflist)
+    gm=GMixFitMultiPSFFlux(im_list,
+                           wt_list,
+                           jacob_list,
+                           psf_list)
     return gm.get_result()
 
 
@@ -2413,10 +2417,10 @@ def test_cmodel(s2n=100.,
 
     gmix = GMix(dlist)
 
-    imlist=[]
-    wtlist=[]
-    psflist=[]
-    jacoblist=[]
+    im_list=[]
+    wt_list=[]
+    psf_list=[]
+    jacob_list=[]
 
     s2n_uw_sum=0.
     aperture=1.5/scale # 1.5 arcsec diameter
@@ -2453,10 +2457,10 @@ def test_cmodel(s2n=100.,
         wt=cin.image.copy()
         wt = 0.0*wt + 1./cin['skysig']**2
 
-        imlist.append(cin.image) 
-        wtlist.append(wt)
-        psflist.append(gmix_psf)
-        jacoblist.append(jacob)
+        im_list.append(cin.image) 
+        wt_list.append(wt)
+        psf_list.append(gmix_psf)
+        jacob_list.append(jacob)
 
 
     s2n_uw15_per = s2n_uw_sum/nimages
@@ -2466,19 +2470,19 @@ def test_cmodel(s2n=100.,
     defres=( {}, {}, {}, -1 )
     # starting guess in pixel coords, origin in uv space
     # all are the same for this simple test
-    gm_expfit=GMixFitMultiSimple(imlist,
-                                 wtlist,
-                                 jacoblist,
-                                 psflist,
+    gm_expfit=GMixFitMultiSimple(im_list,
+                                 wt_list,
+                                 jacob_list,
+                                 psf_list,
                                  'gexp')
     exp_res=gm_expfit.get_result()
     if exp_res['flags'] != 0:
         return defres
 
-    gm_devfit=GMixFitMultiSimple(imlist,
-                                 wtlist,
-                                 jacoblist,
-                                 psflist,
+    gm_devfit=GMixFitMultiSimple(im_list,
+                                 wt_list,
+                                 jacob_list,
+                                 psf_list,
                                  'gdev')
     dev_res=gm_devfit.get_result()
     if dev_res['flags'] != 0:
@@ -2489,10 +2493,10 @@ def test_cmodel(s2n=100.,
     exp_gmix=gm_expfit.get_gmix()
     dev_gmix=gm_devfit.get_gmix()
 
-    gm=GMixFitMultiCModel(imlist,
-                          wtlist,
-                          jacoblist,
-                          psflist,
+    gm=GMixFitMultiCModel(im_list,
+                          wt_list,
+                          jacob_list,
+                          psf_list,
                           exp_gmix,
                           dev_gmix)
 

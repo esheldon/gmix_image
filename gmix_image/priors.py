@@ -1,3 +1,4 @@
+import numpy
 from numpy import sqrt, cos, sin, exp, pi, zeros,  \
         random, where, array
 import math
@@ -65,6 +66,136 @@ class GPrior(object):
         fb = self(g1, g2-h/2)
         return (ff - fb)/h
 
+
+ 
+    def get_pqr_num(self, g1in, g2in, h=1.e-6):
+        """
+        Evaluate 
+            P
+            Q
+            R
+        From Bernstein & Armstrong
+
+        P is this prior times the jacobian at shear==0
+
+        Q is the gradient of P*J evaluated at shear==0
+
+            [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
+
+        R is grad of grad of P*J at shear==0
+            [ d(P*J)/dg1dg1  d(P*J)/dg1dg2 ]
+            [ d(P*J)/dg1dg2  d(P*J)/dg2dg2 ]_{g=0}
+
+        Derivatives are calculated using finite differencing
+        """
+        if numpy.isscalar(g1in):
+            isscalar=True
+        else:
+            isscalar=False
+
+        g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
+        g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
+        h2=1./(2.*h)
+        hsq=1./h**2
+
+        P=self.get_pj(g1, g2, 0.0, 0.0)
+
+        Q1_p = self.get_pj(g1, g2, +h, 0.0)
+        Q1_m = self.get_pj(g1, g2, -h, 0.0)
+        Q2_p = self.get_pj(g1, g2, 0.0, +h)
+        Q2_m = self.get_pj(g1, g2, 0.0, -h)
+        R12_pp = self.get_pj(g1, g2, +h, +h)
+        R12_mm = self.get_pj(g1, g2, -h, -h)
+
+        Q1 = (Q1_p - Q1_m)*h2
+        Q2 = (Q2_p - Q2_m)*h2
+
+        R11 = (Q1_p - 2*P + Q1_m)*hsq
+        R22 = (Q2_p - 2*P + Q2_m)*hsq
+        R12 = (R12_pp - Q1_p - Q2_p + 2*P - Q1_m - Q2_m + R12_mm)*hsq*0.5
+
+        np=g1.size
+        Q = numpy.zeros( (np,2) )
+        R = numpy.zeros( (np,2,2) )
+
+        Q[:,0] = Q1
+        Q[:,1] = Q2
+        R[:,0,0] = R11
+        R[:,0,1] = R12
+        R[:,1,0] = R12
+        R[:,1,1] = R22
+
+        if isscalar:
+            P = P[0]
+            Q = Q[0,:]
+            R = R[0,:,:]
+
+        return P, Q, R
+
+    def get_pj(self, g1, g2, s1, s2):
+        """
+        PJ = p(g,-shear)*jacob
+
+        where jacob is d(es)/d(eo) and
+        es=eo(+)(-g)
+        """
+        import lensing
+
+        # note sending negative shear to jacob
+        s1m=-s1
+        s2m=-s2
+        J=lensing.shear.dgs_by_dgo_jacob(g1, g2, s1m, s2m)
+
+        # evaluating at negative shear
+        g1new,g2new=lensing.shear.gadd(g1, g2, s1m, s2m)
+        P=self(g1new,g2new)
+
+        return P*J
+
+    def sample2d_pj(self, nrand, s1, s2):
+        """
+        Get random g1,g2 values from an approximate
+        sheared distribution
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from .util import srandu
+
+        maxval_2d = self(0.0,0.0)
+        g1,g2=zeros(nrand),zeros(nrand)
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            # generate on cube [-1,1,h]
+            g1rand=srandu(nleft)
+            g2rand=srandu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            fac=1.3
+            h = fac*maxval_2d*random.random(nleft)
+
+            pjvals = self.get_pj(g1rand,g2rand,s1,s2)
+            
+            #wbad,=where(pjvals > fac*maxval_2d)
+            #if wbad.size > 0:
+            #    raise ValueError("found %d > maxval" % wbad.size)
+
+            w,=where(h < pjvals)
+            if w.size > 0:
+                g1[ngood:ngood+w.size] = g1rand[w]
+                g2[ngood:ngood+w.size] = g2rand[w]
+                ngood += w.size
+                nleft -= w.size
+   
+        return g1,g2
+
+
+
     def sample1d(self, nrand):
         """
         Get random |g| from the 1d distribution
@@ -105,7 +236,8 @@ class GPrior(object):
 
     def sample2d(self, nrand):
         """
-        Get random g1,g2 values
+        Get random g1,g2 values by first drawing
+        from the 1-d distribution
 
         parameters
         ----------
@@ -119,15 +251,60 @@ class GPrior(object):
         g2rand = grand*sin(rangle)
         return g1rand, g2rand
 
+    def sample2d_brute(self, nrand):
+        """
+        Get random g1,g2 values using 2-d brute
+        force method
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from .util import srandu
+
+        maxval_2d = self(0.0,0.0)
+        g1,g2=zeros(nrand),zeros(nrand)
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            # generate on cube [-1,1,h]
+            g1rand=srandu(nleft)
+            g2rand=srandu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            h = maxval_2d*random.random(nleft)
+
+            vals = self(g1rand,g2rand)
+            
+            #wbad,=where(vals > maxval_2d)
+            #if wbad.size > 0:
+            #    raise ValueError("found %d > maxval" % wbad.size)
+
+            w,=where(h < vals)
+            if w.size > 0:
+                g1[ngood:ngood+w.size] = g1rand[w]
+                g2[ngood:ngood+w.size] = g2rand[w]
+                ngood += w.size
+                nleft -= w.size
+   
+        return g1,g2
+
+
+
     def set_maxval1d(self):
         """
         Use a simple minimizer to find the max value of the 1d 
         distribution
         """
         import scipy.optimize
-        
+
         (minvalx, fval, iterations, fcalls, warnflag) \
-                = scipy.optimize.fmin(self.prior1dneg, 0.1, full_output=True, 
+                = scipy.optimize.fmin(self.prior1dneg,
+                                      0.1,
+                                      full_output=True, 
                                       disp=False)
         if warnflag != 0:
             raise ValueError("failed to find min: warnflag %d" % warnflag)
@@ -139,6 +316,324 @@ class GPrior(object):
         """
         return -self.prior1d(g)
 
+
+def plot_pqr(gsigma=0.3, other=0.0):
+    import biggles
+    biggles.configure('default','fontsize_min',1.0)
+    gp = GPriorBA(gsigma)
+
+    n=100
+    z=numpy.zeros(n) + other
+    gmin=-1
+    gmax=1
+    g1=numpy.linspace(gmin,gmax,n)
+    g2=numpy.linspace(gmin,gmax,n)
+
+    P_g1,Q_g1,R_g1=gp.get_pqr(g1,z)
+    P_g2,Q_g2,R_g2=gp.get_pqr(z,g2)
+
+    tab=biggles.Table(3,2)
+
+    plt_P_g1 = biggles.FramedPlot()
+    pts_P_g1 = biggles.Points(g1, P_g1, type='filled circle')
+    plt_P_g1.add(pts_P_g1)
+    plt_P_g1.xlabel='g1'
+    plt_P_g1.ylabel='P'
+
+    plt_P_g2 = biggles.FramedPlot()
+    pts_P_g2 = biggles.Points(g2, P_g1, type='filled circle')
+    plt_P_g2.add(pts_P_g2)
+    plt_P_g2.xlabel='g2'
+    plt_P_g2.ylabel='P'
+
+
+    plt_Q_g1 = biggles.FramedPlot()
+    pts_Q1_g1 = biggles.Points(g1, Q_g1[:,0], type='filled circle', color='red')
+    pts_Q2_g1 = biggles.Points(g1, Q_g1[:,1], type='filled circle', color='blue')
+    pts_Q1_g1.label='Q1'
+    pts_Q2_g1.label='Q2'
+
+    Qkey_g1 = biggles.PlotKey(0.9,0.2,[pts_Q1_g1,pts_Q2_g1],halign='right')
+    plt_Q_g1.add(pts_Q1_g1,pts_Q2_g1,Qkey_g1)
+    plt_Q_g1.xlabel='g1'
+    plt_Q_g1.ylabel='Q'
+
+
+    plt_Q_g2 = biggles.FramedPlot()
+    pts_Q1_g2 = biggles.Points(g2, Q_g2[:,0], type='filled circle', color='red')
+    pts_Q2_g2 = biggles.Points(g2, Q_g2[:,1], type='filled circle', color='blue')
+    pts_Q1_g2.label='Q1'
+    pts_Q2_g2.label='Q2'
+
+    Qkey_g2 = biggles.PlotKey(0.9,0.2,[pts_Q1_g2,pts_Q2_g2],halign='right')
+    plt_Q_g2.add(pts_Q1_g2,pts_Q2_g2,Qkey_g2)
+    plt_Q_g2.xlabel='g2'
+    plt_Q_g2.ylabel='Q'
+
+    
+    plt_R_g1 = biggles.FramedPlot()
+    pts_R11_g1 = biggles.Points(g1, R_g1[:,0,0], type='filled circle', color='red')
+    pts_R12_g1 = biggles.Points(g1, R_g1[:,0,1], type='filled circle', color='darkgreen')
+    pts_R22_g1 = biggles.Points(g1, R_g1[:,1,1], type='filled circle', color='blue')
+    pts_R11_g1.label = 'R11'
+    pts_R12_g1.label = 'R12'
+    pts_R22_g1.label = 'R22'
+    Rkey_g1 = biggles.PlotKey(0.9,0.2,[pts_R11_g1,pts_R12_g1,pts_R22_g1],halign='right')
+
+    plt_R_g1.add(pts_R11_g1,pts_R12_g1,pts_R22_g1,Rkey_g1)
+    plt_R_g1.xlabel='g1'
+    plt_R_g1.ylabel='R'
+
+    plt_R_g2 = biggles.FramedPlot()
+    pts_R11_g2 = biggles.Points(g2, R_g2[:,0,0], type='filled circle', color='red')
+    pts_R12_g2 = biggles.Points(g2, R_g2[:,0,1], type='filled circle', color='darkgreen')
+    pts_R22_g2 = biggles.Points(g2, R_g2[:,1,1], type='filled circle', color='blue')
+
+    pts_R11_g2.label = 'R11'
+    pts_R12_g2.label = 'R12'
+    pts_R22_g2.label = 'R22'
+    Rkey_g2 = biggles.PlotKey(0.9,0.2,[pts_R11_g2,pts_R12_g2,pts_R22_g2],halign='right')
+
+    plt_R_g2.add(pts_R11_g2,pts_R12_g2,pts_R22_g2,Rkey_g2)
+    plt_R_g2.xlabel='g2'
+    plt_R_g2.ylabel='R'
+ 
+    tab[0,0] = plt_P_g1
+    tab[1,0] = plt_Q_g1
+    tab[2,0] = plt_R_g1
+
+    tab[0,1] = plt_P_g2
+    tab[1,1] = plt_Q_g2
+    tab[2,1] = plt_R_g2
+
+    tab.show()
+
+def test_pj_predict(type='BA', rng=[-0.2,0.2]):
+    """
+    Test how well the formalism predicts the sheared distribution
+    """
+    import lensing
+    import esutil as eu
+    import gmix_image
+
+    s1=0.05
+    s2=0.0
+
+    if type=='exp':
+        pars=[87.2156230877,
+              1.30395318005,
+              0.0641620331281,
+              0.864555484617]
+
+        gpe = gmix_image.priors.GPriorExp(pars)
+    elif type=='BA':
+        gsigma=0.3
+        gpe = gmix_image.priors.GPriorBA(gsigma)
+
+    nr=1000000
+    binsize=0.005
+
+    rg1,rg2 = gpe.sample2d(nr)
+    #rg1_bf,rg2_bf = gpe.sample2d_brute(nr)
+    #plt=eu.plotting.bhist(rg1,binsize=binsize,show=False)
+    #eu.plotting.bhist(rg1_bf,binsize=binsize,color='red',plt=plt)
+    #stop
+
+    sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+
+    sheared_rg1_predict,sheared_rg2_predict = gpe.sample2d_pj(nr, s1, s2)
+
+
+    plt=eu.plotting.bhist(sheared_rg1,
+                          min=rng[0],max=rng[1],
+                          binsize=binsize,
+                          show=False)
+
+    eu.plotting.bhist(sheared_rg1_predict,
+                      min=rng[0],max=rng[1],
+                      binsize=binsize,
+                      color='red',
+                      xrange=rng,
+                      plt=plt,title='full')
+
+def test_shear_recover_pqr(gsigma=0.3, nchunk=10, nper=1000000, s1=0.04, s2=0.00):
+    """
+    Shear a bunch of shapes drawn from the prior and try to
+    recover using Bernstein & Armstrong
+    """
+    import lensing
+
+    gpe = GPriorBA(gsigma)
+
+    g1sum=0.0
+    g2sum=0.0
+    for i in xrange(nchunk):
+        print '-'*70
+        print '%d/%d' % (i+1,nchunk)
+        print 'getting sample'
+        rg1,rg2 = gpe.sample2d(nper)
+
+        print 'shearing'
+        sheared_rg1,sheared_rg2 = lensing.shear.gadd(rg1,rg2,s1,s2)
+
+        g1sum += sheared_rg1.sum()
+        g2sum += sheared_rg2.sum()
+
+        print 'getting P,Q,R'
+        Pa,Qa,Ra=gpe.get_pqr(sheared_rg1,sheared_rg2)
+
+        print 'getting measured shear\n'
+        shi,Ci,Q_sumi, Cinv_sumi =lensing.shear.get_shear_pqr(Pa,Qa,Ra,get_sums=True)
+
+        if i==0:
+            Q_sum = Q_sumi.copy()
+            Cinv_sum = Cinv_sumi.copy()
+        else:
+            Q_sum += Q_sumi
+            Cinv_sum += Cinv_sumi
+
+    print '-'*70
+    print 'Q_sum:',Q_sum
+    print 'Cinv_sum:',Cinv_sum
+
+    C = numpy.linalg.inv(Cinv_sum)
+    sh = numpy.dot(C,Q_sum)
+
+    err1=sqrt(C[0,0])
+    err2=sqrt(C[1,1])
+    print 'input shear:',s1,s2
+    print 'meas shear: %g +/- %g  %g +/- %g' % (sh[0],err1,sh[1],err2)
+    if s1 != 0:
+        print 's1meas/s1-1 %g +/- %g:' % (sh[0]/s1-1, err1/s1)
+    if s2 != 0:
+        print 's2meas/s1-1 %g +/- %g:' % (sh[1]/s2-1, err2/s2)
+
+    ntot = nchunk*nper
+    print '<g1>:',g1sum/ntot
+    print '<g2>:',g2sum/ntot
+
+
+class GPriorBA(GPrior):
+    def __init__(self, pars):
+        """
+        pars are scalar gsigma from B&A 
+        """
+        super(GPriorBA,self).__init__(pars)
+
+    def prior2d_gabs(self, gin):
+        """
+        Get the 2d prior for the input |g| value(s)
+        """
+        iss=numpy.isscalar(gin)
+
+        g=numpy.array(gin,dtype='f8',ndmin=1,copy=False)
+
+        prior=zeros(g.size)
+
+        w,=where(g < 1.0)
+        if w.size > 0:
+            g2=g[w]**2
+            prior[w] = (1-g2)**2*exp(-g2/2/self.pars**2)
+
+        if iss:
+            prior=prior[0]
+        return prior
+
+
+
+    def prior2d_gabs_scalar(self, g):
+        """
+        version for scalars
+        """
+        from math import exp
+
+        if g < 1.0:
+            g2=g**2
+            prior = (1-g2)**2*exp(-g2/2/self.pars**2)
+        else:
+            prior = 0.0
+
+        return prior
+
+
+    def get_pqr(self, g1in, g2in):
+        """
+        Evaluate 
+            P
+            Q
+            R
+        From Bernstein & Armstrong
+
+        P is this prior times the jacobian at shear==0
+
+        Q is the gradient of P*J evaluated at shear==0
+
+            [ d(P*J)/dg1, d(P*J)/dg2]_{g=0}
+
+        R is grad of grad of P*J at shear==0
+            [ d(P*J)/dg1dg1  d(P*J)/dg1dg2 ]
+            [ d(P*J)/dg1dg2  d(P*J)/dg2dg2 ]_{g=0}
+        """
+
+        if numpy.isscalar(g1in):
+            isscalar=True
+        else:
+            isscalar=False
+
+        g1 = numpy.array(g1in, dtype='f8', ndmin=1, copy=False)
+        g2 = numpy.array(g2in, dtype='f8', ndmin=1, copy=False)
+        #g1 = numpy.array(g1in, dtype='f16', ndmin=1, copy=False)
+        #g2 = numpy.array(g2in, dtype='f16', ndmin=1, copy=False)
+
+        # these are the same
+        #P=self.get_pj(g1, g2, 0.0, 0.0)
+        P=self(g1, g2)
+
+
+        #g=sqrt(g1**2 + g2**2)
+        #w,=numpy.where(g >= 1)
+        #if w.size > 0:
+        #    print 'g > 1:',w.size
+        #    stop
+
+        sigma = self.pars
+        sig2 = sigma**2
+        sig4 = sigma**4
+        sig2inv = 1./sigma**2
+        sig4inv = 1./sigma**4
+
+        gsq = g1**2 + g2**2
+        omgsq = 1. - gsq
+
+        fac = exp(-0.5*gsq*sig2inv)*omgsq**2
+
+        Qf = fac*(omgsq + 8*sig2)*sig2inv
+
+        Q1 = g1*Qf
+        Q2 = g2*Qf
+
+        R11 = (fac * (g1**6 + g1**4*(-2 + 2*g2**2 - 19*sig2) + (1 + g2**2)*sig2*(-1 + g2**2 - 8*sig2) + g1**2*(1 + g2**4 + 20*sig2 + 72*sig4 - 2*g2**2*(1 + 9*sig2))))*sig4inv
+        R22 = (fac * (g2**6 + g2**4*(-2 + 2*g1**2 - 19*sig2) + (1 + g1**2)*sig2*(-1 + g1**2 - 8*sig2) + g2**2*(1 + g1**4 + 20*sig2 + 72*sig4 - 2*g1**2*(1 + 9*sig2))))*sig4inv
+
+        R12 = fac * g1*g2 * (80 + omgsq**2*sig4inv + 20*omgsq*sig2inv)
+
+        np=g1.size
+        Q = numpy.zeros( (np,2) )
+        R = numpy.zeros( (np,2,2) )
+
+        Q[:,0] = Q1
+        Q[:,1] = Q2
+        R[:,0,0] = R11
+        R[:,0,1] = R12
+        R[:,1,0] = R12
+        R[:,1,1] = R22
+
+        if isscalar:
+            P = P[0]
+            Q = Q[0,:]
+            R = R[0,:,:]
+
+        return P, Q, R
 
 
 
@@ -154,7 +649,10 @@ class GPriorExp(GPrior):
         """
         Get the 2d prior for the input |g| value(s)
         """
-        return gprior2d_exp_vec(self.pars, g)
+        if numpy.isscalar(g):
+            return gprior2d_exp_scalar(self.pars, g)
+        else:
+            return gprior2d_exp_vec(self.pars, g)
 
     def prior2d_gabs_scalar(self, g):
         """
@@ -176,7 +674,7 @@ def gprior2d_exp_vec(pars, g):
         numer = A*(1-exp( (g-gmax)/a ))
         denom = (1+g)*sqrt(g**2 + g0**2)
 
-        prior[w]=numer/denom
+        prior[w]=numer[w]/denom[w]
 
     return prior
 
@@ -345,7 +843,12 @@ class GPriorDev(GPrior):
         """
         Get the 2d prior for the input |g| value(s)
         """
-        return gprior2d_dev_vec(self.pars, g)
+        if numpy.isscalar(g):
+            return gprior2d_vec_scalar(self.pars, g)
+        else:
+            return gprior2d_vec_vec(self.pars, g)
+
+
 
     def prior2d_gabs_scalar(self, g):
         """

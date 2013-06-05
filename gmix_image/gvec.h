@@ -50,7 +50,8 @@ struct gvec {
 
 enum gapprox {
     GAPPROX_EXP,
-    GAPPROX_DEV
+    GAPPROX_DEV,
+    GAPPROX_BDC
 };
  
 struct gvec *gvec_new(size_t n);
@@ -104,6 +105,7 @@ struct gvec *gvec_convolve(struct gvec *obj_gvec,
    [pi,rowi,coli,irri,irci,icci,...]
 */
 struct gvec *gvec_from_pars(double *pars, int size);
+
 /* coellip list
    [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3..]
  */
@@ -123,6 +125,9 @@ struct gvec *gvec_from_coellip_Tfrac(double *pars, int size);
 */
 struct gvec *gvec_from_pars_exp4(double *pars, int size);
 struct gvec *gvec_from_pars_exp6(double *pars, int size);
+
+
+
 /* 
    Generate a gvec from the inputs pars assuming an appoximate
    10-gaussian representation of a devauc profile.
@@ -133,10 +138,21 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size);
 
    The p and F values are chosen to make this so
 */
+
 struct gvec *gvec_from_pars_dev10(double *pars, int size);
 
 /* similar to above but for a turbulent psf */
 struct gvec *gvec_from_pars_turb(double *pars, int size);
+
+/*
+   co-elliptical bulg+disk
+
+   pars should be [row,col,e1,e2,Texp,Tdev,Fexp,Fdev]
+
+   npars is 8
+*/
+
+struct gvec *gvec_from_pars_bdc(double *pars, int size);
 
 
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \
