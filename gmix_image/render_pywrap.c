@@ -988,13 +988,13 @@ int calculate_loglike_wt(const struct image *image,
 static int calculate_loglike(struct image *image, 
                              struct gvec *gvec, 
                              double ivar,
-                             double *s2n,
+                             double *s2n_numer,
+                             double *s2n_denom,
                              double *loglike)
 {
 
     int flags=0;
     struct image *junk_weight=NULL;
-    double s2n_numer=0, s2n_denom=0;
 
     struct jacobian jacob;
     jacobian_set_identity(&jacob);
@@ -1004,15 +1004,10 @@ static int calculate_loglike(struct image *image,
                                              ivar,
                                              &jacob,
                                              gvec, 
-                                             &s2n_numer,
-                                             &s2n_denom,
+                                             s2n_numer,
+                                             s2n_denom,
                                              loglike);
 
-    if (s2n_denom > 0) {
-        (*s2n) = s2n_numer/sqrt(s2n_denom);
-    } else {
-        (*s2n)=0;
-    }
 
     return flags;
 
@@ -1260,7 +1255,7 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
     struct PyGVecObject *gvec_obj=NULL;
     double ivar=0;
 
-    double loglike=0, s2n=0;
+    double loglike=0, s2n_numer=0, s2n_denom=0;
     PyObject *tup=NULL;
 
     struct image *image=NULL;
@@ -1283,15 +1278,16 @@ PyGMixFit_loglike(PyObject *self, PyObject *args)
 
     gvec_obj = (struct PyGVecObject *) gvec_pyobj;
 
-    flags=calculate_loglike(image, gvec_obj->gvec, ivar, &s2n, &loglike);
+    flags=calculate_loglike(image, gvec_obj->gvec, ivar, &s2n_numer, &s2n_denom, &loglike);
 
     // does not free underlying array
     image = image_free(image);
 
-    tup = PyTuple_New(3);
+    tup = PyTuple_New(4);
     PyTuple_SetItem(tup, 0, PyFloat_FromDouble(loglike));
-    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n));
-    PyTuple_SetItem(tup, 2, PyInt_FromLong((long)flags));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n_numer));
+    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(s2n_denom));
+    PyTuple_SetItem(tup, 3, PyInt_FromLong((long)flags));
 
     return tup;
 }

@@ -26,7 +26,7 @@ from .render import gmix2image
 
 LOWVAL=-9999.9e9
 
-class MixMC:
+class MixMCOld:
     def __init__(self, image, ivar, psf, cenprior, T, gprior, model,
                  **keys):
         """
@@ -83,10 +83,6 @@ class MixMC:
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
         self.start_pars=keys.get('start_pars',None)
-
-        self.nsub=keys.get("nsub",None)
-        if self.nsub is not None:
-            self.nsub=int(self.nsub)
 
         self.counts=self.image.sum()
 
@@ -181,10 +177,8 @@ class MixMC:
 
         gmix=self._get_convolved_gmix(epars)
 
-        loglike,s2n,flags=\
+        loglike,s2n_numer,s2n_denom,flags=\
             render._render.loglike(self.image, gmix, self.ivar)
-
-
 
         if flags != 0:
             return LOWVAL
@@ -252,8 +246,7 @@ class MixMC:
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars,
-                                   nsub=self.nsub)
+                                   self.npars)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])
@@ -493,9 +486,27 @@ class MixMC:
         if key=='q':
             stop
 
- 
-class MixMCStandAlone:
-    def __init__(self, image, ivar, psf, gprior, model, **keys):
+def _get_as_list(arg):
+    if arg is None:
+        return None
+
+    if isinstance(arg,list):
+        return arg
+    else:
+        return [arg]
+
+
+def _check_lists(*args):
+    llen=len(args[0])
+    for l in args:
+        if l is None:
+            continue
+        if len(l) != llen:
+            raise ValueError("all lists must be same length")
+
+
+class MixMCSimple:
+    def __init__(self, image, weight, psf, gprior, T_guess, cen_guess, model, **keys):
         """
         mcmc sampling of posterior, simple model.
 
@@ -505,17 +516,21 @@ class MixMCStandAlone:
         parameters
         ----------
         image:
-            sky subtracted image as a numpy array
-        ivar:
-            1/(Error per pixel)**2
+            sky subtracted image as a numpy array, or list of such
+        weight:
+            1/(Error per pixel)**2, or an image of such or even
+            a list of those corresponding to the image input
         psf:
-            The psf gaussian mixture as a GMix object
+            The psf gaussian mixture as a GMix object, or list of such
         cen:
             The center guess.  Ignored if ares= is sent.
         gprior:
             The prior on the g1,g2 surface.
         model:
             Type of model, gexp, gdev, gauss
+
+        jacob: optional
+            A dictionary holding the jacobian, or list of such
 
         nwalkers: optional
             Number of walkers, default 20
@@ -543,13 +558,21 @@ class MixMCStandAlone:
         # cen1,cen2,e1,e2,T,p
         self.npars=6
 
-        self.image=image
-        self.ivar=float(ivar)
+        self.im_list=_get_as_list(image)
+        self.wt_list=_get_as_list(weight)
+        self.psf_list=_get_as_list(psf)
+        self._set_jacob_list(**keys)
+        _check_lists(self.im_list, self.wt_list, self.psf_list,self.jacob_list)
+
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
+        self.totpix=self.nimage*self.imsize
+
         self.model=model
 
-        self.psf_gmix=psf
-
         self.gprior=gprior
+        self.T_guess=T_guess
+        self.cen_guess=cen_guess
 
         self.Tprior=keys.get('Tprior',None)
 
@@ -560,22 +583,11 @@ class MixMCStandAlone:
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
         
-        self.cen_guess=keys.get('cen',None)
         self.ares=keys.get('ares',None)
 
+        self._set_im_wt_sums()
+
         self.cen_width=keys.get('cen_width',1.0)
-
-        if self.cen_guess is None and self.ares is None:
-            raise ValueError("send cen= or ares=")
-        if self.ares is not None and self.ares['whyflag']!=0:
-            raise ValueError("If you enter ares it must have "
-                             "whyflag==0")
-
-        self.counts=self.image.sum()
-
-        self.nsub=keys.get("nsub",None)
-        if self.nsub is not None:
-            self.nsub=int(self.nsub)
 
         self._go()
 
@@ -584,14 +596,14 @@ class MixMCStandAlone:
 
     def get_gmix(self):
         epars=get_estyle_pars(self._result['pars'])
-        return self._get_convolved_gmix(epars)
+        return GMix(epars, type=self.model)
 
-    def _get_convolved_gmix(self, epars):
+    def _get_convolved_gmix(self, epars, psf):
         """
         epars must be in e1,e2 space
         """
         gmix0=GMix(epars, type=self.model)
-        gmix=gmix0.convolve(self.psf_gmix)
+        gmix=gmix0.convolve(psf)
         return gmix
 
 
@@ -619,21 +631,15 @@ class MixMCStandAlone:
 
     def _do_trials(self):
 
-        tau_max=0.10
-        if not self.doiter:
-            sampler = self._get_sampler()
-            guess=self._get_guess()
-            pos, prob, state = sampler.run_mcmc(guess, self.burnin)
-            sampler.reset()
-            pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+        sampler = self._get_sampler()
+        guess=self._get_guess()
+        pos, prob, state = sampler.run_mcmc(guess, self.burnin)
+        sampler.reset()
+        pos, prob, state = sampler.run_mcmc(pos, self.nstep)
 
-        else:
-            sampler = self._get_sampler()
-            guess=self._get_guess()
 
-            pos, prob, state = sampler.run_mcmc(guess, self.burnin)
-            sampler.reset()
-            pos, prob, state = sampler.run_mcmc(pos, self.nstep)
+        if self.doiter:
+            tau_max=0.10
 
             i=0
             while True:
@@ -681,14 +687,58 @@ class MixMCStandAlone:
         These epars are in e space
         """
 
-        gmix=self._get_convolved_gmix(epars)
+        gmix_list=self._get_gmix_list(epars)
 
-        loglike,s2n,flags=\
-            render._render.loglike(self.image, gmix, self.ivar)
 
-        if flags != 0:
-            return LOWVAL
+        loglike = 0.0
+
+        for i in xrange(len(self.im_list)):
+            im=self.im_list[i]
+            wt=self.wt_list[i]
+            jacob=self.jacob_list[i]
+            gmix=gmix_list[i]
+
+            res=self._dolike_one(im,wt,jacob,gmix)
+
+            loglike += res[0]
+            flags = res[3]
+
+            if flags != 0:
+                return LOWVAL
+
+
         return loglike
+
+    def _dolike_one(self, im, wt, jacob, gmix):
+        if not isinstance(wt,numpy.ndarray):
+            if jacob is None:
+                res=render._render.loglike(im,
+                                           gmix,
+                                           wt)
+            else:
+                res=render._render.loglike_jacob(im,
+                                                 wt,
+                                                 jacob['dudrow'],
+                                                 jacob['dudcol'],
+                                                 jacob['dvdrow'],
+                                                 jacob['dvdcol'],
+                                                 jacob['row0'],
+                                                 jacob['col0'],
+                                                 gmix)
+        else:
+            if jacob is None:
+                raise RuntimeError("implement loglike_wt without jacob")
+            else:
+                res=render._render.loglike_wt_jacob(im,
+                                                    wt,
+                                                    jacob['dudrow'],
+                                                    jacob['dudcol'],
+                                                    jacob['dvdrow'],
+                                                    jacob['dvdcol'],
+                                                    jacob['row0'],
+                                                    jacob['col0'],
+                                                    gmix)
+        return res
 
     def _get_lngprior(self, g1, g2):
         g=sqrt(g1**2 + g2**2)
@@ -699,72 +749,38 @@ class MixMCStandAlone:
             gp=LOWVAL
         return gp
 
+    def _get_gmix_list(self, epars):
+        """
+        Get a list of gmix objects, each convolved with
+        the psf in the individual images
+        """
+        gmix_list=[]
+        for psf in self.psf_list:
+            gmix=self._get_convolved_gmix(epars, psf)
+            gmix_list.append(gmix)
+
+        return gmix_list 
+
 
     def _calc_result(self):
         """
         We marginalize over all parameters but g1,g2, which
         are index 0 and 1 in the pars array
         """
-        import mcmc
 
-        g=zeros(2)
-        gcov=zeros((2,2))
-        gsens = zeros(2)
-
-        g1vals=self.trials[:,2]
-        g2vals=self.trials[:,3]
-
-        prior = self.gprior(g1vals,g2vals)
-        dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
-        dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
-
-        psum = prior.sum()
-
-        # prior is already in the distribution of
-        # points.  This is simpler for most things but
-        # for sensitivity we need a factor of (1/P)dP/de
-
-        if self.when_prior=="during":
-            pars,pcov = mcmc.extract_stats(self.trials)
-        else:
-            pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
-
-        g[:] = pars[2:4]
-        gcov[:,:] = pcov[2:4, 2:4]
-
-        g1diff = g[0]-g1vals
-        g2diff = g[1]-g2vals
-
-
-        if self.when_prior=="during":
-            w,=where(prior > 0)
-            if w.size == 0:
-                raise ValueError("no prior values > 0!")
-
-            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
-            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
-        else:
-            gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
-            gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+        pars,pcov,g,gcov,gsens=self._get_trial_stats()
  
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
 
-        max_epars=self.get_maxprob_epars()
-        gmix=self._get_convolved_gmix(max_epars)
+        epars=get_estyle_pars(pars)
+        gmix_list=self._get_gmix_list(epars)
+        stats=self._get_fit_stats(gmix_list)
 
-        stats=calculate_some_stats(self.image, 
-                                   self.ivar, 
-                                   gmix,
-                                   self.npars,
-                                   nsub=self.nsub)
-
-        Tmean=pars[4]
-        Terr=sqrt(pcov[4,4])
+        Tmean,Terr=self._get_T_stats(pars,pcov)
         Ts2n=Tmean/Terr
 
-        Flux=pars[5]
-        Ferr=sqrt(pcov[5,5])
+        Flux,Ferr=self._get_Flux_stats(pars,pcov)
         Fs2n=Flux/Ferr
 
         self._result={'flags':0,
@@ -789,8 +805,147 @@ class MixMCStandAlone:
             self._result['Q']=Q
             self._result['R']=R
 
-        for k in stats:
-            self._result[k] = stats[k]
+        self._result.update(stats)
+
+    def _get_T_stats(self, pars, pcov):
+        """
+        Simple model
+        """
+        return pars[4], sqrt(pcov[4,4])
+
+    def _get_Flux_stats(self, pars, pcov):
+        """
+        Simple model
+        """
+        return pars[5], sqrt(pcov[5,5])
+
+    def _get_fit_stats(self, gmix_list):
+        from math import log, sqrt
+        from . import render
+        import scipy.stats
+
+        npars=self.npars
+
+        s2n_numer=0.
+        s2n_denom=0.
+        loglike=0.
+
+        for i in xrange(self.nimage):
+            im=self.im_list[i]
+            wt=self.wt_list[i]
+            jacob=self.jacob_list[i]
+            gmix=gmix_list[i]
+ 
+            res=self._dolike_one(im,wt,jacob,gmix)
+
+            loglike += res[0]
+            s2n_numer += res[1]
+            s2n_denom += res[2]
+            
+        if s2n_denom > 0:
+            s2n=s2n_numer/sqrt(s2n_denom)
+        else:
+            s2n=0.0
+
+        dof=self._get_dof()
+        eff_npix=self._get_effective_npix()
+
+        chi2=loglike/(-0.5)
+        chi2per = chi2/dof
+
+        prob = scipy.stats.chisqprob(chi2, dof)
+
+        aic = -2*loglike + 2*npars
+        bic = -2*loglike + npars*log(eff_npix)
+
+        return {'s2n_w':s2n,
+                'loglike':loglike,
+                'chi2per':chi2per,
+                'dof':dof,
+                'fit_prob':prob,
+                'aic':aic,
+                'bic':bic}
+
+    def _get_effective_npix(self):
+        """
+        Because of the weight map, each pixel gets a different weight in the
+        chi^2.  This changes the effective degrees of freedom.  The extreme
+        case is when the weight is zero; these pixels are essentially not used.
+
+        We replace the number of pixels with
+
+            eff_npix = sum(weights)maxweight
+        """
+        if isinstance( self.wt_list[0], numpy.ndarray):
+            if not hasattr(self, 'eff_npix'):
+                wtmax = 0.0
+                wtsum = 0.0
+                for wt in self.wt_list:
+                    this_wtmax = wt.max()
+                    if this_wtmax > wtmax:
+                        wtmax = this_wtmax
+
+                    wtsum += wt.sum()
+
+                self.eff_npix=wtsum/wtmax
+        else:
+            self.eff_npix=self.totpix
+
+        if self.eff_npix <= 0:
+            self.eff_npix=1.e-6
+
+        return self.eff_npix
+
+    def _get_dof(self):
+        """
+        Effective def based on effective number of pixels
+        """
+        eff_npix=self._get_effective_npix()
+        dof = eff_npix-self.npars
+        if dof <= 0:
+            dof = 1.e-6
+        return dof
+
+
+    def _get_trial_stats(self):
+        import mcmc
+
+        g1vals=self.trials[:,2]
+        g2vals=self.trials[:,3]
+
+        prior = self.gprior(g1vals,g2vals)
+        dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
+        dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
+
+        psum = prior.sum()
+
+        if self.when_prior=="during":
+            # prior is already in the distribution of
+            # points.  This is simpler for most things but
+            # for sensitivity we need a factor of (1/P)dP/de
+            pars,pcov = mcmc.extract_stats(self.trials)
+        else:
+            pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
+
+        g = pars[2:4].copy()
+        gcov = pcov[2:4, 2:4].copy()
+
+        g1diff = g[0]-g1vals
+        g2diff = g[1]-g2vals
+
+        gsens = zeros(2)
+        if self.when_prior=="during":
+            w,=where(prior > 0)
+            if w.size == 0:
+                raise ValueError("no prior values > 0!")
+
+            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
+            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
+        else:
+            gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
+            gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+
+        return pars, pcov, g, gcov, gsens
 
     def _get_PQR(self):
         """
@@ -851,40 +1006,35 @@ class MixMCStandAlone:
         model=gmix2image(gmix,self.image.shape)
         return model
 
-    def _run_admom(self, image, ivar, cen, Tguess):
-        import admom
+    def _set_jacob_list(self, **keys):
+        jlist = keys.get("jacob",None)
+        if jlist is None:
+            jlist=[None]*len(self.im_list)
+        else:
+            if not isinstance(jlist,list):
+                jlist=[jlist]
 
-        ntry=40
-        for i in xrange(ntry):
-            cen0=cen[0] + 0.1*srandu()
-            cen1=cen[1] + 0.1*srandu()
-            guess=Tguess/2.0*(1.0 + 0.20*srandu())
-            ares = admom.admom(image,
-                               cen0,
-                               cen1,
-                               sigsky=sqrt(1/ivar),
-                               guess=guess,
-                               nsub=1)
-            if ares['whyflag']==0:
-                break
-        if i==(ntry-1):
-            raise ValueError("admom failed %s times" % ntry)
+        self.jacob_list=jlist        
 
-        return ares
-
+    def _set_im_wt_sums(self):
+        """
+        median of the counts across all input images
+        """
+        clist=numpy.zeros(len(self.im_list))
+        wtsum=0.0
+        for i,im in enumerate(self.im_list):
+            clist[i] = im.sum()
+            wtsum += self.wt_list[i].sum()
+        
+        self.counts=numpy.median(clist)
+        self.wtsum=wtsum
 
     def _get_guess(self):
         """
         Note for model coellip this only does one gaussian
         """
-        if self.ares is None:
-            self.ares=self._run_admom(self.image, self.ivar, 
-                                      self.cen_guess, 8.0)
 
-        cen=[self.ares['wrow'],self.ares['wcol']]
-        self.cenprior=CenPrior(cen, [self.cen_width]*2)
-
-        Tadmom=self.ares['Irr'] + self.ares['Icc']
+        self.cenprior=CenPrior(self.cen_guess, [self.cen_width]*2)
 
         guess=zeros( (self.nwalkers,self.npars) )
 
@@ -900,7 +1050,7 @@ class MixMCStandAlone:
             guess[:,2]=0.1*srandu(self.nwalkers)
             guess[:,3]=0.1*srandu(self.nwalkers)
 
-        guess[:,4] = Tadmom*(1 + 0.1*srandu(self.nwalkers))
+        guess[:,4] = self.T_guess*(1 + 0.1*srandu(self.nwalkers))
         guess[:,5] = self.counts*(1 + 0.1*srandu(self.nwalkers))
 
         self._guess=guess
@@ -908,7 +1058,6 @@ class MixMCStandAlone:
 
 
     def _doplots(self):
-        import mcmc
         import biggles
         import esutil as eu
 
@@ -1053,7 +1202,7 @@ class MixMCStandAlone:
         print
 
 
-class MixMCBDC(MixMCStandAlone):
+class MixMCBDC(MixMCSimple):
     """
     bulge+disk, coelliptical
     """
@@ -1095,10 +1244,6 @@ class MixMCBDC(MixMCStandAlone):
                              "whyflag==0")
 
         self.counts=self.image.sum()
-
-        self.nsub=keys.get("nsub",None)
-        if self.nsub is not None:
-            self.nsub=int(self.nsub)
 
         self._go()
 
@@ -1173,7 +1318,11 @@ class MixMCBDC(MixMCStandAlone):
         # points.  This is simpler for most things but
         # for sensitivity we need a factor of (1/P)dP/de
 
-        pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
+        if self.when_prior=="during":
+            pars,pcov = mcmc.extract_stats(self.trials)
+        else:
+            pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
+
 
         g[:] = pars[2:4]
         gcov[:,:] = pcov[2:4, 2:4]
@@ -1181,8 +1330,17 @@ class MixMCBDC(MixMCStandAlone):
         g1diff = g[0]-g1vals
         g2diff = g[1]-g2vals
 
-        gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
-        gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+        if self.when_prior=="during":
+            w,=where(prior > 0)
+            if w.size == 0:
+                raise ValueError("no prior values > 0!")
+
+            gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
+            gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
+        else:
+            gsens[0]= 1.-(g1diff*dpri_by_g1).sum()/psum
+            gsens[1]= 1.-(g2diff*dpri_by_g2).sum()/psum
+
  
         arates = self.sampler.acceptance_fraction
         arate = arates.mean()
@@ -1193,8 +1351,7 @@ class MixMCBDC(MixMCStandAlone):
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars,
-                                   nsub=self.nsub)
+                                   self.npars)
 
         cdiag = diag(pcov)
 
@@ -1301,7 +1458,7 @@ class MixMCBDC(MixMCStandAlone):
 
 
 
-class MixMCCoellip(MixMCStandAlone):
+class MixMCCoellip(MixMCSimple):
     def __init__(self, image, ivar, psf, gprior, ngauss, **keys):
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',True)
@@ -1341,10 +1498,6 @@ class MixMCCoellip(MixMCStandAlone):
                              "whyflag==0")
 
         self.counts=self.image.sum()
-
-        self.nsub=keys.get("nsub",None)
-        if self.nsub is not None:
-            self.nsub=int(self.nsub)
 
         self._go()
 
@@ -1457,8 +1610,7 @@ class MixMCCoellip(MixMCStandAlone):
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars,
-                                   nsub=self.nsub)
+                                   self.npars)
 
         cdiag = diag(pcov)
         Fvals=pars[4+self.ngauss:]
@@ -1617,10 +1769,6 @@ class MixMCPSF:
 
         self.counts=self.image.sum()
 
-        self.nsub=keys.get("nsub",None)
-        if self.nsub is not None:
-            self.nsub=int(self.nsub)
-
 
         self._go()
 
@@ -1702,10 +1850,8 @@ class MixMCPSF:
 
         gmix=self._get_gmix(epars)
 
-        loglike,s2n,flags=\
+        loglike,s2n_numer,s2n_denom,flags=\
             render._render.loglike(self.image, gmix, self.ivar)
-
-
 
         if flags != 0:
             return LOWVAL
@@ -1731,8 +1877,7 @@ class MixMCPSF:
         stats=calculate_some_stats(self.image, 
                                    self.ivar, 
                                    gmix,
-                                   self.npars,
-                                   nsub=self.nsub)
+                                   self.npars)
 
         Tmean=pars[4]
         Terr=sqrt(pcov[4,4])

@@ -34,8 +34,6 @@ from .gmix import gmix2pars
 
 from .util import pars2gmix, total_moms,  gmix_print
 
-from .gmix_mcmc import MixMC
-
 from .gmix_em import GMixEM, GMixEMBoot, GMixEMPSF
 from .gmix_em import GMIXEM_ERROR_NEGATIVE_DET
 from .gmix_em import GMIXEM_ERROR_MAXIT
