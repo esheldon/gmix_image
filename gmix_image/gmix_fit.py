@@ -1,3 +1,23 @@
+"""
+
+add stats for match flux, e.g. goodness of fit parameters
+
+pull over lmfit for z and see if centers are very different. Might be
+we have some kind of offset in these coordinate systems..?
+
+Add file_id to output for lmfit
+
+refactor out a "get_sdata" method
+
+Note set_psum doesn't work when the current psum is zero...  and is probably
+unstable for close to zero
+
+need an appropriate cen_width for units!  I'm using 1 for 1 pixel, but
+when fitting in arcsec, this means ~3 pixels for DES!  It should be
+an input
+
+
+"""
 from sys import stderr
 import inspect
 import pprint
@@ -641,7 +661,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.totpix=self.nimage*self.imsize
 
         self.use_cenprior=True
-        self.cenwidth=1.0
+
+        # make sure in units of jacobian!
+        self.cen_width=keys.get('cen_width',1.0)
 
         self._fit_round_fixcen()
         self._fit_full()
@@ -804,7 +826,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         # inherited
         ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
         
-        cen_ydiff = (epars[0:0+2]-0.0)/self.cenwidth
+        cen_ydiff = (epars[0:0+2]-0.0)/self.cen_width
         ydiff[-2:] = cen_ydiff
         return ydiff
 
@@ -846,7 +868,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
     You can enter any GMix object.  
 
     """
-    def __init__(self, im_list, wt_list, jacob_list, psf_list, gmix0,
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, gmix0, start_counts,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
@@ -857,6 +879,8 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         self.jacob_list=jacob_list
         self.psf_list=psf_list
         self.gmix0=gmix0.copy()
+
+        self.start_counts=start_counts
 
         self._check_lists(self.im_list,self.wt_list,self.jacob_list,
                           self.psf_list)
@@ -913,6 +937,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         pars1 are [counts]
         """
 
+        #print_pars(pars1,front='pars1:')
         self._set_psum(pars1)
 
         # note we fixed the center, so no need to put in
@@ -923,6 +948,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         psum=pars1[0]
         for g in self.gmix_list:
             g.set_psum(psum)
+
     def _get_gmix_list(self, pars):
         """
         called by the generic code calc_lm_results
@@ -930,6 +956,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         """
         self._set_psum(pars)
         return self.gmix_list
+
     def _set_gmix_list(self):
         gmix_list=[]
         for psf in self.psf_list:
@@ -939,9 +966,10 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
 
 
     def _get_guess(self):
-        psum=self.gmix0.get_psum()
-        guess=numpy.array([psum],dtype='f8')
-        guess[0] = guess[0]*(1.+0.05*srandu())
+        #psum=self.gmix0.get_psum()
+        #guess=numpy.array([psum],dtype='f8')
+        #guess[0] = guess[0]*(1.+0.05*srandu())
+        guess=self.start_counts*(1.+0.05*srandu(1))
         return guess
 
 
@@ -956,7 +984,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
 
     """
     def __init__(self, im_list, wt_list, jacob_list, psf_list,
-                 gmix_exp, gmix_dev,
+                 gmix_exp, gmix_dev, start,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
@@ -968,6 +996,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.wt_list=self._get_im_list(wt_list)
         self.jacob_list=jacob_list
         self.psf_list=psf_list
+        self.fracdev_start=start
 
         self._check_lists(self.im_list,self.wt_list,self.jacob_list,
                           self.psf_list)
@@ -1084,8 +1113,10 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.dev_fluxes=dev_fluxes
 
     def _get_guess(self):
-        guess=numpy.array([0.5],dtype='f8')
-        guess[0] = guess[0]*(1.+0.1*srandu())
+        # note using (1) to get array
+        guess = self.fracdev_start*(1 + 0.01*srandu(1))
+        #guess=numpy.array([0.5],dtype='f8')
+        #guess[0] = guess[0]*(1.0 +0.1*srandu() )
         return guess
 
 class GMixFitMultiPSFFlux(GMixFitMultiBase):
@@ -1121,7 +1152,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         self._copy_gmix_list(gmix_list)
 
         self.use_cenprior=True
-        self.cenwidth=1.0
+        self.cen_width=keys.get('cen_width',1.0)
 
         self.nimage=len(self.im_list)
         self.imsize=self.im_list[0].size
@@ -1166,7 +1197,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
 
         ydiff = self._get_lm_ydiff_gmix_list(self.gmix_list)
 
-        cen_ydiff = (pars3[0:0+2]-0.0)/self.cenwidth
+        cen_ydiff = (pars3[0:0+2]-0.0)/self.cen_width
         ydiff[-2:] = cen_ydiff
 
         return ydiff
@@ -1245,7 +1276,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.jacobian=jacobian
 
         self.use_cenprior=True
-        self.cenwidth=1.0
+        self.cen_width=keys.get('cen_width',1.0)
 
         self.imsize=self.image.size
         self.totpix=self.imsize
@@ -1292,7 +1323,7 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
         ydiff = self._get_lm_ydiff_gmix(gmix)
 
-        cen_ydiff = (epars[0:0+2]-0.0)/self.cenwidth
+        cen_ydiff = (epars[0:0+2]-0.0)/self.cen_width
         ydiff[-2:] = cen_ydiff
 
         return ydiff
@@ -2281,13 +2312,27 @@ def test_multi_color(s2n=100.,
     if res1['flags'] != 0:
         return {}, {}, -1
 
-    gm2=GMixFitMultiMatch(im_list2,
+
+    gm2=GMixFitMultiSimple(im_list2,
+                           wt_list2,
+                           jacob_list2,
+                           psf_list2,
+                           model)
+    res2=gm2.get_result()
+
+    if res2['flags'] != 0:
+        return {}, {}, -1
+
+
+    start_counts = res2['pars'][5]
+    gm_match=GMixFitMultiMatch(im_list2,
                           wt_list2,
                           jacob_list2,
                           psf_list2,
-                          gm1.get_gmix())
-    res2=gm2.get_result()
-    return res1,res2,s2n_uw15
+                          gm1.get_gmix(),
+                          start_counts)
+    res_match=gm_match.get_result()
+    return res1,res_match,s2n_uw15
 
 
 def test_psfflux_star(s2n=100.,
@@ -2493,12 +2538,18 @@ def test_cmodel(s2n=100.,
     exp_gmix=gm_expfit.get_gmix()
     dev_gmix=gm_devfit.get_gmix()
 
+    if (exp_res['loglike'] > dev_res['loglike']):
+        fracdev_start=0.1
+    else:
+        fracdev_start=0.9
+
     gm=GMixFitMultiCModel(im_list,
                           wt_list,
                           jacob_list,
                           psf_list,
                           exp_gmix,
-                          dev_gmix)
+                          dev_gmix,
+                          fracdev_start)
 
     res=gm.get_result()
     return exp_res,dev_res,res,s2n_uw15

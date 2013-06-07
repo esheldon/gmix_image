@@ -542,9 +542,6 @@ class MixMCSimple:
             For affine invariant chain, default 2
         iter: optional
             Iterate until acor is OK, default True
-        ares: optional
-            The output from a run of admom.  The whyflag
-            field must be zero.
         cen_width: bool
             Use this as a width on the prior,
             with the center set the adaptive moments solution.
@@ -582,8 +579,6 @@ class MixMCSimple:
         self.draw_gprior=keys.get('draw_gprior',True)
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
-        
-        self.ares=keys.get('ares',None)
 
         self._set_im_wt_sums()
 

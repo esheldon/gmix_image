@@ -42,7 +42,6 @@ class GPrior(object):
         """
         return 2*pi*g*self.prior2d_gabs(g)
 
-
     def dbyg1(self, g1, g2, h=1.e-6):
         """
         Derivative with respect to g1 at the input g1,g2 location
@@ -660,6 +659,43 @@ class GPriorExp(GPrior):
         """
         return gprior2d_exp_scalar(self.pars, g)
 
+class GPriorFlat(GPrior):
+    def __init__(self, pars):
+        """
+        pars are scalar gsigma from B&A 
+        """
+        pass
+
+    def prior2d_gabs(self, gin):
+        """
+        Get the 2d prior for the input |g| value(s)
+        """
+        iss=numpy.isscalar(gin)
+        if iss:
+            return self.prior2d_gabs_scalar(gin)
+
+        g=numpy.array(gin,dtype='f8',ndmin=1,copy=False)
+
+        prior=zeros(g.size)
+
+        w,=where(g < 1.0)
+        if w.size > 0:
+            prior[w] = 1.0
+
+        if iss:
+            prior=prior[0]
+        return prior
+
+    def prior2d_gabs_scalar(self, g):
+        """
+        version for scalars
+        """
+        from math import exp
+
+        if g < 1.0:
+            return 1.0
+        else:
+            return 0.0
 
 def gprior2d_exp_vec(pars, g):
     A=pars[0]
