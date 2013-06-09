@@ -660,7 +660,7 @@ class GPriorExp(GPrior):
         return gprior2d_exp_scalar(self.pars, g)
 
 class GPriorFlat(GPrior):
-    def __init__(self, pars):
+    def __init__(self):
         """
         pars are scalar gsigma from B&A 
         """
