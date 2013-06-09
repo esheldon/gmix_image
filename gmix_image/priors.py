@@ -664,7 +664,7 @@ class GPriorFlat(GPrior):
         """
         pars are scalar gsigma from B&A 
         """
-        pass
+        self.gmax=1.0
 
     def prior2d_gabs(self, gin):
         """
