@@ -57,6 +57,8 @@ GMIXFIT_LOW_S2N = 2**10 # very low S/N for ixx+iyy
 notfinite_bit=11
 GMIXFIT_NOTFINITE = 2**notfinite_bit # very low S/N for ixx+iyy
 
+GMIXFIT_EIG_NOTFINITE = 2**12
+
 # failure before true fit begins, e.g. in _fit_round_fixcen
 GMIXFIT_EARLY_FAILURE = 2**30
 
@@ -493,15 +495,18 @@ class GMixFitMultiBase:
         if pcov is None:
             flags += GMIXFIT_SINGULAR_MATRIX 
         else:
-            e,v = eig(pcov)
-            weig,=where(e < 0)
-            if weig.size > 0:
-                flags += GMIXFIT_NEG_COV_EIG 
+            try:
+                e,v = eig(pcov)
+                weig,=where(e < 0)
+                if weig.size > 0:
+                    flags += GMIXFIT_NEG_COV_EIG 
 
-            wneg,=where(diag(pcov) < 0)
-            if wneg.size > 0:
-                flags += GMIXFIT_NEG_COV_DIAG 
+                wneg,=where(diag(pcov) < 0)
+                if wneg.size > 0:
+                    flags += GMIXFIT_NEG_COV_DIAG 
 
+            except numpy.linalg.linalg.LinAlgError:
+                flags += GMIXFIT_EIG_NOTFINITE 
 
         res['pcov']=pcov
         res['perr']=perr
