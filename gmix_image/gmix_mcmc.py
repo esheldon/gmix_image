@@ -1149,13 +1149,17 @@ class MixMCSimple:
         #hplt_T = eu.plotting.bhist(Tvals,binsize=Tbsize,
         #                          show=False)
 
-        logTvals=log10(Tvals)
-        Tsdev = logTvals.std()
-        Tbsize=Tsdev*0.2
-        hplt_T = eu.plotting.bhist(logTvals,binsize=Tbsize,
-                                   show=False)
+        w,=numpy.where(Tvals > 0)
+        if w.size > 0:
+            logTvals=log10(Tvals[w])
+            Tsdev = logTvals.std()
+            Tbsize=Tsdev*0.2
+            hplt_T = eu.plotting.bhist(logTvals,binsize=Tbsize,
+                                       show=False)
 
-
+            hplt_T.xlabel=r'$log_{10}T$'
+        else:
+            hplt_T = None
 
         amp_sdev = ampvals.std()
         amp_bsize=amp_sdev*0.2
@@ -1167,7 +1171,6 @@ class MixMCSimple:
         hplt_cen.xlabel='center'
         hplt_g1.xlabel=g1lab
         hplt_g2.xlabel=g2lab
-        hplt_T.xlabel=r'$log_{10}T$'
         hplt_amp.xlabel='Amplitude'
 
         tab[0,0] = burn_cen
@@ -1184,7 +1187,7 @@ class MixMCSimple:
         tab[5,0] = likep
         tab.show()
 
-        if True: 
+        if False: 
             import images
             model=self.get_maxprob_model()
             images.compare_images(self.image,model,
