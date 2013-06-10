@@ -1199,6 +1199,180 @@ class MixMCSimple:
             stop
         print
 
+class MixMCMatch(MixMCSimple):
+    def __init__(self, image, weight, psf, gmix0, start_counts, **keys):
+        """
+        mcmc sampling of posterior, simple model, fixing structural
+        parameters.
+
+        parameters
+        ----------
+        image:
+            sky subtracted image as a numpy array, or list of such
+        weight:
+            1/(Error per pixel)**2, or an image of such or even
+            a list of those corresponding to the image input
+        psf:
+            The psf gaussian mixture as a GMix object, or list of such
+        start_counts:
+            Starting guess for flux
+        gmix0:
+            GMix for shape
+
+        jacob: optional
+            A dictionary holding the jacobian, or list of such
+
+        nwalkers: optional
+            Number of walkers, default 20
+        nstep: optional
+            Number of steps in MCMC chain, default 200
+        burnin: optional
+            Number of burn in steps, default 400
+        mca_a: optional
+            For affine invariant chain, default 2
+        iter: optional
+            Iterate until acor is OK, default True
+        """
+        
+        self.make_plots=keys.get('make_plots',False)
+
+        self.npars=1
+
+        self.im_list=_get_as_list(image)
+        self.wt_list=_get_as_list(weight)
+        self.psf_list=_get_as_list(psf)
+        self._set_jacob_list(**keys)
+        _check_lists(self.im_list, self.wt_list, self.psf_list,self.jacob_list)
+
+        self.gmix0=gmix0
+
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
+        self.totpix=self.nimage*self.imsize
+
+        self.model='amponly'
+
+        self.start_counts=start_counts
+
+        self.nwalkers=keys.get('nwalkers',10)
+        self.nstep=keys.get('nstep',100)
+        self.burnin=keys.get('burnin',100)
+        self.mca_a=keys.get('mca_a',2.0)
+        self.doiter=keys.get('iter',True)
+
+        self._set_im_wt_sums()
+
+        self._set_gmix_list()
+
+        self._go()
+
+    def _calc_lnprob(self, pars):
+        logprob = self._get_loglike_c(pars)
+        return logprob
+
+    def _calc_result(self):
+        import mcmc
+
+        pars,pcov = mcmc.extract_stats(self.trials)
+ 
+        arates = self.sampler.acceptance_fraction
+        arate = arates.mean()
+
+        gmix_list=self._get_gmix_list(pars)
+        stats=self._get_fit_stats(gmix_list)
+
+        Flux = pars[0]
+        if pcov[0,0] > 0:
+            perr = sqrt(diag(pcov))
+            Ferr = sqrt(pcov[0,0])
+        else:
+            Ferr = abs(LOWVAL)
+            perr = numpy.array([Ferr])
+
+        Fs2n=Flux/Ferr
+
+        self._result={'flags':0,
+                      'model':self.model,
+                      'pars':pars,
+                      'perr':sqrt(diag(pcov)),
+                      'pcov':pcov,
+                      'Flux':Flux,
+                      'Ferr':Ferr,
+                      'Fs2n':Fs2n,
+                      'arate':arate}
+
+        self._result.update(stats)
+
+
+    def _get_guess(self):
+        """
+        Note for model coellip this only does one gaussian
+        """
+
+        guess=zeros( (self.nwalkers,self.npars) )
+
+        if self.start_counts == 0:
+            guess[:,0]=self.start_counts + srandu(self.nwalkers)
+        else:
+            guess[:,0]=self.start_counts*(1.0 + 0.1*srandu(self.nwalkers))
+
+        self._guess=guess
+        return guess
+
+    def _set_gmix_list(self):
+        gmix_list=[]
+        for psf in self.psf_list:
+            g = self.gmix0.convolve(psf)
+            gmix_list.append(g)
+        self.gmix_list=gmix_list
+
+    def _set_psum(self, pars1):
+        psum=pars1[0]
+        for g in self.gmix_list:
+            g.set_psum(psum)
+
+    def _get_gmix_list(self, pars):
+        """
+        called by the generic code 
+        """
+        self._set_psum(pars)
+        return self.gmix_list
+
+    def _doplots(self):
+        import mcmc
+        import biggles
+        import esutil as eu
+
+        tab=biggles.Table(2,self.npars)
+
+        flux = self.trials[:,0]
+        fmean=self._result['Flux']
+        ferr=self._result['Ferr']
+
+        burn_plt=biggles.FramedPlot()
+        ind=numpy.arange(self.trials.shape[0])
+        burn_plt.add(biggles.Curve(ind, flux))
+
+        burn_plt.ylabel='Flux'
+
+        bsize=ferr*0.2
+        hplt = eu.plotting.bhist(flux,binsize=bsize, show=False)
+        hplt.xlabel='Flux'
+
+        tab[0,0] = burn_plt
+        tab[1,0] = hplt
+
+        print 'Flux: %g +/- %g' % (fmean,ferr)
+        print 'arate:',self._result['arate']
+        tab.show()
+
+        key=raw_input('hit a key (q to quit): ')
+        if key=='q':
+            stop
+        print
+
+
+
 
 class MixMCBDC(MixMCSimple):
     """
