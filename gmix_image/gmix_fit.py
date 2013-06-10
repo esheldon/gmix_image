@@ -965,8 +965,10 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
     def _set_gmix_list(self):
         gmix_list=[]
         for psf in self.psf_list:
-            g = self.gmix0.convolve(psf)
-            gmix_list.append(g)
+            gcopy = self.gmix0.copy()
+            gconv = gcopy.convolve(psf)
+            gmix_list.append(gconv)
+
         self.gmix_list=gmix_list
 
 
