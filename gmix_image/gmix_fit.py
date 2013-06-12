@@ -62,10 +62,10 @@ GMIXFIT_EIG_NOTFINITE = 2**12
 # failure before true fit begins, e.g. in _fit_round_fixcen
 GMIXFIT_EARLY_FAILURE = 2**30
 
-def run_leastsq(func, guess):
+def run_leastsq(func, guess, epsfcn=1.e-6):
     from scipy.optimize import leastsq
     try:
-        lmres = leastsq(func, guess, full_output=1)
+        lmres = leastsq(func, guess, epsfcn=epsfcn, full_output=1)
     except ValueError as e:
         serr=str(e)
         if 'NaNs' in serr or 'infs' in serr:
@@ -665,13 +665,33 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
 
+        self.g_guess=keys.get('g_guess',None)
+        self.T_guess=keys.get("T_guess",None)
+        self.counts_guess=keys.get("counts_guess",None)
+
         self.use_cenprior=True
 
         # make sure in units of jacobian!
         self.cen_width=keys.get('cen_width',1.0)
 
-        self._fit_round_fixcen()
+        self._set_guess_style()
+
+        if self.do_rfc:
+            self._fit_round_fixcen()
+        else:
+            self._rfc_res=None
         self._fit_full()
+
+    def _set_guess_style(self):
+        T_there=(self.T_guess is not None)
+        c_there=(self.counts_guess is not None)
+
+        if (T_there==True and c_there==True):
+            self.do_rfc=False
+        elif (T_there==False and c_there==False):
+            self.do_rfc=True
+        else:
+            raise ValueError("send T_guess and counts_guess or neither")
 
     def get_gmix(self):
         """
@@ -687,7 +707,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         Do a levenberg-marquardt
         """
 
-        if self._rfc_res['flags'] != 0:
+        if self.do_rfc and self._rfc_res['flags'] != 0:
             self._result={'flags':self._rfc_res['flags'],
                           'fit_prob':-9999.,
                           'model':self.model,
@@ -841,25 +861,37 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         return guess
 
     def _get_guess(self):
-        if self._rfc_res['flags'] != 0:
-            raise ValueError("can't fit when round fixcen fails")
-
         guess=zeros(self.npars)
+
+        if self.do_rfc:
+            if self._rfc_res['flags'] != 0:
+                raise ValueError("can't fit when round fixcen fails")
         
-        T0 = self._rfc_res['pars'][0]
-        counts0 = self._rfc_res['pars'][1]
+            T0 = self._rfc_res['pars'][0]
+            counts0 = self._rfc_res['pars'][1]
+
+            T0 = T0*(1 + 0.1*srandu())
+            T0 = counts0*(1 + 0.1*srandu())
+        else:
+            T0 = self.T_guess
+            counts0 = self.counts_guess
 
         # guess center 0,0 in uv plane
         guess[0]=0.5*srandu()
         guess[1]=0.5*srandu()
 
-        g1rand=0.1*srandu()
-        g2rand=0.1*srandu()
-        guess[2]=g1rand
-        guess[3]=g2rand
+        if self.g_guess is None:
+            g1rand=0.1*srandu()
+            g2rand=0.1*srandu()
+            #g1rand=0.6
+            #g2rand=0.6
+            guess[2]=g1rand
+            guess[3]=g2rand
+        else:
+            guess[2:2+2] = self.g_guess
 
-        guess[4] = T0*(1 + 0.1*srandu())
-        guess[5] = counts0*(1 + 0.1*srandu())
+        guess[4] = T0
+        guess[5] = counts0
 
         return guess
 

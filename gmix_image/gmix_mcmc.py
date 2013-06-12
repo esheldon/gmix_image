@@ -506,7 +506,7 @@ def _check_lists(*args):
 
 
 class MixMCSimple:
-    def __init__(self, image, weight, psf, gprior, T_guess, cen_guess, model, **keys):
+    def __init__(self, image, weight, psf, gprior, T_guess, counts_guess, cen_guess, model, **keys):
         """
         mcmc sampling of posterior, simple model.
 
@@ -569,6 +569,7 @@ class MixMCSimple:
 
         self.gprior=gprior
         self.T_guess=T_guess
+        self.counts_guess=counts_guess
         self.cen_guess=cen_guess
 
         self.Tprior=keys.get('Tprior',None)
@@ -580,7 +581,7 @@ class MixMCSimple:
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
 
-        self._set_im_wt_sums()
+        self._set_im_sums()
 
         self.cen_width=keys.get('cen_width',1.0)
 
@@ -1011,23 +1012,24 @@ class MixMCSimple:
 
         self.jacob_list=jlist        
 
-    def _set_im_wt_sums(self):
+    def _set_im_sums(self):
         """
         median of the counts across all input images
         """
         clist=numpy.zeros(len(self.im_list))
-        wtsum=0.0
         for i,im in enumerate(self.im_list):
             clist[i] = im.sum()
-            wtsum += self.wt_list[i].sum()
         
-        self.counts=numpy.median(clist)
-        self.wtsum=wtsum
+        self.counts_median=numpy.median(clist)
 
     def _get_guess(self):
         """
         Note for model coellip this only does one gaussian
         """
+
+        counts_guess=self.counts_guess
+        if counts_guess  is None:
+            counts_guess=self.counts_median
 
         self.cenprior=CenPrior(self.cen_guess, [self.cen_width]*2)
 
@@ -1046,7 +1048,7 @@ class MixMCSimple:
             guess[:,3]=0.1*srandu(self.nwalkers)
 
         guess[:,4] = self.T_guess*(1 + 0.1*srandu(self.nwalkers))
-        guess[:,5] = self.counts*(1 + 0.1*srandu(self.nwalkers))
+        guess[:,5] = counts_guess*(1 + 0.1*srandu(self.nwalkers))
 
         self._guess=guess
         return guess
@@ -1260,7 +1262,7 @@ class MixMCMatch(MixMCSimple):
         self.mca_a=keys.get('mca_a',2.0)
         self.doiter=keys.get('iter',True)
 
-        self._set_im_wt_sums()
+        self._set_im_sums()
 
         self._set_gmix_list()
 
