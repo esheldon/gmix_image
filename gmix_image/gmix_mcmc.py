@@ -89,6 +89,8 @@ class MixMCSimple:
             Default is broad, 1.0
         """
         
+        self.keys=keys
+
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',True)
         self.when_prior = keys.get('when_prior',"during")
@@ -730,19 +732,16 @@ class MixMCSimple:
         tab[3,1] = hplt_T
         tab[4,1] = hplt_amp
         tab[5,0] = likep
-        tab.show()
 
-        if False: 
-            import images
-            model=self.get_maxprob_model()
-            images.compare_images(self.image,model,
-                                  label1='image [%d,%d]' % self.image.shape,
-                                  label2='model')
+        self.tab=tab
 
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
-        print
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
 
 class MixMCMatch(MixMCSimple):
     def __init__(self, image, weight, psf, gmix0, **keys):
@@ -777,6 +776,7 @@ class MixMCMatch(MixMCSimple):
             Iterate until acor is OK, default True
         """
         
+        self.keys=keys
         self.make_plots=keys.get('make_plots',False)
 
         self.npars=1
@@ -907,14 +907,16 @@ class MixMCMatch(MixMCSimple):
 
         print 'Flux: %g +/- %g' % (fmean,ferr)
         print 'arate:',self._result['arate']
-        tab.show()
 
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
-        print
+        self.tab=tab
 
-
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
 
 
 class MixMCBDC(MixMCSimple):
@@ -922,6 +924,9 @@ class MixMCBDC(MixMCSimple):
     bulge+disk, coelliptical
     """
     def __init__(self, image, ivar, psf, gprior, **keys):
+
+        self.keys=keys
+
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',True)
         self.when_prior = "after"
@@ -1164,17 +1169,21 @@ class MixMCBDC(MixMCSimple):
         print 'exp Tmin,max:',self.trials[:,4].min(), self.trials[:,4].max()
         print 'dev Tmin,max:',self.trials[:,5].min(), self.trials[:,5].max()
         print 'arate:',self._result['arate']
-        tab.show()
 
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
-        print
-
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
 
 
 class MixMCCoellip(MixMCSimple):
     def __init__(self, image, ivar, psf, gprior, ngauss, **keys):
+
+        self.keys=keys
+
         self.make_plots=keys.get('make_plots',False)
         self.do_pqr=keys.get('do_pqr',True)
         self.when_prior = "after"
@@ -1414,12 +1423,14 @@ class MixMCCoellip(MixMCSimple):
         print 'Tvals:',Tmeans
         print 'Tfracs:',Tfracs
         print 'Ffracs:',Ffracs
-        tab.show()
 
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
-        print
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
 
 
 class MixMCPSF:
@@ -1458,6 +1469,8 @@ class MixMCPSF:
             field must be zero.
         """
         
+        self.keys=keys
+
         self.make_plots=False
 
         # cen1,cen2,e1,e2,T,p
@@ -1776,27 +1789,14 @@ class MixMCPSF:
         tab[3,1] = hplt_T
         tab[4,1] = hplt_amp
         tab[5,0] = likep
-        tab.show()
 
-        if False: 
-            import images
-            nx = ny = 40
-            levels=8
-            h2d = eu.stat.histogram2d(Tvals, g1vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g1', levels=levels)
-            h2d = eu.stat.histogram2d(Tvals, g2vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g2', levels=levels)
-
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
-        print
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
 
 
 
@@ -2291,24 +2291,15 @@ class MixMCOld:
         tab[3,1] = hplt_T
         tab[4,1] = hplt_amp
         tab[5,0] = likep
-        tab.show()
 
-        if False: 
-            import images
-            nx = ny = 40
-            levels=8
-            h2d = eu.stat.histogram2d(Tvals, g1vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g1', levels=levels)
-            h2d = eu.stat.histogram2d(Tvals, g2vals, nx=nx, ny=ny,more=True)
-            images.view(h2d['hist'], type='cont',
-                        xdr=[h2d['xcenter'][0], h2d['xcenter'][-1]],
-                        ydr=[h2d['ycenter'][0], h2d['ycenter'][-1]],
-                        xlabel='T', ylabel='g2', levels=levels)
 
-        key=raw_input('hit a key (q to quit): ')
-        if key=='q':
-            stop
+        prompt=self.keys.get('prompt',True)
+        if prompt:
+            tab.show()
+            key=raw_input('hit a key (q to quit): ')
+            if key=='q':
+                stop
+            print
+
+
 
