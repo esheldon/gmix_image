@@ -31,7 +31,7 @@ from .util import srandu
 
 from .gmix_em import gmix2image_em
 from .render import gmix2image
-from .util import total_moms, gmix2pars, print_pars, get_estyle_pars, \
+from .util import total_moms, gmix2pars, print_pars, \
         randomize_e1e2, calculate_some_stats
 
 from .gmix_mcmc import CenPrior
@@ -117,8 +117,8 @@ class GMixFitSimple:
         """
         Get a gaussian mixture representing the model
         """
-        epars=get_estyle_pars(self._result['pars'])
-        gmix=GMix(epars, type=self.model)
+        pars=self._result['pars']
+        gmix=GMix(pars, type=self.model)
         return gmix
 
     def get_model(self):
@@ -129,8 +129,8 @@ class GMixFitSimple:
         should rename this to get_model_image
         or something
         """
-        epars=get_estyle_pars(self._result['pars'])
-        gmix=self._get_convolved_gmix(epars)
+        pars=self._result['pars']
+        gmix=self._get_convolved_gmix(pars)
         return gmix2image(gmix, self.image.shape)
 
     def _go(self):
@@ -190,12 +190,11 @@ class GMixFitSimple:
 
         ydiff = zeros(self.image.size, dtype='f8')
 
-        epars=get_estyle_pars(pars)
-        if epars is None:
+        if pars is None:
             ydiff[:] = HIGHVAL
             return ydiff
 
-        gmix=self._get_convolved_gmix(epars)
+        gmix=self._get_convolved_gmix(pars)
  
         _render.fill_ydiff(self.image, self.ivar, gmix, ydiff)
 
@@ -217,12 +216,11 @@ class GMixFitSimple:
             ydiff[:] = HIGHVAL
             return ydiff
 
-        epars=get_estyle_pars(pars)
-        if epars is None:
+        if pars is None:
             ydiff[:] = HIGHVAL
             return ydiff
 
-        gmix=self._get_convolved_gmix(epars)
+        gmix=self._get_convolved_gmix(pars)
  
         _render.fill_ydiff(self.image, self.ivar, gmix, ydiff)
 
@@ -232,11 +230,8 @@ class GMixFitSimple:
 
 
 
-    def _get_convolved_gmix(self, epars):
-        """
-        epars must be in e1,e2 space
-        """
-        gmix0=GMix(epars, type=self.model)
+    def _get_convolved_gmix(self, pars):
+        gmix0=GMix(pars, type=self.model)
         gmix=gmix0.convolve(self.psf_gmix)
         return gmix
 
@@ -308,8 +303,7 @@ class GMixFitSimple:
             res['Ts2n']  = res['Tmean']/res['Terr']
             res['arate'] = 1.
 
-            epars=get_estyle_pars(pars)
-            gmix=self._get_convolved_gmix(epars)
+            gmix=self._get_convolved_gmix(pars)
             stats=calculate_some_stats(self.image, 
                                        self.ivar, 
                                        gmix,
@@ -333,7 +327,7 @@ class GMixFitSimple:
         return pcov * s_sq 
 
 
-class GMixFitMultiBase:
+class GMixFitMultiBase(object):
     """
     Much needs to over-ridden
     """
@@ -418,12 +412,15 @@ class GMixFitMultiBase:
 
         return ydiffall
 
-    def _get_convolved_gmix(self, epars, psf):
+    def _get_convolved_gmix(self, pars, psf):
         """
-        Not all children will use this. epars must be in e1,e2 space
+        Not all children will use this
         """
-        gmix0=GMix(epars, type=self.model)
-        gmix=gmix0.convolve(psf)
+        try:
+            gmix0=GMix(pars, type=self.model)
+            gmix=gmix0.convolve(psf)
+        except ValueError:
+            gmix=None
         return gmix
 
     def _get_im_list(self, im_list0):
@@ -476,14 +473,15 @@ class GMixFitMultiBase:
 
         if pcov0 is not None:
             gmix_list=self._get_gmix_list(pars)
-            pcov = self._scale_leastsq_cov(gmix_list, pcov0)
+            if gmix_list is not None:
+                pcov = self._scale_leastsq_cov(gmix_list, pcov0)
 
-            d=diag(pcov)
-            w,=where(d < 0)
+                d=diag(pcov)
+                w,=where(d < 0)
 
-            if w.size == 0:
-                # only do if non negative
-                perr = sqrt(d)
+                if w.size == 0:
+                    # only do if non negative
+                    perr = sqrt(d)
 
         flags = 0
         if ier > 4:
@@ -700,8 +698,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         Get the best fit gmix, not convolved
         """
         pars=self._result['pars']
-        epars=get_estyle_pars(pars)
-        gmix=GMix(epars, type=self.model)
+        gmix=GMix(pars, type=self.model)
         return gmix
 
     def _fit_full(self):
@@ -787,9 +784,10 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
         pcov=None
         if pcov0 is not None:
-            epars=self._pars2convert(pars)
-            gmix_list=self._get_gmix_list(epars)
-            pcov=self._scale_leastsq_cov(gmix_list,pcov0)
+            tpars=self._pars2convert(pars)
+            gmix_list=self._get_gmix_list(tpars)
+            if gmix_list is not None:
+                pcov=self._scale_leastsq_cov(gmix_list,pcov0)
 
         self._rfc_res={'flags':flags,
                        'numiter':infodict['nfev'],
@@ -810,6 +808,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         gmix_list=[]
         for psf in self.psf_list:
             gmix=self._get_convolved_gmix(pars, psf)
+            if gmix is None:
+                return None
+
             gmix_list.append(gmix)
 
         return gmix_list 
@@ -833,7 +834,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         pars are [T,counts]
         """
         pars=self._pars2convert(pars2)
-        return self._get_lm_ydiff_epars(pars)
+        return self._get_lm_ydiff_pars(pars)
 
     def _get_lm_ydiff_full(self, pars):
         """
@@ -844,8 +845,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             ydiff[-1] = flux prior
         """
 
-        epars=get_estyle_pars(pars)
-        ydiff=self._get_lm_ydiff_epars(epars)
+        ydiff=self._get_lm_ydiff_pars(pars)
 
         self._add_priors(pars, ydiff)
 
@@ -870,12 +870,14 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         if self.counts_prior is not None:
             ydiff[-1] = self.counts_prior.lnprob(pars[4])
 
-    def _get_lm_ydiff_epars(self, epars):
-
-        if epars is None:
+    def _get_lm_ydiff_pars(self, pars):
+        g=numpy.sqrt(pars[2]**2 + pars[3]**2)
+        if g >= 1.0:
             return self._get_bad_ydiff()
 
-        gmix_list=self._get_gmix_list(epars)
+        gmix_list=self._get_gmix_list(pars)
+        if gmix_list is None:
+            return self._get_bad_ydiff()
 
         # inherited
         ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
@@ -905,12 +907,18 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             counts0 = self.counts_guess
 
         # guess center 0,0 in uv plane
-        guess[0]=0.5*srandu()
-        guess[1]=0.5*srandu()
+        #guess[0]=0.5*srandu()
+        #guess[1]=0.5*srandu()
 
         if self.g_guess is None:
-            guess[2]=0.5*srandu()
-            guess[3]=0.5*srandu()
+            #guess[2]=0.5*srandu()
+            #guess[3]=0.5*srandu()
+            gtot = 0.9*numpy.random.random()
+            theta=numpy.random.random()*numpy.pi
+            g1rand = gtot*numpy.cos(2*theta)
+            g2rand = gtot*numpy.sin(2*theta)
+            guess[2]=g1rand
+            guess[3]=g2rand
         else:
             guess[2:2+2] = self.g_guess
 
@@ -1034,6 +1042,101 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         return guess
 
 
+class GMixFitMultiSimpleMatch(GMixFitMultiSimple):
+    """
+    fit to the input gaussian mixture, only letting the total flux vary .  The
+    center of the model should be relative the (0,0) coordinate center in uv
+    space, which corresponds to cen0, the coord system center in pixel coords
+    for each SE image.  Make sure cen0 corresponds to that used for the reference fit!
+
+    You can enter any GMix object.  
+
+    """
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, pars0, model,
+                 **keys):
+
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
+        self.npars=1
+        self.nprior=0
+
+        self.im_list=self._get_im_list(im_list)
+        self.wt_list=self._get_im_list(wt_list)
+        self.jacob_list=jacob_list
+        self.psf_list=psf_list
+        self.pars0=numpy.array(pars0,dtype='f8')
+
+        self.model=model
+
+        self.start_counts=pars0[5]
+
+        self._check_lists(self.im_list,self.wt_list,self.jacob_list,
+                          self.psf_list)
+
+        self.verbose=keys.get('verbose',False)
+
+        self.nimage=len(self.im_list)
+        self.imsize=self.im_list[0].size
+        self.totpix=self.nimage*self.imsize
+
+        self._dofit()
+
+
+    def _dofit(self):
+        """
+        Do a levenberg-marquardt
+        """
+
+        ntry=self.lm_max_try
+        for i in xrange(1,ntry+1):
+
+            guess=self._get_guess()
+
+            lmres = run_leastsq(self._get_lm_ydiff_flux, guess)
+
+            res=self._calc_lm_results(lmres)
+
+            if res['flags']==0:
+                break
+
+        if self.verbose and res['flags'] != 0:
+            mess="could not find maxlike after %s tries" % ntry
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+
+        res['ntry'] = i
+        self._result=res
+
+        self._add_extra_results()
+
+    def _add_extra_results(self):
+        res=self._result
+        res['F']=res['pars'][0]
+        res['Ferr']=9999.
+        if res['flags']==0:
+            res['Ferr']  = res['perr'][0]
+
+    def _get_lm_ydiff_flux(self, pars1):
+        """
+        pars1 are [counts]
+        """
+
+        gmix_list=self._get_gmix_list(pars1)
+        if gmix_list is None:
+            return self._get_bad_ydiff()
+
+        # note we fixed the center, so no need to put in
+        # the cen_ydiff
+        return self._get_lm_ydiff_gmix_list(gmix_list)
+
+    def _get_gmix_list(self, pars1):
+        pars=self.pars0.copy()
+        pars[5] = pars1[0]
+        return super(GMixFitMultiSimpleMatch,self)._get_gmix_list(pars)
+
+    def _get_guess(self):
+        guess=[self.start_counts]
+        return guess
+
+
 class GMixFitMultiCModel(GMixFitMultiBase):
     """
     fit to the input gaussian mixture, only letting the total flux vary .  The
@@ -1120,6 +1223,9 @@ class GMixFitMultiCModel(GMixFitMultiBase):
             return self._get_bad_ydiff()
 
         gmix_list=self._get_gmix_list(pars1)
+        if gmix_list is None:
+            return self._get_bad_ydiff()
+
         # note we fixed the center, so no need to put in
         # the cen_ydiff
         return self._get_lm_ydiff_gmix_list(gmix_list)
@@ -1147,7 +1253,10 @@ class GMixFitMultiCModel(GMixFitMultiBase):
 
             dlist=exp_dlist + dev_dlist
 
-            gm = GMix(dlist)
+            try:
+                gm = GMix(dlist)
+            except ValueError:
+                return None
 
             gmix_list.append(gm)
 
@@ -1372,21 +1481,25 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
         # since we are doign coellip, this means fitting
         # a single round gaussian, see GMixFitMultiSimple
-        epars=self._pars2convert(pars2)
-        return self._get_lm_ydiff_epars(epars)
+        pars=self._pars2convert(pars2)
+        return self._get_lm_ydiff_pars(pars)
 
     def _get_lm_ydiff_full(self, pars):
-        epars=get_estyle_pars(pars)
-        return self._get_lm_ydiff_epars(epars)
+        return self._get_lm_ydiff_pars(pars)
  
-    def _get_lm_ydiff_epars(self, epars):
+    def _get_lm_ydiff_pars(self, pars):
         """
-        epars is a coellip pars array
+        pars is a coellip pars array
         """
-        if epars is None:
+        g=numpy.sqrt(pars[2]**2 + pars[3]**2)
+        if g >= 1.0:
             return self._get_bad_ydiff()
 
-        gmix=GMixCoellip(epars)
+        try:
+            gmix=GMixCoellip(pars)
+        except ValueError:
+            return self._get_bad_ydiff()
+
 
         ydiff = self._get_lm_ydiff_gmix(gmix)
 
@@ -1539,8 +1652,10 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         called by the generic code calc_lm_results
         from the base class
         """
-        epars=get_estyle_pars(pars)
-        gmix=GMixCoellip(epars)
+        try:
+            gmix=GMixCoellip(pars)
+        except ValueError:
+            return None
         return [gmix]
 
 
@@ -1590,7 +1705,6 @@ class GMixFitCoellip:
                  Tpositive=True,
                  model='coellip',
                  nsub=1,
-                 estyle='e',
                  verbose=False):
         self.image=image
         self.pixerr=pixerr
@@ -1598,7 +1712,6 @@ class GMixFitCoellip:
         self.ivar=self.ierr**2
         self.prior=prior
         self.width=width
-        self.estyle=estyle
 
         self.verbose=verbose
 
@@ -1731,10 +1844,10 @@ class GMixFitCoellip:
                 print >>stderr,'NaN in pars',pars
             return False
 
-        e1=pars[2]
-        e2=pars[3]
-        e = sqrt(e1**2 + e2**2)
-        if (abs(e1) >= 1) or (abs(e2) >= 1) or (e >= 1):
+        g1=pars[2]
+        g2=pars[3]
+        e = sqrt(g1**2 + g2**2)
+        if (abs(eg) >= 1) or (abs(g2) >= 1) or (e >= 1):
             if self.verbose:
                 print >>stderr,'ellip >= 1'
             return False
@@ -1804,19 +1917,14 @@ class GMixFitCoellip:
     def pars2gmix(self, pars):
         from . import gmix
 
-        if self.estyle=='g':
-            epars=get_estyle_pars(pars)
-        else:
-            epars=pars
-
         if self.model=='gdev':
-            return gmix.GMixDev(epars)
+            return gmix.GMixDev(pars)
         elif self.model=='gexp':
-            return gmix.GMixExp(epars)
+            return gmix.GMixExp(pars)
         elif self.model=='coellip-Tfrac':
-            return gmix.GMix(epars, type=gmix.GMIX_COELLIP_TFRAC)
+            return gmix.GMix(pars, type=gmix.GMIX_COELLIP_TFRAC)
         elif self.model=='coellip':
-            return gmix.GMixCoellip(epars)
+            return gmix.GMixCoellip(pars)
         else:
             raise ValueError("bad model: '%s'" % self.model)
 
@@ -2120,8 +2228,7 @@ def test_simple(s2n=100.,
     # centers are actuall ignored when creating the convolved
     # image
     pars=numpy.array([-1., -1., g1, g2, T, counts])
-    epars=get_estyle_pars(pars)
-    gmix=GMix(epars,type=model)
+    gmix=GMix(pars,type=model)
 
     e1psf=-0.05
     e2psf=-0.07
@@ -2195,8 +2302,7 @@ def test_multi(s2n=100.,
     # centers are actually ignored when creating the convolved
     # image
     pars=numpy.array([-1., -1., g1pix, g2pix, Tpix, counts_pix])
-    epars=get_estyle_pars(pars)
-    gmix=GMix(epars,type=model)
+    gmix=GMix(pars,type=model)
 
     im_list=[]
     wt_list=[]
@@ -2320,10 +2426,8 @@ def test_multi_color(s2n=100.,
     pars1=numpy.array([-1., -1., g1, g2, Tpix, counts1_pix])
     pars2=numpy.array([-1., -1., g1_2, g2_2, Tpix_2, counts2_pix])
 
-    epars1=get_estyle_pars(pars1)
-    epars2=get_estyle_pars(pars2)
-    gmix1=GMix(epars1,type=model)
-    gmix2=GMix(epars2,type=model)
+    gmix1=GMix(pars1,type=model)
+    gmix2=GMix(pars2,type=model)
 
     im_list1=[]
     wt_list1=[]
@@ -2516,10 +2620,8 @@ def test_cmodel(s2n=100.,
     exp_pars=numpy.array([-1., -1., g1exp, g2exp, exp_Tpix, exp_counts_pix])
     dev_pars=numpy.array([-1., -1., g1dev, g2dev, dev_Tpix, dev_counts_pix])
 
-    exp_epars=get_estyle_pars(exp_pars)
-    dev_epars=get_estyle_pars(dev_pars)
-    exp_gmix=GMix(exp_epars,type='exp')
-    dev_gmix=GMix(dev_epars,type='dev')
+    exp_gmix=GMix(exp_pars,type='exp')
+    dev_gmix=GMix(dev_pars,type='dev')
     
 
     exp_dlist=exp_gmix.get_dlist()

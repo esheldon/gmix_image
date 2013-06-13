@@ -27,7 +27,7 @@ def as_gmix_type(type_in):
     if isinstance(type_in,basestring):
         type_in=type_in.lower()
         if type_in not in _gmix_type_dict:
-            raise ValueError("unknown gmixtype: '%s'" % type_in)
+            raise TypeError("unknown gmixtype: '%s'" % type_in)
         type_out = _gmix_type_dict[type_in]
     else:
         type_out = int(type_in)
@@ -185,7 +185,7 @@ class GMix(_render.GVec):
         psf: GMix object
         """
         if not isinstance(psf, GMix):
-            raise ValueError("Can only convolve with another GMix object")
+            raise TypeError("Can only convolve with another GMix object")
 
         gmix = GMix(self.get_pars())
         gmix._convolve_replace(psf)
@@ -245,7 +245,7 @@ def gmix2pars(gmix_in):
     elif isinstance(gmix_in, list) and isinstance(gmix_in[0],dict):
         gm=gmix_in
     else:
-        raise ValueError("input should be a GMix object or list of dicts")
+        raise TypeError("input should be a GMix object or list of dicts")
 
     ngauss=len(gm)
     pars=zeros(ngauss*6,dtype='f8')

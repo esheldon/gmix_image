@@ -374,11 +374,43 @@ struct gvec *gvec_from_pars(double *pars, int size)
     return gvec;
 }
 
+// out of range inputs are scaled to be in range
+static int g1g2_to_e1e2(double g1, double g2, double *e1, double *e2)
+{
+    double g=0,e=0,fac=0;
+
+    g = sqrt(g1*g1 + g2*g2);
+
+    if (g == 0) {
+        *e1=0;
+        *e2=0;
+    } else {
+
+        if (g >= 1.) {
+            *e1=-9999;
+            *e2=-9999;
+            return 0;
+        }
+
+        e = tanh(2*atanh(g));
+        if (e >= 1.) {
+            // round off error most likely
+            e = 0.99999999;
+        }
+        fac = e/g;
+
+        *e1 = fac*g1;
+        *e2 = fac*g2;
+    }
+    return 1;
+}
+
 
 struct gvec *gvec_from_coellip_Tfrac(double *pars, int size)
 {
     int ngauss=0;
-    double row=0, col=0, e1=0, e2=0, Tmax=0, Ti=0, pi=0, Tfrac=0;
+    double row=0, col=0, g1=0, g2=0, e1=0, e2=0;
+    double Tmax=0, Ti=0, pi=0, Tfrac=0;
     struct gauss *gauss=NULL;
 
     int i=0;
@@ -388,13 +420,17 @@ struct gvec *gvec_from_coellip_Tfrac(double *pars, int size)
     }
     ngauss = (size-4)/2;
 
-    struct gvec * gvec = gvec_new(ngauss);
 
     row=pars[0];
     col=pars[1];
-    e1 = pars[2];
-    e2 = pars[3];
+    g1 = pars[2];
+    g2 = pars[3];
     Tmax = pars[4];
+
+    if (!g1g2_to_e1e2(g1,g2,&e1,&e2)) {
+        return NULL;
+    }
+    struct gvec * gvec = gvec_new(ngauss);
 
     for (i=0; i<ngauss; i++) {
         gauss = &gvec->data[i];
@@ -420,68 +456,11 @@ struct gvec *gvec_from_coellip_Tfrac(double *pars, int size)
     return gvec;
 }
 
-/*
-struct gvec *gvec_from_coellip_crap(double *pars, int size)
-{
-    int ngauss=0, Tstart=0, Astart=0;
-    double row=0, col=0, e1=0, e2=0, 
-           T=0, Ti=0, fi=0, A=0, Ai=0, pi=0, 
-           fsum=0, psum=0;
-    struct gauss *gauss=NULL;
-
-    int i=0;
-
-    if ( ((size-4) % 2) != 0) {
-        return NULL;
-    }
-    ngauss = (size-4)/2;
-
-    struct gvec * gvec = gvec_new(ngauss);
-
-    row=pars[0];
-    col=pars[1];
-    e1 = pars[2];
-    e2 = pars[3];
-
-
-    Tstart=4;
-    Astart=Tstart+ngauss;
-
-    T = pars[Tstart];
-    A = pars[Astart];
-
-    for (i=0; i<ngauss; i++) {
-        gauss = &gvec->data[i];
-
-        if (i < (ngauss-1)) {
-            fi = pars[Tstart+1+i];
-            pi = pars[Astart+1+i];
-            fsum += fi;
-            psum += pi;
-        } else {
-            fi = 1-fsum;
-            pi = 1-psum;
-        }
-        Ai = A*pi;
-        Ti = T*fi;
-
-        gauss_set(gauss,
-                  Ai,
-                  row, 
-                  col, 
-                  (Ti/2.)*(1-e1),
-                  (Ti/2.)*e2,
-                  (Ti/2.)*(1+e1));
-    }
-
-    return gvec;
-}
-*/
 
 struct gvec *gvec_from_coellip(double *pars, int size)
 {
     int ngauss=0, Tstart=0, Astart=0;
-    double row=0, col=0, e1=0, e2=0, Ti=0, Ai=0;
+    double row=0, col=0, g1=0, g2=0, e1=0, e2=0, Ti=0, Ai=0;
     struct gauss *gauss=NULL;
 
     int i=0;
@@ -491,17 +470,20 @@ struct gvec *gvec_from_coellip(double *pars, int size)
     }
     ngauss = (size-4)/2;
 
-    struct gvec * gvec = gvec_new(ngauss);
 
     row=pars[0];
     col=pars[1];
-    e1 = pars[2];
-    e2 = pars[3];
-
+    g1 = pars[2];
+    g2 = pars[3];
 
     Tstart=4;
     Astart=Tstart+ngauss;
 
+    if (!g1g2_to_e1e2(g1,g2,&e1,&e2)) {
+        return NULL;
+    }
+
+    struct gvec * gvec = gvec_new(ngauss);
 
     for (i=0; i<ngauss; i++) {
         gauss = &gvec->data[i];
@@ -521,71 +503,12 @@ struct gvec *gvec_from_coellip(double *pars, int size)
     return gvec;
 }
 
-/* helper function, only works for 3 gauss models */
-static struct gvec *_gapprox_pars_to_gvec_old(double *pars, 
-                                          const double *Fvals, 
-                                          const double *pvals)
-{
-    double row=0, col=0, e1=0, e2=0;
-    double T=0, Tvals[3]={0};
-    double p=0, counts[3]={0};
-
-    struct gauss *gauss=NULL;
-    struct gvec * gvec = NULL;
-
-    int i=0;
-
-    row=pars[0];
-    col=pars[1];
-    e1=pars[2];
-    e2=pars[3];
-    T=pars[4];
-    p=pars[5];
-
-    Tvals[0] = Fvals[0]*T;
-    Tvals[1] = Fvals[1]*T;
-    Tvals[2] = Fvals[2]*T;
-    counts[0] = pvals[0]*p;
-    counts[1] = pvals[1]*p;
-    counts[2] = pvals[2]*p;
-
-    gvec = gvec_new(3);
-
-    for (i=0; i<gvec->size; i++) {
-        gauss=&gvec->data[i];
-        gauss_set(gauss,
-                  counts[i], 
-                  row, col, 
-                  (Tvals[i]/2.)*(1-e1), 
-                  (Tvals[i]/2.)*e2,
-                  (Tvals[i]/2.)*(1+e1));
-    }
-
-    return gvec;
-}
-
-
-struct gvec *gvec_from_pars_turb_old(double *pars, int size)
-{
-    if (size != 6) {
-        return NULL;
-    }
-
-    static const double Fvals[3] = 
-        {0.5793612389470884,1.621860687127999,7.019347162356363};
-    static const double pvals[3] = 
-        {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
-
-    return _gapprox_pars_to_gvec_old(pars, Fvals, pvals);
-}
-
-
 static struct gvec *_gapprox_pars_to_gvec(double *pars, 
                                           const double *Fvals, 
                                           const double *pvals,
                                           int ngauss)
 {
-    double row=0, col=0, e1=0, e2=0;
+    double row=0, col=0, g1=0, g2=0, e1=0, e2=0;
     double T=0, T_i=0;
     double counts=0, counts_i=0;
 
@@ -596,10 +519,14 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 
     row=pars[0];
     col=pars[1];
-    e1=pars[2];
-    e2=pars[3];
+    g1=pars[2];
+    g2=pars[3];
     T=pars[4];
     counts=pars[5];
+
+    if (!g1g2_to_e1e2(g1,g2,&e1,&e2)) {
+        return NULL;
+    }
 
     gvec = gvec_new(ngauss);
 
@@ -623,6 +550,7 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
 struct gvec *gvec_from_pars_dev6(double *pars, int size)
 {
     if (size != 6) {
+        fprintf(stderr,"wrong par len for dev6: %d\n", size);
         return NULL;
     }
 
@@ -648,6 +576,7 @@ struct gvec *gvec_from_pars_dev6(double *pars, int size)
 struct gvec *gvec_from_pars_dev10(double *pars, int size)
 {
     if (size != 6) {
+        fprintf(stderr,"wrong par len for dev10: %d\n", size);
         return NULL;
     }
 
@@ -681,6 +610,7 @@ struct gvec *gvec_from_pars_dev10(double *pars, int size)
 struct gvec *gvec_from_pars_exp4(double *pars, int size)
 {
     if (size != 6) {
+        fprintf(stderr,"wrong par len for exp4: %d\n", size);
         return NULL;
     }
 
@@ -702,6 +632,7 @@ struct gvec *gvec_from_pars_exp4(double *pars, int size)
 struct gvec *gvec_from_pars_exp6(double *pars, int size)
 {
     if (size != 6) {
+        fprintf(stderr,"wrong par len for exp6: %d\n", size);
         return NULL;
     }
 
@@ -732,6 +663,7 @@ struct gvec *gvec_from_pars_bdc(double *pars, int size)
     struct gvec *gvec_exp=NULL, *gvec_dev=NULL, *gvec=NULL;
 
     if (size != 8) {
+        fprintf(stderr,"wrong par len for bulge+disk: %d\n", size);
         return NULL;
     }
 
@@ -769,6 +701,7 @@ struct gvec *gvec_from_pars_bdc(double *pars, int size)
 struct gvec *gvec_from_pars_turb(double *pars, int size)
 {
     if (size != 6) {
+        fprintf(stderr,"wrong par len for turb: %d\n", size);
         return NULL;
     }
 

@@ -120,14 +120,16 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "full pars size not multiple of 6: %ld", size);
+                        "error constructing gmix from full array");
+                return -1;
             }
             break;
         case 1:
             self->gvec = gvec_from_coellip(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "coellip pars wrong size: %ld", size);
+                        "error constructing gmix from coellip");
+                return -1;
             }
             break;
         case 5:
@@ -135,7 +137,8 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_coellip_Tfrac(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "coellip pars wrong size: %ld", size);
+                        "error constructing gmix from coellip Tfrac");
+                return -1;
             }
             break;
 
@@ -143,7 +146,8 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars_turb(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "turb pars not size 6: %ld", size);
+                        "error constructing gmix from turb");
+                return -1;
             }
             break;
 
@@ -151,14 +155,16 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars_exp6(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "exp6 pars not size 6: %ld", size);
+                        "error constructing exp6 gmix");
+                return -1;
             }
             break;
         case 4:
             self->gvec = gvec_from_pars_dev10(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "dev10 pars not size 6: %ld", size);
+                        "error constructing dev10 gmix");
+                return -1;
             }
             break;
 
@@ -166,7 +172,8 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             self->gvec = gvec_from_pars_bdc(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "bdc pars not size 8: %ld", size);
+                        "error constructing bdc gmix");
+                return -1;
             }
             break;
 
