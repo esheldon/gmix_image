@@ -12,6 +12,8 @@
 // this is for exp(-0.5*chi2) and corresponds to
 // about sqrt(200) ~ 14 sigma
 //#define EXP_MAX_CHI2 200
+// 5 sigma
+//#define EXP_MAX_CHI2 25
 // 6 sigma
 //#define EXP_MAX_CHI2 36
 // 8 sigma

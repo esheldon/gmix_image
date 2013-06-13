@@ -656,27 +656,29 @@ fill_ydiff_wt_jacob_generic(const struct image *image,
         goto _fill_ydiff_wt_jacob_bail;
     }
 
+    if (ivar < 0) ivar=0.0;
     for (row=0; row<nrows; row++) {
         u=JACOB_PIX2U(jacob, row, 0);
         v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
-            model_val=GVEC_EVAL(gvec, u, v);
-            pixval=IM_GET(image, row, col);
-
             if (weight) {
-                // otherwise use input ivar
                 ivar=IM_GET(weight, row, col);
+                if (ivar < 0) ivar=0.0; // fpack...
             }
-            if (ivar < 0) ivar=0.0; // fpack...
 
-            diff = model_val - pixval;
-            diff *= sqrt(ivar);
+            if (ivar > 0) {
+                model_val=GVEC_EVAL(gvec, u, v);
+                pixval=IM_GET(image, row, col);
 
-            if (!isfinite(diff)) {
-                diff=GMIX_IMAGE_BIGNUM;
+                diff = model_val - pixval;
+                diff *= sqrt(ivar);
+
+                if (!isfinite(diff)) {
+                    diff=GMIX_IMAGE_BIGNUM;
+                }
+                IM_SETFAST(diff_image, row, col, diff);
             }
-            IM_SETFAST(diff_image, row, col, diff);
 
             u += jacob->dudcol; v += jacob->dvdcol;
         } // cols
@@ -861,26 +863,27 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
         goto _calculate_loglike_wt_jacob_bail;
     }
 
+    if (ivar < 0) ivar=0.0;
     (*loglike)=0;
     for (row=0; row<nrows; row++) {
         u=JACOB_PIX2U(jacob, row, 0);
         v=JACOB_PIX2V(jacob, row, 0);
         for (col=0; col<ncols; col++) {
 
-            model_val=GVEC_EVAL(gvec, u, v);
-
-            pixval=IM_GET(image, row, col);
             if (weight) {
-                // otherwise use input ivar
                 ivar=IM_GET(weight, row, col);
+                if (ivar < 0) ivar=0.0; // fpack...
             }
-            if (ivar < 0) ivar=0.0; // fpack...
 
-            diff = model_val - pixval;
-            (*loglike) += diff*diff*ivar;
+            if (ivar > 0) {
+                model_val=GVEC_EVAL(gvec, u, v);
+                pixval=IM_GET(image, row, col);
+                diff = model_val - pixval;
+                (*loglike) += diff*diff*ivar;
 
-            (*s2n_numer) += pixval*model_val*ivar;
-            (*s2n_denom) += model_val*model_val*ivar;
+                (*s2n_numer) += pixval*model_val*ivar;
+                (*s2n_denom) += model_val*model_val*ivar;
+            }
 
             u += jacob->dudcol; v += jacob->dvdcol;
         } // cols

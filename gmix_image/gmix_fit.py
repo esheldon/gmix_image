@@ -154,9 +154,9 @@ class GMixFitSimple:
             if res['flags']==0:
                 break
 
-        if res['flags'] != 0:
+        if self.verbose and res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         res['ntry'] = i
         self._result=res
@@ -378,10 +378,7 @@ class GMixFitMultiBase:
         return ydiff
 
     def _get_n_ydiff(self):
-        n_ydiff = self.totpix
-        if self.use_cenprior:
-            n_ydiff += 2
-
+        n_ydiff = self.totpix + self.nprior
         return n_ydiff
 
     def _get_lm_ydiff_gmix_list(self, gmix_list):
@@ -394,7 +391,7 @@ class GMixFitMultiBase:
         """
         imsize=self.imsize
 
-        # two for the centroid prior
+        # room for any priors
         n_ydiff = self._get_n_ydiff()
 
         ydiffall = zeros(n_ydiff, dtype='f8')
@@ -649,6 +646,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
 
         self.npars=6
+        self.nprior=4 # cen,g,T,flux
         self.im_list=self._get_im_list(im_list)
         self.wt_list=self._get_im_list(wt_list)
         self.jacob_list=jacob_list
@@ -669,10 +667,14 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.T_guess=keys.get("T_guess",None)
         self.counts_guess=keys.get("counts_guess",None)
 
-        self.use_cenprior=True
 
         # make sure in units of jacobian!
-        self.cen_width=keys.get('cen_width',1.0)
+        self.cen_prior  = keys.get('cen_prior',None)
+        self.gprior    = keys.get('gprior',None)
+        self.T_prior    = keys.get('T_prior',None)
+        self.counts_prior = keys.get('counts_prior',None)
+
+        self.verbose=keys.get('verbose',False)
 
         self._set_guess_style()
 
@@ -728,9 +730,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if res['flags'] != 0:
+        if self.verbose and res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         res['ntry'] = i
         self._result=res
@@ -776,7 +778,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
             if pcov0 is not None and ier <= 4:
                 break
 
-        if pcov0 is None or ier > 4:
+        if self.verbose and pcov0 is None or ier > 4:
             mess="could not find maxlike after %s tries" % ntry
             print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
             flags=GMIXFIT_EARLY_FAILURE 
@@ -835,13 +837,40 @@ class GMixFitMultiSimple(GMixFitMultiBase):
 
     def _get_lm_ydiff_full(self, pars):
         """
-        pars are [T,counts]
+        priors are at
+            ydiff[-4] = cen prior
+            ydiff[-3] = g prior
+            ydiff[-2] = T prior
+            ydiff[-1] = flux prior
         """
+
         epars=get_estyle_pars(pars)
-        return self._get_lm_ydiff_epars(epars)
+        ydiff=self._get_lm_ydiff_epars(epars)
+
+        self._add_priors(pars, ydiff)
+
+        return ydiff
     
+    def _add_priors(self, pars, ydiff):
+        if self.cen_prior is not None:
+            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2]-0.0)
+
+        if self.gprior is not None:
+            g1 = pars[2]
+            g2 = pars[3]
+            g=sqrt(g1**2 + g2**2)
+            gp = self.gprior.prior2d_gabs_scalar(g)
+            if gp > 0:
+                lnp = log(gp)
+                ydiff[-3] = gp
+
+        if self.T_prior is not None:
+            ydiff[-2] = self.T_prior.lnprob(pars[4])
+
+        if self.counts_prior is not None:
+            ydiff[-1] = self.counts_prior.lnprob(pars[4])
+
     def _get_lm_ydiff_epars(self, epars):
-        #if epars is None or epars[-1] < self.lowest_psum:
 
         if epars is None:
             return self._get_bad_ydiff()
@@ -851,8 +880,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         # inherited
         ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
         
-        cen_ydiff = (epars[0:0+2]-0.0)/self.cen_width
-        ydiff[-2:] = cen_ydiff
+
         return ydiff
 
     def _get_round_fixcen_guess(self):
@@ -881,12 +909,8 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         guess[1]=0.5*srandu()
 
         if self.g_guess is None:
-            g1rand=0.1*srandu()
-            g2rand=0.1*srandu()
-            #g1rand=0.6
-            #g2rand=0.6
-            guess[2]=g1rand
-            guess[3]=g2rand
+            guess[2]=0.5*srandu()
+            guess[3]=0.5*srandu()
         else:
             guess[2:2+2] = self.g_guess
 
@@ -905,11 +929,12 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
     You can enter any GMix object.  
 
     """
-    def __init__(self, im_list, wt_list, jacob_list, psf_list, gmix0, start_counts,
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, gmix0,
                  **keys):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
+        self.nprior=0
 
         self.im_list=self._get_im_list(im_list)
         self.wt_list=self._get_im_list(wt_list)
@@ -917,16 +942,16 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
         self.psf_list=psf_list
         self.gmix0=gmix0.copy()
 
-        self.start_counts=start_counts
+        self.start_counts=gmix0.get_psum()
 
         self._check_lists(self.im_list,self.wt_list,self.jacob_list,
                           self.psf_list)
 
 
+        self.verbose=keys.get('verbose',False)
+
         # we will fix this and only reset the fluxes as we go
         self._set_gmix_list()
-
-        self.use_cenprior=False
 
         self.nimage=len(self.im_list)
         self.imsize=self.im_list[0].size
@@ -953,9 +978,9 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
             if res['flags']==0:
                 break
 
-        if res['flags'] != 0:
+        if self.verbose and res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         res['ntry'] = i
         self._result=res
@@ -1005,10 +1030,7 @@ class GMixFitMultiMatch(GMixFitMultiSimple):
 
 
     def _get_guess(self):
-        #psum=self.gmix0.get_psum()
-        #guess=numpy.array([psum],dtype='f8')
-        #guess[0] = guess[0]*(1.+0.05*srandu())
-        guess=self.start_counts*(1.+0.05*srandu(1))
+        guess=[self.start_counts]
         return guess
 
 
@@ -1028,6 +1050,7 @@ class GMixFitMultiCModel(GMixFitMultiBase):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=1
+        self.nprior=0
 
         self._check_lists(im_list,wt_list,jacob_list,psf_list)
 
@@ -1043,10 +1066,10 @@ class GMixFitMultiCModel(GMixFitMultiBase):
         self.gmix_exp=gmix_exp.copy()
         self.gmix_dev=gmix_dev.copy()
 
+        self.verbose=keys.get('verbose',False)
+
         # we will fix this and only reset the fluxes as we go
         self._set_gmix_lists()
-
-        self.use_cenprior=False
 
         self.nimage=len(self.im_list)
         self.imsize=self.im_list[0].size
@@ -1072,9 +1095,9 @@ class GMixFitMultiCModel(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if res['flags'] != 0:
+        if self.verbose and res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         res['ntry'] = i
         self._result=res
@@ -1182,20 +1205,22 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
 
         self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
         self.npars=3
+        self.nprior=1
 
         self.im_list=self._get_im_list(im_list)
         self.wt_list=self._get_im_list(wt_list)
         self.jacob_list=jacob_list
         self._check_lists(self.im_list,self.wt_list,self.jacob_list)
 
-        self._copy_gmix_list(gmix_list)
+        self.cen_prior=keys.get('cen_prior',None)
 
-        self.use_cenprior=True
-        self.cen_width=keys.get('cen_width',1.0)
+        self._copy_gmix_list(gmix_list)
 
         self.nimage=len(self.im_list)
         self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
+
+        self.verbose=keys.get('verbose',False)
 
         self.model='psf'
         self._set_im_wt_sums()
@@ -1219,9 +1244,9 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
             if res['flags']==0:
                 break
 
-        if res['flags'] != 0:
+        if self.verbose and res['flags'] != 0:
             mess="could not find maxlike after %s tries" % ntry
-            print >>stderr,'%s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
+            print >>stderr,'    %s.%s: %s' % (self.__class__,inspect.stack()[0][3],mess)
 
         res['ntry'] = i
         self._result=res
@@ -1236,8 +1261,8 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
 
         ydiff = self._get_lm_ydiff_gmix_list(self.gmix_list)
 
-        cen_ydiff = (pars3[0:0+2]-0.0)/self.cen_width
-        ydiff[-2:] = cen_ydiff
+        if self.cen_prior is not None:
+            ydiff[-1] = self.cen_prior.lnprob(pars3[0:0+2]-0.0)
 
         return ydiff
 
@@ -1309,17 +1334,20 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.model='coellip'
 
         self.npars=2*ngauss + 4
+        self.nprior=1
+
         self.image=numpy.array(image, dtype='f8', order='C', copy=False)
         self.ivar=float(ivar)
 
         self.jacobian=jacobian
 
-        self.use_cenprior=True
-        self.cen_width=keys.get('cen_width',1.0)
+        self.cen_prior=keys.get('cen_prior',None)
 
         self.imsize=self.image.size
         self.totpix=self.imsize
         self.counts=self.image.sum()
+
+        self.verbose=keys.get('verbose',False)
 
         # lowest allowed amplitide
         #self.lowest_psum = -5.0*sqrt(self.ivar*self.imsize)
@@ -1362,8 +1390,8 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
 
         ydiff = self._get_lm_ydiff_gmix(gmix)
 
-        cen_ydiff = (epars[0:0+2]-0.0)/self.cen_width
-        ydiff[-2:] = cen_ydiff
+        if self.counts_prior is not None:
+            ydiff[-1] = self.counts_prior.lnprob(pars[4])
 
         return ydiff
 

@@ -1036,6 +1036,15 @@ class TPrior(object):
 
         self.ln=LogNormal(self.sigma_mean, self.sigma_width)
 
+class Gauss(object):
+    def __init__(self, cen, sigma):
+        self.cen=cen
+        self.sigma=sigma
+        self.ivar=1.0/sigma**2
+
+    def lnprob(self, x):
+        return -0.5*(x-self.cen)**2*self.ivar
+
 class MultiGauss:
     def __init__(self, gmm):
         """
@@ -1282,16 +1291,14 @@ class GPriorOld:
 
 class CenPrior:
     def __init__(self, cen, sigma):
-        self.cen=cen
-        self.sigma=sigma
-        self.sigma2=[s**2 for s in sigma]
+        self.cen=numpy.array(cen)
+        self.sigma=numpy.array(sigma)
+        self.sigma2=numpy.array( [s**2 for s in sigma] )
 
     def lnprob(self, pos):
         lnprob0 = -0.5*(self.cen[0]-pos[0])**2/self.sigma2[0]
         lnprob1 = -0.5*(self.cen[1]-pos[1])**2/self.sigma2[1]
         return lnprob0 + lnprob1
-
-
 
 
 def test_shear_mean():
