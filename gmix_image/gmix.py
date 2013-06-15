@@ -9,7 +9,7 @@ GMIX_TURB=2
 GMIX_EXP=3
 GMIX_DEV=4
 GMIX_COELLIP_TFRAC=5
-GMIX_BDC=6
+GMIX_BD=6
 
 _gmix_type_dict={'full':    GMIX_FULL,
                  'coellip': GMIX_COELLIP,
@@ -19,8 +19,8 @@ _gmix_type_dict={'full':    GMIX_FULL,
                  'exp':     GMIX_EXP,
                  'gdev':    GMIX_DEV,
                  'dev':     GMIX_DEV,
-                 'gbdc':    GMIX_BDC,
-                 'bdc':     GMIX_BDC,
+                 'gbd':     GMIX_BD,
+                 'bd':      GMIX_BD,
                  'coellip-Tfrac': GMIX_COELLIP_TFRAC}
 
 def as_gmix_type(type_in):

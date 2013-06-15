@@ -51,7 +51,7 @@ struct gvec {
 enum gapprox {
     GAPPROX_EXP,
     GAPPROX_DEV,
-    GAPPROX_BDC
+    GAPPROX_BD
 };
  
 struct gvec *gvec_new(size_t n);
@@ -152,7 +152,7 @@ struct gvec *gvec_from_pars_turb(double *pars, int size);
    npars is 8
 */
 
-struct gvec *gvec_from_pars_bdc(double *pars, int size);
+struct gvec *gvec_from_pars_bd(double *pars, int size);
 
 
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \

@@ -330,8 +330,8 @@ class MixMCSimple:
         Tmean,Terr=self._get_T_stats(pars,pcov)
         Ts2n=Tmean/Terr
 
-        Flux,Ferr=self._get_Flux_stats(pars,pcov)
-        Fs2n=Flux/Ferr
+        flux,flux_err=self._get_flux_stats(pars,pcov)
+        Fs2n=flux/flux_err
 
         self._result={'flags':0,
                       'model':self.model,
@@ -344,8 +344,8 @@ class MixMCSimple:
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
-                      'Flux':Flux,
-                      'Ferr':Ferr,
+                      'flux':flux,
+                      'flux_err':flux_err,
                       'Fs2n':Fs2n,
                       'arate':arate}
 
@@ -363,7 +363,7 @@ class MixMCSimple:
         """
         return pars[4], sqrt(pcov[4,4])
 
-    def _get_Flux_stats(self, pars, pcov):
+    def _get_flux_stats(self, pars, pcov):
         """
         Simple model
         """
@@ -671,9 +671,9 @@ class MixMCSimple:
 
         res=self.get_result()
 
-        Flux=res['pars'][5]
-        Flux_err=sqrt(res['pcov'][5,5])
-        print 'Flux: %g +/- %g' % (Flux,Flux_err)
+        flux=res['pars'][5]
+        flux_err=sqrt(res['pcov'][5,5])
+        print 'flux: %g +/- %g' % (flux,flux_err)
         print 'T:  %g +/- %g' % (Tvals.mean(), Tvals.std())
         print 's2n weighted:',res['s2n_w']
         print 'acceptance rate:',res['arate'],'mca_a',self.mca_a
@@ -861,23 +861,23 @@ class MixMCMatch(MixMCSimple):
         gmix_list=self._get_gmix_list(pars)
         stats=self._get_fit_stats(gmix_list)
 
-        Flux = pars[0]
+        flux = pars[0]
         if pcov[0,0] > 0:
             perr = sqrt(diag(pcov))
-            Ferr = sqrt(pcov[0,0])
+            flux_err = sqrt(pcov[0,0])
         else:
-            Ferr = abs(LOWVAL)
-            perr = numpy.array([Ferr])
+            flux_err = abs(LOWVAL)
+            perr = numpy.array([flux_err])
 
-        Fs2n=Flux/Ferr
+        Fs2n=flux/flux_err
 
         self._result={'flags':0,
                       'model':self.model,
                       'pars':pars,
                       'perr':sqrt(diag(pcov)),
                       'pcov':pcov,
-                      'Flux':Flux,
-                      'Ferr':Ferr,
+                      'flux':flux,
+                      'flux_err':flux_err,
                       'Fs2n':Fs2n,
                       'arate':arate}
 
@@ -908,8 +908,8 @@ class MixMCMatch(MixMCSimple):
         tab=biggles.Table(2,self.npars)
 
         flux = self.trials[:,0]
-        fmean=self._result['Flux']
-        ferr=self._result['Ferr']
+        fmean=self._result['flux']
+        ferr=self._result['flux_err']
 
         burn_plt=biggles.FramedPlot()
         ind=numpy.arange(self.trials.shape[0])
@@ -924,7 +924,7 @@ class MixMCMatch(MixMCSimple):
         tab[0,0] = burn_plt
         tab[1,0] = hplt
 
-        print 'Flux: %g +/- %g' % (fmean,ferr)
+        print 'flux: %g +/- %g' % (fmean,ferr)
         print 'arate:',self._result['arate']
 
         self.tab=tab
@@ -938,7 +938,7 @@ class MixMCMatch(MixMCSimple):
             print
 
 
-class MixMCBDC(MixMCSimple):
+class MixMCBD(MixMCSimple):
     """
     bulge+disk, coelliptical
     """
@@ -951,7 +951,7 @@ class MixMCBDC(MixMCSimple):
         self.when_prior = "after"
 
         # cen1,cen2,e1,e2,Ti,pi
-        self.model='bdc'
+        self.model='bd'
         self.npars=8
 
         self.image=image
@@ -1097,20 +1097,20 @@ class MixMCBDC(MixMCSimple):
         Fvals=pars[[6,7]].copy()
         Fcov = pcov[6:6+2, 6:6+2].copy()
 
-        Flux=Fvals.sum()
-        Ferr=sqrt( Fcov[0,0] + Fcov[1,1] + 2*Fcov[0,1] )
+        flux=Fvals.sum()
+        flux_err=sqrt( Fcov[0,0] + Fcov[1,1] + 2*Fcov[0,1] )
 
         Tvals=pars[[4,5]].copy()
         Tcov=pcov[4:4+2, 4:4+2].copy()
 
-        Tmean=(Tvals*Fvals).sum()/Flux
+        Tmean=(Tvals*Fvals).sum()/flux
         Terr = sqrt(  Fvals[0]**2*Tcov[0,0]
                     + Fvals[1]**2*Tcov[1,1]
                     + 2*Fvals[0]*Fvals[1]*Tcov[0,1] )
 
 
         Ts2n=Tmean/Terr
-        Fs2n=Flux/Ferr
+        Fs2n=flux/flux_err
 
         self._result={'flags':0,
                       'model':self.model,
@@ -1123,8 +1123,8 @@ class MixMCBDC(MixMCSimple):
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
-                      'Flux':Flux,
-                      'Ferr':Ferr,
+                      'flux':flux,
+                      'flux_err':flux_err,
                       'Fs2n':Fs2n,
                       'arate':arate}
 
@@ -1177,7 +1177,7 @@ class MixMCBDC(MixMCSimple):
         Tfracs=Tmeans/Tmeans.sum()
         Ffracs=Fmeans/Fmeans.sum()
 
-        print 'Flux: %g +/- %g' % (res['Flux'],res['Ferr'])
+        print 'flux: %g +/- %g' % (res['flux'],res['flux_err'])
         print 'T:    %g +/- %g' % (res['Tmean'],res['Terr'])
         Fcov=res['pcov'][6:6+2, 6:6+2]
 
@@ -1357,12 +1357,12 @@ class MixMCCoellip(MixMCSimple):
 
         cdiag = diag(pcov)
         Fvals=pars[4+self.ngauss:]
-        Flux=Fvals.sum()
+        flux=Fvals.sum()
         Fcovs = cdiag[4+self.ngauss:]
-        Ferr=sqrt( Fcovs.sum() )
+        flux_err=sqrt( Fcovs.sum() )
 
         Tvals=pars[4:4+self.ngauss]
-        Tmean=(Tvals*Fvals).sum()/Flux
+        Tmean=(Tvals*Fvals).sum()/flux
 
         Tcovs = cdiag[4:4+self.ngauss]
         Fvals2 = Fvals**2
@@ -1370,7 +1370,7 @@ class MixMCCoellip(MixMCSimple):
         Terr = sqrt(Terr2)
 
         Ts2n=Tmean/Terr
-        Fs2n=Flux/Ferr
+        Fs2n=flux/flux_err
 
         self._result={'flags':0,
                       'model':self.model,
@@ -1383,8 +1383,8 @@ class MixMCCoellip(MixMCSimple):
                       'Tmean':Tmean,
                       'Terr':Terr,
                       'Ts2n':Ts2n,
-                      'Flux':Flux,
-                      'Ferr':Ferr,
+                      'flux':flux,
+                      'flux_err':flux_err,
                       'Fs2n':Fs2n,
                       'arate':arate}
 

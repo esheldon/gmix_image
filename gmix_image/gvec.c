@@ -655,7 +655,7 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size)
     return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
 }
 
-struct gvec *gvec_from_pars_bdc(double *pars, int size)
+struct gvec *gvec_from_pars_bd(double *pars, int size)
 {
     int ngauss_exp=6, ngauss_dev=10;
 

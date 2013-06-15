@@ -849,13 +849,6 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         return self._get_lm_ydiff_pars(pars)
 
     def _get_lm_ydiff_full(self, pars):
-        """
-        priors are at
-            ydiff[-4] = cen prior
-            ydiff[-3] = g prior
-            ydiff[-2] = T prior
-            ydiff[-1] = flux prior
-        """
 
         ydiff=self._get_lm_ydiff_pars(pars)
 
@@ -864,6 +857,14 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         return ydiff
     
     def _add_priors(self, pars, ydiff):
+        """
+        priors are at
+            ydiff[-4] = cen prior
+            ydiff[-3] = g prior
+            ydiff[-2] = T prior
+            ydiff[-1] = flux prior
+        """
+
         if self.cen_prior is not None:
             ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2]-0.0)
 
@@ -938,6 +939,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         guess[5] = counts0
 
         return guess
+
 
 
 class GMixFitMultiSimpleMB(GMixFitMultiSimple):
@@ -1141,21 +1143,20 @@ class GMixFitMultiSimpleMB(GMixFitMultiSimple):
         res=self._result
         res['g']=res['pars'][2:2+2].copy()
         res['T']=res['pars'][4]
-        res['Flux']=res['pars'][5:]
+        res['flux']=res['pars'][5:]
 
         if res['flags']==0:
             gcov=res['pcov'][2:2+2, 2:2+2].copy()
             res['g_cov'] = gcov
-            res['g_err'] = sqrt(diag(gcov))
             res['T_err']  = res['perr'][4]
 
-            res['Flux_cov'] = res['pcov'][5:,5:]
-            res['Flux_err']  = sqrt(diag(res['Flux_cov']))
+            res['flux_cov'] = res['pcov'][5:,5:]
+            res['flux_err']  = sqrt(diag(res['flux_cov']))
         else:
             res['g_cov']=None
             res['T_err']=9999.
-            res['Flux_err'] = res['Flux']*0 + 9999.
-            res['Flux_cov'] = numpy.zeros( (self.nband,self.nband) )+9999.
+            res['flux_err'] = res['flux']*0 + 9999.
+            res['flux_cov'] = numpy.zeros( (self.nband,self.nband) )+9999.
 
 
 
@@ -1267,6 +1268,157 @@ class GMixFitMultiSimpleMB(GMixFitMultiSimple):
                 'fit_prob':prob,
                 'aic':aic,
                 'bic':bic}
+
+class GMixFitMultiBD(GMixFitMultiSimpleMB):
+    """
+    bulge+disk
+
+    pars are [cen1,cen2,g1,g2,TB,TD,Bflux1,Dflux1,Bflux2,Dflux2,...]
+
+    f1,f2... are the fluxes in each band
+
+    6 + 2*nband parameters
+
+    For g,r,i,z this is 6+2*4 = 14
+    for g,r,i,z,y this is 6+2*5 = 16
+    for u,g,r,i,z,y this is 6+2*6 = 18
+
+    For this one we require the user to send the starting point, and we simply
+    take that as our guess.  No guesses or retries are attempted internally
+
+    Note the starting center will at the same location in uv in each of the
+    images and equal the cen0 for that image.
+
+    """
+    def __init__(self,
+                 mb_im_list, 
+                 mb_wt_list,
+                 mb_jacob_list,
+                 mb_psf_list,
+                 guess,
+                 **keys):
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
+
+        self.nband=len(mb_im_list)
+        self.npars=6 + 2*self.nband
+        self.nprior=4 # currently cen,g,TB,TD
+        self.guess=guess
+        self.model='bd'
+
+        # make sure in units of jacobian!
+        self.cen_prior  = keys.get('cen_prior',None)
+        self.gprior    = keys.get('gprior',None)
+        self.TB_prior    = keys.get('TB_prior',None)
+        self.TD_prior    = keys.get('TD_prior',None)
+
+        # implement counts priors?
+        #self.counts_prior = keys.get('counts_prior',None)
+
+        if len(guess) != self.npars:
+            raise ValueError("npars %d does not match guess "
+                             "length: %d" % (self.npars,len(guess)) )
+
+        self.mb_im_list=[self._get_im_list(im_list) for im_list in mb_im_list]
+        self.mb_wt_list=[self._get_im_list(wt_list) for wt_list in mb_wt_list]
+        self.mb_jacob_list=mb_jacob_list
+        self.mb_psf_list=mb_psf_list
+
+        self._check_mb_lists(self.mb_im_list,self.mb_wt_list,self.mb_jacob_list,
+                             self.mb_psf_list)
+
+        self.totpix=self._count_pixels()
+
+        self.verbose=keys.get('verbose',False)
+
+        self._do_fit()
+
+    def _get_gmix_list_mb(self, pars):
+        """
+        over-riding this function Base
+
+        Generate a list of lists of models
+
+        pars are [cen1,cen2,g1,g2,TB,TD,Bflux1,Dflux1,Bflux2,Dflux2,...]
+
+        bd pars are [cen1,cen2,g1,g2,TB,TD,Blux,Dflux]
+        """
+        bd_pars=numpy.zeros(8)
+
+        # copy cen1,cen2,g1,g2,TB,TD
+        bd_pars[0:6] = pars[0:6]
+
+        mb_gmix_list=[]
+        for band in xrange(self.nband):
+            
+            # copy Bflux
+            bd_pars[6] = pars[6+2*band]
+            # copy Dflux
+            bd_pars[7] = pars[6+2*band+1]
+
+            psf_list=self.mb_psf_list[band]
+            
+            # re-using this
+            gmix_list=self._get_gmix_list(bd_pars, psf_list)
+            if gmix_list is None:
+                return None
+
+            mb_gmix_list.append(gmix_list)
+
+        return mb_gmix_list
+
+    def _add_extra_results(self):
+        """
+        Add some convenient derived results
+
+        pars are [cen1,cen2,g1,g2,TB,TD,Blux1,Dflux1,Bflux2,Dflux2,....]
+        """
+        res=self._result
+
+        # [g1,g2]
+        res['g']=res['pars'][2:2+2].copy()
+
+        # [Blux1,Dflux1,Bflux2,Dflux2,....]
+        res['flux']=res['pars'][6:]
+
+        if res['flags']==0:
+            g_cov=res['pcov'][2:2+2, 2:2+2].copy()
+            flux_cov=res['pcov'][6:,6:].copy()
+
+            res['g_cov'] = g_cov
+            res['flux_cov'] = flux_cov
+        else:
+            res['g_cov']=None
+            res['flux_cov'] = numpy.zeros( (2*self.nband,2*self.nband) )+9999.
+
+
+    def _add_priors(self, pars, ydiff):
+        """
+        priors are at
+            ydiff[-4] = cen prior
+            ydiff[-3] = g prior
+            ydiff[-2] = TB prior
+            ydiff[-1] = TD prior
+
+        Need to think about flux priors
+        """
+        if self.cen_prior is not None:
+            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2]-0.0)
+
+        if self.gprior is not None:
+            g1 = pars[2]
+            g2 = pars[3]
+            g=sqrt(g1**2 + g2**2)
+            gp = self.gprior.prior2d_gabs_scalar(g)
+            if gp > 0:
+                lnp = log(gp)
+                ydiff[-3] = gp
+
+        if self.TB_prior is not None:
+            ydiff[-2] = self.TB_prior.lnprob(pars[4])
+
+        if self.TD_prior is not None:
+            ydiff[-1] = self.TD_prior.lnprob(pars[5])
+
 
 
 class GMixFitMultiMatch(GMixFitMultiSimple):

@@ -169,10 +169,10 @@ PyGVecObject_init(struct PyGVecObject* self, PyObject *args)
             break;
 
         case 6:
-            self->gvec = gvec_from_pars_bdc(pars, size);
+            self->gvec = gvec_from_pars_bd(pars, size);
             if (self->gvec == NULL) {
                 PyErr_Format(PyExc_ValueError, 
-                        "error constructing bdc gmix");
+                        "error constructing bd gmix");
                 return -1;
             }
             break;
