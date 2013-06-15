@@ -1140,13 +1140,8 @@ class GMixFitMultiSimpleMB(GMixFitMultiSimple):
         """
         res=self._result
         res['g']=res['pars'][2:2+2].copy()
-        res['g_cov']=None
         res['T']=res['pars'][4]
         res['Flux']=res['pars'][5:]
-
-        res['T_err']=9999.
-
-        res['Flux_err'] = res['Flux']*0 + 9999.
 
         if res['flags']==0:
             gcov=res['pcov'][2:2+2, 2:2+2].copy()
@@ -1156,6 +1151,12 @@ class GMixFitMultiSimpleMB(GMixFitMultiSimple):
 
             res['Flux_cov'] = res['pcov'][5:,5:]
             res['Flux_err']  = sqrt(diag(res['Flux_cov']))
+        else:
+            res['g_cov']=None
+            res['T_err']=9999.
+            res['Flux_err'] = res['Flux']*0 + 9999.
+            res['Flux_cov'] = numpy.zeros( (self.nband,self.nband) )+9999.
+
 
 
     def get_effective_npix(self):
