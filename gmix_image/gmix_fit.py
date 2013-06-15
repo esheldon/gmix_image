@@ -333,27 +333,7 @@ class GMixFitMultiBase(object):
     """
     def __init__(self, **keys):
         """
-
-        This init needs to be over-ridden.  You need to set the number of
-        parameters and the lists, e.g. npars.  Below are some examples.  But
-        you do want to call this with the keywords
-
-        self.npars=6
-        self.im_list=self._get_im_list(im_list)
-        self.wt_list=self._get_im_list(wt_list)
-
-        self.jacob_list=jacob_list
-        self.psf_list=psf_list
-        self.model=model
-
-        self._set_im_wt_sums()
-
-        self.nimage=len(self.im_list)
-        self.imsize=self.im_list[0].size
-        self.totpix=self.nimage*self.imsize
-
-        self._fit_round_fixcen()
-        self._fit_full()
+        This init needs to be over-ridden.
         """
         raise RuntimeError("over-ride")
 
@@ -383,19 +363,25 @@ class GMixFitMultiBase(object):
         Note if self.use_cenprior, then two spaces are left at the end to be
         filled in by the user as (cen-cenrior)/width.  The cenprior is at zero
         """
-        imsize=self.imsize
 
         # room for any priors
         n_ydiff = self._get_n_ydiff()
-
         ydiffall = zeros(n_ydiff, dtype='f8')
+
+        imsize=self.im_list[0].size
         ydiff = zeros(imsize, dtype='f8')
 
+        beg=0
         for i in xrange(self.nimage):
             im=self.im_list[i]
             wt=self.wt_list[i]
             jacob=self.jacob_list[i]
             gmix=gmix_list[i]
+
+            if im.size != imsize:
+                imsize = im.size
+                ydiff = zeros(im.size, dtype='f8')
+ 
  
             # center of coord system is always the starting center
             _render.fill_ydiff_wt_jacob(im,
@@ -408,7 +394,9 @@ class GMixFitMultiBase(object):
                                         jacob['col0'],
                                         gmix,
                                         ydiff)
-            ydiffall[i*imsize:(i+1)*imsize] = ydiff[:]
+            ydiffall[beg:beg+im.size] = ydiff[:]
+
+            beg += im.size
 
         return ydiffall
 
@@ -472,10 +460,8 @@ class GMixFitMultiBase(object):
         gmix_list=None
 
         if pcov0 is not None:
-            gmix_list=self._get_gmix_list(pars)
-            if gmix_list is not None:
-                pcov = self._scale_leastsq_cov(gmix_list, pcov0)
-
+            pcov=self._scale_leastsq_cov(pars,pcov0)
+            if pcov is not None:
                 d=diag(pcov)
                 w,=where(d < 0)
 
@@ -509,18 +495,17 @@ class GMixFitMultiBase(object):
         res['fit_prob'] = -9999.
 
         if res['flags']==0:
-            if gmix_list is None:
-                gmix_list=self._get_gmix_list(pars)
-
-            stats=self._get_stats(gmix_list)
+            stats=self._get_stats(pars)
             res.update(stats)
 
         return res
 
-    def _get_stats(self, gmix_list):
+    def _get_stats(self, pars):
         from math import log, sqrt
         from . import render
         import scipy.stats
+
+        gmix_list=self._get_gmix_list(pars)
 
         npars=self.npars
 
@@ -580,6 +565,29 @@ class GMixFitMultiBase(object):
             if len(l) != llen:
                 raise ValueError("all lists must be same length")
 
+    def _check_mb_lists(self,*args):
+        """
+        args is
+
+            [ [a1,a2, ...],  [b1,b2, ...],  [c1,c2, ...] ]
+        """
+        # make sure same number of bands
+        self._check_lists(*args)
+
+        # now make sure the lists within a band are the same length
+
+        nlist=len(args)
+        for band in xrange(self.nband):
+            for i,arg in enumerate(args):
+                if i==0:
+                    llen = len(arg[band])
+                else:
+                    llen_this=len(arg[band])
+                    if llen_this != llen:
+                        raise ValueError("all lists must be same "
+                                         "length: %d %d" % (llen_this,llen))
+
+
     def get_effective_npix(self):
         """
         Because of the weight map, each pixel gets a different weight in the
@@ -617,16 +625,17 @@ class GMixFitMultiBase(object):
             dof = 1.e-6
         return dof
 
-    def _scale_leastsq_cov(self, gmix_list, pcov):
+    def _scale_leastsq_cov(self, pars, pcov0):
         """
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
         """
+        gmix_list=self._get_gmix_list(pars)
         ydiff = self._get_lm_ydiff_gmix_list(gmix_list)
         dof   = self.get_dof()
 
         s_sq = (ydiff**2).sum()/dof
-        return pcov * s_sq 
+        return pcov0 * s_sq 
 
 
 class GMixFitMultiSimple(GMixFitMultiBase):
@@ -658,8 +667,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self._set_im_wt_sums()
 
         self.nimage=len(self.im_list)
-        self.imsize=self.im_list[0].size
-        self.totpix=self.nimage*self.imsize
+        self.totpix=self._count_pixels()
 
         self.g_guess=keys.get('g_guess',None)
         self.T_guess=keys.get("T_guess",None)
@@ -681,6 +689,12 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         else:
             self._rfc_res=None
         self._fit_full()
+
+    def _count_pixels(self):
+        npix=0
+        for im in self.im_list:
+            npix += im.size
+        return npix
 
     def _set_guess_style(self):
         T_there=(self.T_guess is not None)
@@ -785,9 +799,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         pcov=None
         if pcov0 is not None:
             tpars=self._pars2convert(pars)
-            gmix_list=self._get_gmix_list(tpars)
-            if gmix_list is not None:
-                pcov=self._scale_leastsq_cov(gmix_list,pcov0)
+            pcov=self._scale_leastsq_cov(tpars,pcov0)
 
         self._rfc_res={'flags':flags,
                        'numiter':infodict['nfev'],
@@ -926,6 +938,335 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         guess[5] = counts0
 
         return guess
+
+
+class GMixFitMultiSimpleMB(GMixFitMultiSimple):
+    """
+    6 parameter models but with multiple bands.  Work in sky coords
+
+    pars are [cen1,cen2,g1,g2,T,f1,f2,...]
+
+    For this one we require the user to send the starting point, and we simply
+    take that as our guess.  No guesses or retries are attempted internally
+
+    Note the starting center will at the same location in uv in each of the
+    images and equal the cen0 for that image.
+
+    """
+    def __init__(self,
+                 mb_im_list, 
+                 mb_wt_list,
+                 mb_jacob_list,
+                 mb_psf_list,
+                 guess,
+                 model,
+                 **keys):
+
+        self.lm_max_try=keys.get('lm_max_try',LM_MAX_TRY)
+
+        self.nband=len(mb_im_list)
+        self.npars=5 + self.nband
+        self.nprior=4 # cen,g,T,flux
+        self.guess=guess
+        self.model=model
+
+        # make sure in units of jacobian!
+        self.cen_prior  = keys.get('cen_prior',None)
+        self.gprior    = keys.get('gprior',None)
+        self.T_prior    = keys.get('T_prior',None)
+        self.counts_prior = keys.get('counts_prior',None)
+
+
+        if len(guess) != self.npars:
+            raise ValueError("npars %d does not match guess "
+                             "length: %d" % (self.npars,len(guess)) )
+
+        self.mb_im_list=[self._get_im_list(im_list) for im_list in mb_im_list]
+        self.mb_wt_list=[self._get_im_list(wt_list) for wt_list in mb_wt_list]
+        self.mb_jacob_list=mb_jacob_list
+        self.mb_psf_list=mb_psf_list
+
+        self._check_mb_lists(self.mb_im_list,self.mb_wt_list,self.mb_jacob_list,
+                             self.mb_psf_list)
+
+        self.totpix=self._count_pixels()
+
+        self.verbose=keys.get('verbose',False)
+
+        self._do_fit()
+
+    def _count_pixels(self):
+        npix=0
+        for band in xrange(self.nband):
+            im_list=self.mb_im_list[band]
+            for im in im_list:
+                npix += im.size
+        return npix
+
+    def _do_fit(self):
+        """
+        run LM and add extra calculations
+        """
+        lmres = run_leastsq(self._get_lm_ydiff_mb, self.guess)
+
+        # inherited
+        res=self._calc_lm_results(lmres)
+        self._result=res
+
+        if 'pars' in res:
+            self._add_extra_results()
+
+    def _get_lm_ydiff_mb(self, pars):
+        """
+        priors are at
+            ydiff[-4] = cen prior
+            ydiff[-3] = g prior
+            ydiff[-2] = T prior
+            ydiff[-1] = flux prior
+        """
+
+        ydiff=self._get_lm_ydiff_pars_mb(pars)
+        self._add_priors(pars, ydiff)
+
+        return ydiff
+
+    def _get_lm_ydiff_pars_mb(self, pars):
+        """
+        Pars are full pars
+            [cen1,cen2,g1,g2,T,F1,F2,...]
+        """
+        g=numpy.sqrt(pars[2]**2 + pars[3]**2)
+        if g >= 1.0:
+            return self._get_bad_ydiff()
+
+        mb_gmix_list=self._get_gmix_list_mb(pars)
+
+        if mb_gmix_list is None:
+            return self._get_bad_ydiff()
+
+        ydiff = self._get_lm_ydiff_gmix_list_mb(mb_gmix_list)
+
+        return ydiff
+
+    def _get_lm_ydiff_gmix_list_mb(self, mb_gmix_list):
+        """
+        Take in a list of full gmix objects and calculate
+        the full ydiff vector across them all
+
+        Note if self.use_cenprior, then two spaces are left at the end to be
+        filled in by the user as (cen-cenrior)/width.  The cenprior is at zero
+        """
+
+        # room for all bands and any priors
+        n_ydiff = self._get_n_ydiff()
+        ydiffall = zeros(n_ydiff, dtype='f8')
+
+        imsize=self.mb_im_list[0][0].size
+        ydiff = zeros(imsize, dtype='f8')
+
+        beg=0
+        for band in xrange(self.nband):
+            im_list=self.mb_im_list[band]
+            wt_list=self.mb_wt_list[band]
+            jacob_list=self.mb_jacob_list[band]
+            gmix_list=mb_gmix_list[band]
+
+            nimage = len(im_list)
+            for i in xrange(nimage):
+                im=im_list[i]
+                wt=wt_list[i]
+                jacob=jacob_list[i]
+                gmix=gmix_list[i]
+
+                if im.size != imsize:
+                    imsize = im.size
+                    ydiff = zeros(im.size, dtype='f8')
+     
+                # center of coord system is always the starting center
+                _render.fill_ydiff_wt_jacob(im,
+                                            wt,
+                                            jacob['dudrow'],
+                                            jacob['dudcol'],
+                                            jacob['dvdrow'],
+                                            jacob['dvdcol'],
+                                            jacob['row0'], # coord system center
+                                            jacob['col0'],
+                                            gmix,
+                                            ydiff)
+                ydiffall[beg:beg+im.size] = ydiff[:]
+                beg += im.size
+
+        return ydiffall
+
+    def _get_gmix_list_mb(self, pars):
+        """
+        Generate a list of lists of models
+        """
+        mb_pars=numpy.zeros(6)
+        mb_pars[0:4+1] = pars[0:4+1]
+
+        mb_gmix_list=[]
+        for band in xrange(self.nband):
+            mb_pars[5] = pars[5+band]
+            psf_list=self.mb_psf_list[band]
+            
+            gmix_list=self._get_gmix_list(mb_pars, psf_list)
+            if gmix_list is None:
+                return None
+
+            mb_gmix_list.append(gmix_list)
+
+        return mb_gmix_list
+
+    def _get_gmix_list(self, pars, psf_list):
+        """
+        Get a list of gmix objects, each convolved with
+        the psf in the individual images
+        """
+        gmix_list=[]
+        for psf in psf_list:
+            gmix=self._get_convolved_gmix(pars, psf)
+            if gmix is None:
+                return None
+
+            gmix_list.append(gmix)
+
+        return gmix_list 
+
+
+    def _add_extra_results(self):
+        """
+        Add some convenient derived results
+        """
+        res=self._result
+        res['g']=res['pars'][2:2+2].copy()
+        res['g_cov']=None
+        res['T']=res['pars'][4]
+        res['Flux']=res['pars'][5:]
+
+        res['T_err']=9999.
+
+        res['Flux_err'] = res['Flux']*0 + 9999.
+
+        if res['flags']==0:
+            gcov=res['pcov'][2:2+2, 2:2+2].copy()
+            res['g_cov'] = gcov
+            res['g_err'] = sqrt(diag(gcov))
+            res['T_err']  = res['perr'][4]
+
+            res['Flux_cov'] = res['pcov'][5:,5:]
+            res['Flux_err']  = sqrt(diag(res['Flux_cov']))
+
+
+    def get_effective_npix(self):
+        """
+        Because of the weight map, each pixel gets a different weight in the
+        chi^2.  This changes the effective degrees of freedom.  The extreme
+        case is when the weight is zero; these pixels are essentially not used.
+
+        We replace the number of pixels with
+
+            eff_npix = sum(weights)maxweight
+        """
+        if not hasattr(self, 'eff_npix'):
+            wtmax = 0.0
+            wtsum = 0.0
+            for band in xrange(self.nband):
+                wt_list=self.mb_wt_list[band]
+                for wt in wt_list:
+                    this_wtmax = wt.max()
+                    if this_wtmax > wtmax:
+                        wtmax = this_wtmax
+
+                    wtsum += wt.sum()
+
+            self.eff_npix=wtsum/wtmax
+
+        if self.eff_npix <= 0:
+            self.eff_npix=1.e-6
+
+        return self.eff_npix
+
+
+    def _scale_leastsq_cov(self, pars, pcov0):
+        """
+        Scale the covariance matrix returned from leastsq; this will
+        recover the covariance of the parameters in the right units.
+        """
+        ydiff=self._get_lm_ydiff_pars_mb(pars)
+        dof   = self.get_dof()
+
+        s_sq = (ydiff**2).sum()/dof
+        return pcov0 * s_sq 
+
+
+    def _get_stats(self, pars):
+        from math import log, sqrt
+        from . import render
+        import scipy.stats
+
+
+        npars=self.npars
+
+        s2n_numer=0.
+        s2n_denom=0.
+        loglike=0.
+
+        mb_gmix_list=self._get_gmix_list_mb(pars)
+        for band in xrange(self.nband):
+
+            im_list=self.mb_im_list[band]
+            wt_list=self.mb_wt_list[band]
+            jacob_list=self.mb_jacob_list[band]
+            gmix_list=mb_gmix_list[band]
+
+            nimage = len(im_list)
+            for i in xrange(nimage):
+                im=im_list[i]
+                wt=wt_list[i]
+                jacob=jacob_list[i]
+                gmix=gmix_list[i]
+     
+                tres=render._render.loglike_wt_jacob(im,
+                                                     wt,
+                                                     jacob['dudrow'],
+                                                     jacob['dudcol'],
+                                                     jacob['dvdrow'],
+                                                     jacob['dvdcol'],
+                                                     jacob['row0'], # coord system center
+                                                     jacob['col0'],
+                                                     gmix)
+
+                tloglike,ts2n_numer,ts2n_denom,tflags=tres
+
+                s2n_numer += ts2n_numer
+                s2n_denom += ts2n_denom
+                loglike += tloglike
+            
+        if s2n_denom > 0:
+            s2n=s2n_numer/sqrt(s2n_denom)
+        else:
+            s2n=0.0
+
+        dof=self.get_dof()
+        eff_npix=self.get_effective_npix()
+
+        chi2=loglike/(-0.5)
+        chi2per = chi2/dof
+
+        prob = scipy.stats.chisqprob(chi2, dof)
+
+        aic = -2*loglike + 2*npars
+        bic = -2*loglike + npars*log(eff_npix)
+
+        return {'s2n_w':s2n,
+                'loglike':loglike,
+                'chi2per':chi2per,
+                'dof':dof,
+                'fit_prob':prob,
+                'aic':aic,
+                'bic':bic}
+
 
 class GMixFitMultiMatch(GMixFitMultiSimple):
     """
@@ -1451,6 +1792,10 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         self.jacobian=jacobian
 
         self.cen_prior=keys.get('cen_prior',None)
+        # this is for the base class
+        self.do_rfc=False
+
+        self.counts_prior=keys.get('count_prior',None)
 
         self.imsize=self.image.size
         self.totpix=self.imsize
@@ -1541,12 +1886,17 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         else:
             return self.totpix
 
-    def _scale_leastsq_cov(self, gmix_list, pcov):
+    def _scale_leastsq_cov(self, pars, pcov):
         """
         Scale the covariance matrix returned from leastsq; this will
         recover the covariance of the parameters in the right units.
         """
-        gmix=gmix_list[0]
+
+        try:
+            gmix=GMixCoellip(pars)
+        except ValueError:
+            return None
+
         ydiff = self._get_lm_ydiff_gmix(gmix)
         dof   = self.get_dof()
 
@@ -1554,13 +1904,14 @@ class GMixFitPSFJacob(GMixFitMultiSimple):
         return pcov * s_sq 
 
 
-    def _get_stats(self, gmix_list):
+    def _get_stats(self, pars):
         from math import log, sqrt
         from . import render
         import scipy.stats
 
         npars=self.npars
 
+        gmix_list=self._get_gmix_list(pars)
         gmix=gmix_list[0]
 
         tres=render._render.loglike_jacob(self.image,
@@ -2387,23 +2738,22 @@ def _make_data(jacob, gmix, Tpsf0_pix, s2n, psf_s2n, psf_ngauss_fit,rad,
 
     return cin.image, wt, gmix_psf, s2n_uw
 
-                
 def test_multi_color(s2n=100.,
-                     sigma=4.0,
-                     psf_s2n=1.e8,
-                     psf_sigma=2.0,
-                     psf_ngauss_fit=2,
-                     g1=0.0,
-                     g2=0.0,
-                     counts1=100., 
-                     counts2=250.,
-                     model='gexp',
-                     nimages=10,
-                     scale=0.27,
-                     sigratio=0.9,
-                     eratio=0.9,
-                     eoffset=0.01,
-                     s2n_method='matched'):
+                           sigma=4.0,
+                           psf_s2n=1.e8,
+                           psf_sigma=2.0,
+                           psf_ngauss_fit=2,
+                           g1=0.0,
+                           g2=0.0,
+                           counts1=100., 
+                           counts2=250.,
+                           model='gexp',
+                           nimages=10,
+                           scale=0.27,
+                           sigratio=0.9,
+                           eratio=0.9,
+                           eoffset=0.01,
+                           s2n_method='matched'):
     import fimage
 
     s2n_per=s2n/sqrt(nimages)
@@ -2506,6 +2856,102 @@ def test_multi_color(s2n=100.,
     return res1,res_match,s2n_uw15
 
 
+
+                
+def test_multi_color_mb(s2n=100.,
+                        sigma1=4.0,
+                        sigma2=4.0,
+                        counts1=1.0, 
+                        counts2=1.0,
+                        g1_1=0.0,
+                        g2_1=0.0,
+                        g1_2=0.0,
+                        g2_2=0.0,
+                        psf_s2n=1.e8,
+                        psf_sigma=2.0,
+                        psf_ngauss_fit=2,
+                        model='gexp',
+                        nimages=10,
+                        scale=0.27,
+                        sigratio=0.9,
+                        eratio=0.9,
+                        eoffset=0.01,
+                        s2n_method='matched'):
+    import fimage
+
+    s2n_per=s2n/sqrt(nimages)
+
+    # for simulation, in pixels
+    Tpsf0_pix=2*(psf_sigma/scale)**2
+
+    Tpix_1 = 2*(sigma1/scale)**2
+    Tpix_2 = 2*(sigma2/scale)**2
+
+    counts1_pix=counts1/(scale*scale)
+    counts2_pix=counts2/(scale*scale)
+
+    pars1=numpy.array([-1., -1., g1_1, g2_1, Tpix_1, counts1_pix])
+    pars2=numpy.array([-1., -1., g1_2, g2_2, Tpix_2, counts2_pix])
+
+    gmix1=GMix(pars1,type=model)
+    gmix2=GMix(pars2,type=model)
+
+    im_list1=[]
+    wt_list1=[]
+    psf_list1=[]
+    jacob_list1=[]
+
+    im_list2=[]
+    wt_list2=[]
+    psf_list2=[]
+    jacob_list2=[]
+
+    s2n_uw_sum=0.
+    aperture=1.5/scale # 1.5 arcsec diameter
+    rad=aperture/2.
+    for i in xrange(nimages):
+
+        # image 1
+        jacob1={'dudrow':scale, 'dudcol':0.0,
+                'dvdrow':0.0,   'dvdcol':scale}
+        im1, wt1, gmix_psf1,s2n_uw1=\
+                _make_data(jacob1,gmix1,Tpsf0_pix, s2n_per,psf_s2n,
+                           psf_ngauss_fit,rad, s2n_method=s2n_method)
+        jacob2={'dudrow':scale, 'dudcol':0.0,
+                'dvdrow':0.0,   'dvdcol':scale}
+        im2, wt2, gmix_psf2,s2n_uw2=\
+                _make_data(jacob2,gmix2,Tpsf0_pix, s2n_per,psf_s2n,
+                           psf_ngauss_fit,rad)
+
+        im_list1.append(im1) 
+        wt_list1.append(wt1)
+        psf_list1.append(gmix_psf1)
+        jacob_list1.append(jacob1)
+
+        im_list2.append(im2) 
+        wt_list2.append(wt2)
+        psf_list2.append(gmix_psf2)
+        jacob_list2.append(jacob2)
+
+    # starting guess in pixel coords, origin in uv space
+    g1guess,g2guess=randomize_e1e2(g1,g2)
+    guess=[0,
+           0,
+           g1guess,
+           g2guess,
+           Tpix*(1.0+0.5*srandu()),
+           counts1*(1.0+0.5*srandu()),
+           counts2*(1.0+0.5*srandu())]
+    gm=GMixFitMultiSimpleMB([im_list1,im_list2],
+                             [wt_list1,wt_list2],
+                             [jacob_list1,jacob_list2],
+                             [psf_list1,psf_list2],
+                             guess,
+                             model)
+    res=gm.get_result()
+    return res
+
+
 def test_psfflux_star(s2n=100.,
                       sigma=2.0,
                       counts=100., 
@@ -2576,7 +3022,6 @@ def test_psfflux_star(s2n=100.,
         jacob_list.append(jacob)
 
     # starting guess in pixel coords, origin in uv space
-    print 'hello'
     gm=GMixFitMultiPSFFlux(im_list,
                            wt_list,
                            jacob_list,
