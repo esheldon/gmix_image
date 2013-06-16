@@ -116,10 +116,14 @@ class MixMCSimple:
         self.counts_guess=counts_guess
 
         self.cen_guess=cen_guess
-        self.cen_width=keys.get('cen_width',1.0)
-        self.cenprior=CenPrior(self.cen_guess, [self.cen_width]*2)
+
+        self.cen_prior=keys.get('cen_prior',None)
+        if self.cen_prior is None:
+            self.cen_width=keys.get('cen_width',1.0)
+            self.cen_prior=CenPrior(self.cen_guess, [self.cen_width]*2)
 
         self.Tprior=keys.get('Tprior',None)
+        self.counts_prior=keys.get('counts_prior',None)
 
         self.nwalkers=keys.get('nwalkers',20)
         self.nstep=keys.get('nstep',200)
@@ -208,28 +212,9 @@ class MixMCSimple:
 
         logprob = self._get_loglike_c(gmix_list)
 
-        if self.when_prior=="during":
-            g1,g2=pars[2],pars[3]
-            gp = self._get_lngprior(g1,g2)
-            logprob += gp
-
-        cp = self.cenprior.lnprob(pars[0:2])
-        logprob += cp
-
-        if self.Tprior is not None:
-            Tp = self.Tprior.lnprob(pars[4])
-            logprob += Tp
+        logprob += self._get_priors(pars)
 
         return logprob
-
-    def _get_lngprior(self, g1, g2):
-        g=sqrt(g1**2 + g2**2)
-        gp = self.gprior.prior2d_gabs_scalar(g)
-        if gp > 0:
-            gp = log(gp)
-        else:
-            gp=LOWVAL
-        return gp
 
  
     def _get_loglike_c(self, gmix_list):
@@ -251,6 +236,44 @@ class MixMCSimple:
 
 
         return loglike
+
+    def _get_priors(self, pars):
+        logprob=0.0
+
+        if self.when_prior=="during":
+            gp = self._get_lngprior(pars[2], pars[3])
+            logprob += gp
+
+        cp = self.cen_prior.lnprob(pars[0:2])
+        logprob += cp
+
+        if self.Tprior is not None:
+            try:
+                Tp = self.Tprior.lnprob(pars[4])
+                logprob += Tp
+            except ValueError:
+                return LOWVAL
+
+        if self.counts_prior is not None:
+            try:
+                cp = self.counts_prior.lnprob(pars[5])
+                logprob += cp
+            except ValueError:
+                return LOWVAL
+
+        return logprob
+
+    def _get_lngprior(self, g1, g2):
+        g=sqrt(g1**2 + g2**2)
+        gp = self.gprior.prior2d_gabs_scalar(g)
+        if gp > 0:
+            gp = log(gp)
+        else:
+            gp=LOWVAL
+        return gp
+
+
+
 
     def _dolike_one(self, im, wt, jacob, gmix):
         if not isinstance(wt,numpy.ndarray):
@@ -346,7 +369,7 @@ class MixMCSimple:
                       'Ts2n':Ts2n,
                       'flux':flux,
                       'flux_err':flux_err,
-                      'Fs2n':Fs2n,
+                      'flux_s2n':Fs2n,
                       'arate':arate}
 
         if self.do_pqr:
@@ -587,8 +610,8 @@ class MixMCSimple:
 
         guess=zeros( (self.nwalkers,self.npars) )
 
-        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
-        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+        guess[:,0]=self.cen_prior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cen_prior.cen[1] + 0.01*srandu(self.nwalkers)
 
         if self.draw_gprior:
             g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
@@ -992,14 +1015,14 @@ class MixMCBD(MixMCSimple):
                                       self.cen_guess, 8.0)
 
         cen=[self.ares['wrow'],self.ares['wcol']]
-        self.cenprior=CenPrior(cen, [self.cen_width]*2)
+        self.cen_prior=CenPrior(cen, [self.cen_width]*2)
 
         T0=self.ares['Irr'] + self.ares['Icc']
 
         guess=zeros( (self.nwalkers,self.npars) )
 
-        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
-        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+        guess[:,0]=self.cen_prior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cen_prior.cen[1] + 0.01*srandu(self.nwalkers)
 
         if self.draw_gprior:
             g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
@@ -1250,14 +1273,14 @@ class MixMCCoellip(MixMCSimple):
                                       self.cen_guess, 8.0)
 
         cen=[self.ares['wrow'],self.ares['wcol']]
-        self.cenprior=CenPrior(cen, [self.cen_width]*2)
+        self.cen_prior=CenPrior(cen, [self.cen_width]*2)
 
         T0=self.ares['Irr'] + self.ares['Icc']
 
         guess=zeros( (self.nwalkers,self.npars) )
 
-        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
-        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+        guess[:,0]=self.cen_prior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cen_prior.cen[1] + 0.01*srandu(self.nwalkers)
 
         if self.draw_gprior:
             g1rand,g2rand=self.gprior.sample2d(self.nwalkers)
@@ -1593,7 +1616,7 @@ class MixMCPSF:
 
         logprob = self._get_loglike_c(gmix)
 
-        cp = self.cenprior.lnprob(pars[0:2])
+        cp = self.cen_prior.lnprob(pars[0:2])
         logprob += cp
 
         return logprob
@@ -1678,14 +1701,14 @@ class MixMCPSF:
 
         
         cen=[self.ares['wrow'],self.ares['wcol']]
-        self.cenprior=CenPrior(cen, [1.]*2)
+        self.cen_prior=CenPrior(cen, [1.]*2)
 
         Tadmom=self.ares['Irr'] + self.ares['Icc']
 
         guess=zeros( (self.nwalkers,self.npars) )
 
-        guess[:,0]=self.cenprior.cen[0] + 0.01*srandu(self.nwalkers)
-        guess[:,1]=self.cenprior.cen[1] + 0.01*srandu(self.nwalkers)
+        guess[:,0]=self.cen_prior.cen[0] + 0.01*srandu(self.nwalkers)
+        guess[:,1]=self.cen_prior.cen[1] + 0.01*srandu(self.nwalkers)
 
         # (0,0) with some scatter
         guess[:,2]=0.1*srandu(self.nwalkers)

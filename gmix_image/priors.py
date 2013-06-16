@@ -1300,6 +1300,11 @@ class CenPrior:
         lnprob1 = -0.5*(self.cen[1]-pos[1])**2/self.sigma2[1]
         return lnprob0 + lnprob1
 
+    def sample(self):
+        """
+        Get a single sample
+        """
+        return self.cen + self.sigma*numpy.random.randn(2)
 
 def test_shear_mean():
     gp=GPrior(A= 12.25,
