@@ -1826,7 +1826,11 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         self.verbose=keys.get('verbose',False)
 
         self.model='psf'
-        self._set_im_wt_sums()
+        counts_guess=keys.get('counts_guess',None)
+        if counts_guess is None:
+            self._set_im_wt_sums()
+        else:
+            self.counts=counts_guess
 
         self._dofit()
 

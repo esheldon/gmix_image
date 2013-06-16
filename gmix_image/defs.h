@@ -13,11 +13,11 @@
 // about sqrt(200) ~ 14 sigma
 //#define EXP_MAX_CHI2 200
 // 5 sigma
-//#define EXP_MAX_CHI2 25
+#define EXP_MAX_CHI2 25
 // 6 sigma
 //#define EXP_MAX_CHI2 36
 // 8 sigma
-#define EXP_MAX_CHI2 64
+//#define EXP_MAX_CHI2 64
 
 #define GMIX_IMAGE_BIGNUM 9.999e9
 
