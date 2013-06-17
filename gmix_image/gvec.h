@@ -184,23 +184,6 @@ struct gvec *gvec_from_pars_bd(double *pars, int size);
     _val;                                                      \
 })
 
-#define GAUSS_EVAL(gauss, rowval, colval) ({                   \
-    double _u = (rowval)-(gauss)->row;                         \
-    double _v = (colval)-(gauss)->col;                         \
-                                                               \
-    double _chi2 =                                             \
-        (gauss)->dcc*_u*_u                                     \
-        + (gauss)->drr*_v*_v                                   \
-        - 2.0*(gauss)->drc*_u*_v;                              \
-                                                               \
-    double _val=0.0;                                           \
-    if (_chi2 < EXP_MAX_CHI2) {                                \
-        _val = (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
-    }                                                          \
-                                                               \
-    _val;                                                      \
-})
-
 
 // evaluate the gvec and store in "val"
 // also store the number of evaluations that were done
@@ -217,11 +200,11 @@ struct gvec *gvec_from_pars_bd(double *pars, int size);
                                                                \
         _u = (rowval)-(gauss)->row;                            \
         _v = (colval)-(gauss)->col;                            \
-                                                               \ 
+                                                               \
         _chi2=(gauss)->dcc*_u*_u                               \
             + (gauss)->drr*_v*_v                               \
         - 2.0*(gauss)->drc*_u*_v;                              \
-                                                               \ 
+                                                               \
         if (_chi2 < EXP_MAX_CHI2) {                                  \
             (val) += (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
             (count) += 1;                                            \
