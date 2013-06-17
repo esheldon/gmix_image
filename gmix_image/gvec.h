@@ -184,6 +184,53 @@ struct gvec *gvec_from_pars_bd(double *pars, int size);
     _val;                                                      \
 })
 
+#define GAUSS_EVAL(gauss, rowval, colval) ({                   \
+    double _u = (rowval)-(gauss)->row;                         \
+    double _v = (colval)-(gauss)->col;                         \
+                                                               \
+    double _chi2 =                                             \
+        (gauss)->dcc*_u*_u                                     \
+        + (gauss)->drr*_v*_v                                   \
+        - 2.0*(gauss)->drc*_u*_v;                              \
+                                                               \
+    double _val=0.0;                                           \
+    if (_chi2 < EXP_MAX_CHI2) {                                \
+        _val = (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
+    }                                                          \
+                                                               \
+    _val;                                                      \
+})
+
+
+// evaluate the gvec and store in "val"
+// also store the number of evaluations that were done
+#define GVEC_EVAL_COUNT(gmix, rowval, colval, val, count) {    \
+    int _i=0;                                                  \
+    double _u;                                                 \
+    double _v;                                                 \
+    double _chi2;                                              \
+                                                               \
+    (val)=0;                                                   \
+    (count)=0;                                                 \
+    struct gauss *_gauss=(gmix)->data;                         \
+    for (_i=0; _i<(gmix)->size; _i++) {                        \
+                                                               \
+        _u = (rowval)-(gauss)->row;                            \
+        _v = (colval)-(gauss)->col;                            \
+                                                               \ 
+        _chi2=(gauss)->dcc*_u*_u                               \
+            + (gauss)->drr*_v*_v                               \
+        - 2.0*(gauss)->drc*_u*_v;                              \
+                                                               \ 
+        if (_chi2 < EXP_MAX_CHI2) {                                  \
+            (val) += (gauss)->norm*(gauss)->p*expd( -0.5*_chi2 );    \
+            (count) += 1;                                            \
+        }                                                            \
+                                                                     \
+        _gauss++;                                              \
+    }                                                          \
+}
+
 
 
 #endif

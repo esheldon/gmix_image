@@ -25,7 +25,7 @@ from . import render
 from .render import gmix2image
 
 
-LOWVAL=-9999.9e9
+LOWVAL=-9999.0e47
 
 
 def _get_as_list(arg):
@@ -211,7 +211,6 @@ class MixMCSimple:
             return LOWVAL
 
         logprob = self._get_loglike_c(gmix_list)
-
         logprob += self._get_priors(pars)
 
         return logprob
