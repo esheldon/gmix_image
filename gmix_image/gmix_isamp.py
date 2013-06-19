@@ -121,6 +121,7 @@ class GMixIsampSimple(MixMCSimple):
         self.probs_approx=probs_approx
         self.weights=weights
         self.wsum=weights.sum()
+        self.iwsum = 1./self.wsum
 
     def _sample_dist(self):
         """
@@ -198,6 +199,7 @@ class GMixIsampSimple(MixMCSimple):
         Qw[:,0] *= self.weights
         Qw[:,1] *= self.weights
 
+        Rw = R.copy()
         Rw[:,0,0] *= self.weights
         Rw[:,0,1] *= self.weights
         Rw[:,1,0] *= self.weights
@@ -207,7 +209,7 @@ class GMixIsampSimple(MixMCSimple):
         Qsum = Qw.sum(axis=0)
         Rsum = Rw.sum(axis=0)
         
-        iwsum = 1./wsum
+        iwsum = self.iwsum
         P *= iwsum
         Q *= iwsum
         R *= iwsum

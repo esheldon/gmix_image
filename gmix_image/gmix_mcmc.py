@@ -555,14 +555,14 @@ class MixMCSimple:
         R = R[w,:,:]
 
         pinv = 1/prior[w]
-        P *= pinv[w]
-        Q[:,0] *= pinv[w]
-        Q[:,1] *= pinv[w]
+        P *= pinv
+        Q[:,0] *= pinv
+        Q[:,1] *= pinv
 
-        R[:,0,0] *= pinv[w]
-        R[:,0,1] *= pinv[w]
-        R[:,1,0] *= pinv[w]
-        R[:,1,1] *= pinv[w]
+        R[:,0,0] *= pinv
+        R[:,0,1] *= pinv
+        R[:,1,0] *= pinv
+        R[:,1,1] *= pinv
 
         return P, Q, R
 
