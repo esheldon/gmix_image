@@ -105,7 +105,7 @@ class GMixIsampSimple(MixMCSimple):
         trials, probs_approx = self._sample_dist()
 
         # now evaluate all these to get the true prob
-        weights = numpy.zeros(self.nsample)
+        iweights = numpy.zeros(self.nsample)
         probs = numpy.zeros(self.nsample)
 
         for i in xrange(self.nsample):
@@ -114,14 +114,14 @@ class GMixIsampSimple(MixMCSimple):
             prob = self._calc_lnprob(pars)
 
             probs[i] = prob
-            weights[i] = prob/probs_approx[i]
+            iweights[i] = prob/probs_approx[i]
 
         self.trials=trials
         self.probs=probs
         self.probs_approx=probs_approx
-        self.weights=weights
-        self.wsum=weights.sum()
-        self.iwsum = 1./self.wsum
+        self.iweights=iweights
+        self.iweights_sum=iweights.sum()
+        self.iweights_sum_inv= 1./self.iweights_sum
 
     def _sample_dist(self):
         """
@@ -149,15 +149,21 @@ class GMixIsampSimple(MixMCSimple):
         g2vals=self.trials[:,3]
 
         prior = self.gprior(g1vals,g2vals)
+
+        w,=where(prior > 0)
+        if w.size == 0:
+            raise ValueError("no prior values > 0!")
+
         dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
         dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
 
         psum = prior.sum()
 
-        # prior is already in the distribution of
-        # points.  This is simpler for most things but
-        # for sensitivity we need a factor of (1/P)dP/de
-        pars,pcov = mcmc.extract_stats(self.trials, weights=self.weights)
+        # prior is already in the distribution of points.  This is simpler for
+        # most things but for lensfit sensitivity we need a factor of
+        # (1/P)dP/de
+
+        pars,pcov = mcmc.extract_stats(self.trials, weights=self.iweights)
 
         g = pars[2:4].copy()
         gcov = pcov[2:4, 2:4].copy()
@@ -166,10 +172,6 @@ class GMixIsampSimple(MixMCSimple):
         g2diff = g[1]-g2vals
 
         gsens = zeros(2)
-        w,=where(prior > 0)
-        if w.size == 0:
-            raise ValueError("no prior values > 0!")
-
         gsens[0]= 1.-(g1diff[w]*dpri_by_g1[w]/prior[w]).mean()
         gsens[1]= 1.-(g2diff[w]*dpri_by_g2[w]/prior[w]).mean()
 
@@ -191,25 +193,25 @@ class GMixIsampSimple(MixMCSimple):
 
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
-        if self.when_prior=="during":
-            P,Q,R = self._fix_pqr_for_during(g1,g2,P,Q,R)
+        P,Q,R = self._fix_pqr_for_during(g1,g2,P,Q,R)
 
+        iweights = self.iweights
 
         Qw = Q.copy()
-        Qw[:,0] *= self.weights
-        Qw[:,1] *= self.weights
+        Qw[:,0] *= iweights
+        Qw[:,1] *= iweights
 
         Rw = R.copy()
-        Rw[:,0,0] *= self.weights
-        Rw[:,0,1] *= self.weights
-        Rw[:,1,0] *= self.weights
-        Rw[:,1,1] *= self.weights
+        Rw[:,0,0] *= iweights
+        Rw[:,0,1] *= iweights
+        Rw[:,1,0] *= iweights
+        Rw[:,1,1] *= iweights
 
-        Psum = (P*weights).sum()
+        Psum = (P*iweights).sum()
         Qsum = Qw.sum(axis=0)
         Rsum = Rw.sum(axis=0)
         
-        iwsum = self.iwsum
+        iwsum = self.iweights_sum_inv
         P *= iwsum
         Q *= iwsum
         R *= iwsum
