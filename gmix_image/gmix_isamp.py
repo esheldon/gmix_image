@@ -181,7 +181,6 @@ class GMixIsampSimple(MixMCSimple):
         from esutil.stat import cholesky_sample
 
         defres=None,None
-        mess="    crazy covariance, cannot do isample"
 
         pars=self._lm_result['pars']
         cov=self._lm_result['pcov']
@@ -190,14 +189,16 @@ class GMixIsampSimple(MixMCSimple):
         cov_sample=cov*4
 
         if cov_sample[2,2] > 1 or cov_sample[3,3] > 1:
-            print >>stderr,mess
+            #print >>stderr,"    crazy covariance, cannot do isample"
+            #print >>stderr,"    ",sqrt(diag(cov_sample[2:2+2, 2:2+2]))
+            cov_sample[2:2+2, 2:2+2] /= cov_sample[2:2+2, 2:2+2].sum()
             return defres
 
         try:
             trials = cholesky_sample(cov_sample, self.nsample,
                                      means=pars)
         except numpy.linalg.linalg.LinAlgError:
-            print >>stderr,mess
+            print >>stderr,"    could not do cholesky decomposition"
             return defres
 
         pvals = self._eval_par_gauss(trials, pars, cov_sample)
