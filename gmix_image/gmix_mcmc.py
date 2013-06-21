@@ -100,12 +100,14 @@ class MixMCSimple:
         self.npars=6
 
         self.im_list=_get_as_list(image)
-        self.wt_list=_get_as_list(weight)
+        self.nimage=len(self.im_list)
+
+        #self.wt_list=_get_as_list(weight)
+        self._set_wt_list(weight)
         self.psf_list=_get_as_list(psf)
         self._set_jacob_list(**keys)
         _check_lists(self.im_list, self.wt_list, self.psf_list,self.jacob_list)
 
-        self.nimage=len(self.im_list)
         self.imsize=self.im_list[0].size
         self.totpix=self.nimage*self.imsize
 
@@ -122,7 +124,7 @@ class MixMCSimple:
             self.cen_width=keys.get('cen_width',1.0)
             self.cen_prior=CenPrior(self.cen_guess, [self.cen_width]*2)
 
-        self.Tprior=keys.get('Tprior',None)
+        self.T_prior=keys.get('T_prior',None)
         self.counts_prior=keys.get('counts_prior',None)
 
         self.nwalkers=keys.get('nwalkers',20)
@@ -246,9 +248,9 @@ class MixMCSimple:
         cp = self.cen_prior.lnprob(pars[0:2])
         logprob += cp
 
-        if self.Tprior is not None:
+        if self.T_prior is not None:
             try:
-                Tp = self.Tprior.lnprob(pars[4])
+                Tp = self.T_prior.lnprob(pars[4])
                 logprob += Tp
             except ValueError:
                 return LOWVAL
@@ -536,7 +538,7 @@ class MixMCSimple:
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
         if self.when_prior=="during":
-            P,Q,R = self._fix_pqr_for_during(g1,g2,P,Q,R)
+            P,Q,R,w = self._fix_pqr_for_during(g1,g2,P,Q,R)
 
         P = P.mean()
         Q = Q.mean(axis=0)
@@ -564,7 +566,7 @@ class MixMCSimple:
         R[:,1,0] *= pinv
         R[:,1,1] *= pinv
 
-        return P, Q, R
+        return P, Q, R, w
 
     def get_maxprob_pars(self):
         wmax=self.lnprobs.argmax()
@@ -578,14 +580,35 @@ class MixMCSimple:
         return model
 
     def _set_jacob_list(self, **keys):
+        from copy import copy
         jlist = keys.get("jacob",None)
         if jlist is None:
-            jlist=[None]*len(self.im_list)
+            #jlist=[None]*len(self.im_list)
+            j={'row0':0,
+               'col0':0,
+               'dudrow':1.0,
+               'dudcol':0.0,
+               'dvdrow':0.0,
+               'dvdcol':1.0}
+
+            jlist=[copy(j) for i in xrange(self.nimage)]
         else:
             if not isinstance(jlist,list):
                 jlist=[jlist]
 
         self.jacob_list=jlist        
+
+    def _set_wt_list(self, weight):
+        if isinstance(weight, numpy.ndarray):
+            wt_list=[weight]
+        elif isinstance(weight,list):
+            wt_list=weight
+        else:
+            imshape=self.im_list[0].shape
+            wt1=weight + numpy.zeros( imshape )
+            wt_list=[wt1.copy() for i in xrange(self.nimage)]
+
+        self.wt_list=wt_list
 
     def _set_im_sums(self):
         """
@@ -984,7 +1007,7 @@ class MixMCBD(MixMCSimple):
         self.gprior=gprior
 
         # doesn't currently make sense
-        self.Tprior=None
+        self.T_prior=None
 
         self.nwalkers=keys.get('nwalkers',20)
         self.nstep=keys.get('nstep',200)
@@ -1242,7 +1265,7 @@ class MixMCCoellip(MixMCSimple):
         self.gprior=gprior
 
         # doesn't currently make sense
-        self.Tprior=None
+        self.T_prior=None
 
         self.nwalkers=keys.get('nwalkers',20)
         self.nstep=keys.get('nstep',200)

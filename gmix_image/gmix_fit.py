@@ -44,6 +44,7 @@ from .gmix import GMix, GMixCoellip
 LM_MAX_TRY=5
 
 HIGHVAL=9.999e9
+LOWVAL=-9999.0e47
 
 GMIXFIT_MAXITER         = 2**0
 GMIXFIT_SINGULAR_MATRIX = 2**4
@@ -58,6 +59,8 @@ notfinite_bit=11
 GMIXFIT_NOTFINITE = 2**notfinite_bit # very low S/N for ixx+iyy
 
 GMIXFIT_EIG_NOTFINITE = 2**12
+
+GMIXFIT_HUGE_ERRORS = 2**12
 
 # failure before true fit begins, e.g. in _fit_round_fixcen
 GMIXFIT_EARLY_FAILURE = 2**30
@@ -672,6 +675,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         self.g_guess=keys.get('g_guess',None)
         self.T_guess=keys.get("T_guess",None)
         self.counts_guess=keys.get("counts_guess",None)
+        self.cen_guess=keys.get('cen_guess',None)
 
 
         # make sure in units of jacobian!
@@ -733,6 +737,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         ntry=self.lm_max_try
         for i in xrange(1,ntry+1):
             guess=self._get_guess()
+            #print_pars(guess, front="guess:")
 
             lmres = run_leastsq(self._get_lm_ydiff_full, guess)
 
@@ -839,6 +844,9 @@ class GMixFitMultiSimple(GMixFitMultiBase):
                           0.0,
                           pars2[0],
                           pars2[1]], dtype='f8')
+        if self.cen_guess is not None:
+            pars[0] = self.cen_guess[0]
+            pars[1] = self.cen_guess[1]
         return pars
 
     def _get_lm_ydiff_round_fixcen(self, pars2):
@@ -878,10 +886,20 @@ class GMixFitMultiSimple(GMixFitMultiBase):
                 ydiff[-3] = gp
 
         if self.T_prior is not None:
-            ydiff[-2] = self.T_prior.lnprob(pars[4])
+            try:
+                Tp = self.T_prior.lnprob(pars[4])
+            except ValueError:
+                Tp = LOWVAL
+
+            ydiff[-2] = Tp
 
         if self.counts_prior is not None:
-            ydiff[-1] = self.counts_prior.lnprob(pars[4])
+            try:
+                cp = self.counts_prior.lnprob(pars[4])
+            except ValueError:
+                cp = LOWVAL
+
+            ydiff[-1] = cp
 
     def _get_lm_ydiff_pars(self, pars):
         g=numpy.sqrt(pars[2]**2 + pars[3]**2)
@@ -922,6 +940,10 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         # guess center 0,0 in uv plane
         #guess[0]=0.5*srandu()
         #guess[1]=0.5*srandu()
+
+        if self.cen_guess is not None:
+            guess[0] = self.cen_guess[0]
+            guess[1] = self.cen_guess[1]
 
         if self.g_guess is None:
             #guess[2]=0.5*srandu()
