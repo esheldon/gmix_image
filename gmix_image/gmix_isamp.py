@@ -84,8 +84,8 @@ class GMixIsampSimple(MixMCSimple):
                               cen_guess=self.cen_guess,
 
                               gprior=self.gprior,
-                              cen_prior=self.cen_prior
-                              T_prior=elf.T_prior,
+                              cen_prior=self.cen_prior,
+                              T_prior=self.T_prior,
                               counts_prior=self.counts_prior)
 
 
