@@ -2,7 +2,7 @@ from sys import stderr
 import numpy
 from numpy import sqrt, diag
 from . import gmix_fit
-from .gmix_fit import GMIXFIT_HUGE_ERRORS
+from .gmix_fit import GMIXFIT_CHOLESKY, GMIXFIT_CRAZY_COV
 from .gmix_mcmc import MixMCSimple, _get_as_list, _check_lists
 from .util import print_pars
 
@@ -16,6 +16,7 @@ class GMixIsampSimple(MixMCSimple):
         # cen1,cen2,e1,e2,T,p
         self.npars=6
         self.when_prior="during"
+        self.minfrac=0.8
 
         self.im_list=_get_as_list(image)
         self.nimage=len(self.im_list)
@@ -70,37 +71,54 @@ class GMixIsampSimple(MixMCSimple):
             #print_pars(self._lm_result['pars'],front='lm pars:')
             #print_pars(self._lm_result['perr'],front='lm perr:')
             if not self._do_isample():
-                defres['flags'] = GMIXFIT_HUGE_ERRORS 
+                defres['flags'] = GMIXFIT_CHOLESKY 
                 self._result=defres
                 return
 
-            self._calc_result()
+            if not self._calc_result():
+                defres['flags'] = GMIXFIT_CRAZY_COV
+                self._result=defres
+                return
 
         if self.make_plots:
             self._doplots()
 
     def _do_maxlike_fit(self):
-        guess=self._get_lm_guess()
-        gm=gmix_fit.GMixFitMultiSimple(self.im_list,
-                                       self.wt_list,
-                                       self.jacob_list,
-                                       self.psf_list,
-                                       self.model,
+        """
+        If we get a crazy covariance matrix (large g errors)
+        we repeat
+        """
+        #guess=self._get_lm_guess()
+        nretry=10
+        for i in xrange(nretry):
+            gm=gmix_fit.GMixFitMultiSimple(self.im_list,
+                                           self.wt_list,
+                                           self.jacob_list,
+                                           self.psf_list,
+                                           self.model,
 
-                                       g_guess=self.g_guess,
-                                       T_guess=self.T_guess,
-                                       counts_guess=self.counts_guess,
-                                       cen_guess=self.cen_guess,
+                                           g_guess=self.g_guess,
+                                           T_guess=self.T_guess,
+                                           counts_guess=self.counts_guess,
+                                           cen_guess=self.cen_guess,
 
-                                       gprior=self.gprior,
-                                       cen_prior=self.cen_prior,
-                                       T_prior=self.T_prior,
-                                       counts_prior=self.counts_prior)
+                                           gprior=self.gprior,
+                                           cen_prior=self.cen_prior,
+                                           T_prior=self.T_prior,
+                                           counts_prior=self.counts_prior)
+
+            res=gm.get_result()
+            if res['flags']==0:
+                pcov=res['pcov']
+                if pcov[2,2] < 1 and pcov[3,3] < 1:
+                    break
+                else:
+                    res['flags'] = GMIXFIT_CRAZY_COV
 
 
-        self._lm_result=gm.get_result()
+        self._lm_result=res
 
-    def _get_lm_guess(self):
+    def _get_lm_guess(self, randomize=False):
         guess=numpy.zeros(self.npars)
 
         T0 = self.T_guess
@@ -140,15 +158,27 @@ class GMixIsampSimple(MixMCSimple):
             # happens when get a crazy fit
             return False
 
-        # now evaluate all these to get the true prob
-        iweights = numpy.zeros(self.nsample)
-        #probs = numpy.zeros(self.nsample)
+        w,=numpy.where(probs_approx > 0)
+        if w.size == 0:
+            return False
 
-        lnprobs = numpy.zeros(self.nsample)
+        trials = trials[w,:]
+        probs_approx=probs_approx[w]
+        nsample=w.size
+
+        usefrac = float(nsample)/self.nsample
+        if usefrac < self.minfrac:
+            mess=('    require %g of samples good, '
+                  'but only found %g. Not continuing')
+            print >>stderr,mess % (self.minfrac,usefrac)
+            return False
+
+        # now evaluate all these to get the true prob
+        iweights = numpy.zeros(nsample)
+
+        lnprobs = numpy.zeros(nsample)
         lnprob_max=None
-        for i in xrange(self.nsample):
-            #if probs_approx[i]==0:
-            #    print 'WARNING: found zero'
+        for i in xrange(nsample):
             pars = trials[i,:]
             lnprobs[i]=self._calc_lnprob(pars)
 
@@ -158,6 +188,10 @@ class GMixIsampSimple(MixMCSimple):
         probs = numpy.exp(lnprobs)
 
         iweights = probs/probs_approx
+        wgood,=numpy.where( numpy.isfinite(iweights) )
+        if wgood.size != nsample:
+            print >>stderr,"    nan found"
+            return False
 
         self.trials=trials
         self.probs=probs
@@ -188,14 +222,16 @@ class GMixIsampSimple(MixMCSimple):
         # twice as wide
         cov_sample=cov*4
 
-        if cov_sample[2,2] > 1 or cov_sample[3,3] > 1:
-            #print >>stderr,"    crazy covariance, cannot do isample"
-            #print >>stderr,"    ",sqrt(diag(cov_sample[2:2+2, 2:2+2]))
-            cov_sample[2:2+2, 2:2+2] /= cov_sample[2:2+2, 2:2+2].sum()
-            return defres
-
+        max_gcov=4**2
+        if cov_sample[2,2] > max_gcov or cov_sample[3,3] > max_gcov:
+            print >>stderr,"    crazy covariance, fixing"
+            print >>stderr,"    ",sqrt(diag(cov_sample[2:2+2, 2:2+2]))
+            csum = cov_sample[2,2] + cov_sample[3,3]
+            cov_sample[2:2+2, 2:2+2] /= csum
+            #return defres
         try:
-            trials = cholesky_sample(cov_sample, self.nsample,
+            trials = cholesky_sample(cov_sample,
+                                     self.nsample,
                                      means=pars)
         except numpy.linalg.linalg.LinAlgError:
             print >>stderr,"    could not do cholesky decomposition"
@@ -217,7 +253,16 @@ class GMixIsampSimple(MixMCSimple):
 
         ldiff = locations-pars2d
         arg   = -0.5 * dot(dot(ldiff, cinv) * ldiff, ones)[:, 0]
-        return numpy.exp(arg)
+        res=numpy.zeros(arg.size)
+
+        wgood,=numpy.where(arg <= 0)
+        if wgood.size != arg.size:
+            wbad,= numpy.where(arg > 0)
+            maxbad = arg[wbad].max()
+            print >>stderr,"    unexpectedly found %d exp arg > 0, max %g" % (wbad.size,maxbad)
+
+        res[wgood] = numpy.exp(arg[wgood])
+        return res
 
 
     def _calc_result(self):
@@ -226,11 +271,11 @@ class GMixIsampSimple(MixMCSimple):
         are index 0 and 1 in the pars array
         """
 
-        pars,pcov,g,gcov,gsens=self._get_trial_stats()
+        sres=self._get_trial_stats()
+        if sres is None:
+            return False
+        pars,pcov,g,gcov,gsens=sres
  
-        #print_pars(pars,front="is pars: ")
-        #print_pars(sqrt(diag(pcov)),front="is perr: ")
-
         gmix_list=self._get_gmix_list(pars)
         if gmix_list is None:
             stats={}
@@ -260,13 +305,18 @@ class GMixIsampSimple(MixMCSimple):
                       'arate':1.0}
 
         if self.do_pqr:
-            P,Q,R = self._get_PQR()
+            pqr_res = self._get_PQR()
+            if pqr_res is None:
+                return False
+
+            P,Q,R = pqr_res
             self._result['P']=P
             self._result['Q']=Q
             self._result['R']=R
 
         self._result.update(stats)
 
+        return True
 
     def _get_trial_stats(self):
         import mcmc
@@ -278,12 +328,13 @@ class GMixIsampSimple(MixMCSimple):
 
         w,=numpy.where(prior > 0)
         if w.size == 0:
-            raise ValueError("no prior values > 0!")
+            print_pars(self._lm_result['pars'],front='lm pars:', stream=stderr)
+            print_pars(self._lm_result['perr'],front='lm perr:', stream=stderr)
+            print >>stderr,"no prior values > 0!"
+            return None
 
         dpri_by_g1 = self.gprior.dbyg1(g1vals,g2vals)
         dpri_by_g2 = self.gprior.dbyg2(g1vals,g2vals)
-
-        psum = prior.sum()
 
         # prior is already in the distribution of points.  This is simpler for
         # most things but for lensfit sensitivity we need a factor of
@@ -319,7 +370,10 @@ class GMixIsampSimple(MixMCSimple):
 
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
-        P,Q,R,w = self._fix_pqr_for_during(g1,g2,P,Q,R)
+        pqr_res = self._fix_pqr_for_during(g1,g2,P,Q,R)
+        if pqr_res is None:
+            return None
+        P,Q,R,w = pqr_res
 
         iweights = self.iweights[w]
 
