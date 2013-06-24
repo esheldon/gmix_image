@@ -192,7 +192,6 @@ class GMixIsampSimple(MixMCSimple):
         if cov_sample[2,2] > 1 or cov_sample[3,3] > 1:
             print >>stderr,mess
             return defres
-
         try:
             trials = cholesky_sample(cov_sample, self.nsample,
                                      means=pars)
