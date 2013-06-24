@@ -538,7 +538,10 @@ class MixMCSimple:
         P,Q,R = self.gprior.get_pqr(g1,g2)
 
         if self.when_prior=="during":
-            P,Q,R,w = self._fix_pqr_for_during(g1,g2,P,Q,R)
+            pqr_res = self._fix_pqr_for_during(g1,g2,P,Q,R)
+            if pqr_res is None:
+                return None
+            P,Q,R,w = pqr_res
 
         P = P.mean()
         Q = Q.mean(axis=0)
@@ -550,7 +553,8 @@ class MixMCSimple:
         prior = self.gprior(g1,g2)
         w,=numpy.where(prior > 0)
         if w.size == 0:
-            raise ValueError("no prior values > 0!")
+            print >>stderr,"no prior values > 0!"
+            return None
 
         P = P[w]
         Q = Q[w,:]

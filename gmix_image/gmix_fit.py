@@ -60,7 +60,8 @@ GMIXFIT_NOTFINITE = 2**notfinite_bit # very low S/N for ixx+iyy
 
 GMIXFIT_EIG_NOTFINITE = 2**12
 
-GMIXFIT_HUGE_ERRORS = 2**12
+GMIXFIT_CHOLESKY = 2**13
+GMIXFIT_CRAZY_COV = 2**14
 
 # failure before true fit begins, e.g. in _fit_round_fixcen
 GMIXFIT_EARLY_FAILURE = 2**30
@@ -942,8 +943,8 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         #guess[1]=0.5*srandu()
 
         if self.cen_guess is not None:
-            guess[0] = self.cen_guess[0]
-            guess[1] = self.cen_guess[1]
+            guess[0] = self.cen_guess[0] + 0.01*srandu()
+            guess[1] = self.cen_guess[1] + 0.01*srandu()
 
         if self.g_guess is None:
             #guess[2]=0.5*srandu()
@@ -957,8 +958,8 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         else:
             guess[2:2+2] = self.g_guess
 
-        guess[4] = T0
-        guess[5] = counts0
+        guess[4] = T0*(1.0 + 0.05*srandu())
+        guess[5] = counts0*(1.0 + 0.05*srandu())
 
         return guess
 
