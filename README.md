@@ -10,11 +10,11 @@ techniques.
 
 Under the hood, C librares are used for speed.
 
-The workhorses are
+The workhorses modules are
 
 - gmix_image.gmix_fit
     - maximum likelihood fitters
 - gmix_image.gmix_mcmc
-    - MCMC fitter
+    - MCMC fitters
 - gmix_image.em
-    - EM fitter
+    - EM fitters
