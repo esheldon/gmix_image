@@ -525,6 +525,9 @@ class GPriorBA(GPrior):
         """
         super(GPriorBA,self).__init__(pars)
 
+    def get_max(self):
+        return 1.0
+
     def prior2d_gabs(self, gin):
         """
         Get the 2d prior for the input |g| value(s)
@@ -1301,9 +1304,17 @@ class CenPrior:
         self.sigma=numpy.array(sigma)
         self.sigma2=numpy.array( [s**2 for s in sigma] )
 
+    def get_max(self):
+        return 1.0
+
     def lnprob(self, pos):
-        lnprob0 = -0.5*(self.cen[0]-pos[0])**2/self.sigma2[0]
-        lnprob1 = -0.5*(self.cen[1]-pos[1])**2/self.sigma2[1]
+        if len(pos.shape) > 1:
+            lnprob0 = -0.5*(self.cen[0]-pos[:,0])**2/self.sigma2[0]
+            lnprob1 = -0.5*(self.cen[1]-pos[:,1])**2/self.sigma2[1]
+        else:
+            lnprob0 = -0.5*(self.cen[0]-pos[0])**2/self.sigma2[0]
+            lnprob1 = -0.5*(self.cen[1]-pos[1])**2/self.sigma2[1]
+
         return lnprob0 + lnprob1
 
     def sample(self):
@@ -1320,7 +1331,8 @@ class CombinedPriorSimple(object):
     put into the randoms, for example
     """
     def __init__(self,
-                 cen_range,
+                 cen1_range,
+                 cen2_range,
                  cen_priors,
                  g_range,
                  g_priors,
@@ -1331,20 +1343,23 @@ class CombinedPriorSimple(object):
 
         self.npars=6
 
-        self.cen_range=cen_range
-        self.cen_range_width=cen_range[2]-cen_range[1]
+        self.cen1_range=cen1_range
+        self.cen1_range_width=cen1_range[1]-cen1_range[0]
+        self.cen2_range=cen2_range
+        self.cen2_range_width=cen2_range[1]-cen2_range[0]
+
         self.cen_priors=cen_priors
 
         self.g_range = g_range
-        self.g_range_width=g_range[2]-g_range[1]
+        self.g_range_width=g_range[1]-g_range[0]
         self.g_priors=g_priors
 
         self.T_range=T_range
-        self.T_range_width=T_range[2]-T_range[1]
+        self.T_range_width=T_range[1]-T_range[0]
         self.T_priors=T_priors
 
         self.counts_range=counts_range
-        self.counts_range_width=counts_range[2]-counts_range[1]
+        self.counts_range_width=counts_range[1]-counts_range[0]
         self.counts_priors=counts_priors
 
         self._set_maxval()
@@ -1368,10 +1383,10 @@ class CombinedPriorSimple(object):
         if ndim > 2:
             raise ValueError("ndim should be 2")
 
-        lnprob = numpy.zeros( pars.shape[1] )
+        lnprob = numpy.zeros( pars.shape[0] )
 
         for p in self.cen_priors:
-            lnprob += p.lnprob(pars[:,0],pars[:,1])
+            lnprob += p.lnprob(pars[:,0:2])
         for p in self.g_priors:
             lnprob += p.lnprob(pars[:,2],pars[:,3])
         for p in self.T_priors:
@@ -1394,33 +1409,48 @@ class CombinedPriorSimple(object):
 
         maxval=self.maxval
         randpars = zeros( (nrand,self.npars) )
+        tpars = zeros( (nrand,self.npars) )
 
         ngood=0
         nleft=nrand
+        ngen=0
         while ngood < nrand:
+            #print '%d/%d' % (ngood,nrand)
 
-            start=ngood
-            end=ngood+nleft
+            ngen += nleft
+            tpars[0:nleft,0] = self.cen1_range[0] + self.cen1_range_width*randu(nleft)
+            tpars[0:nleft,1] = self.cen2_range[0] + self.cen2_range_width*randu(nleft)
 
-            randpars[start:end,0] = self.cen_range[0] + self.cen_range_width*randu(nleft)
-            randpars[start:end,1] = self.cen_range[1] + self.cen_range_width*randu(nleft)
+            tpars[0:nleft,2] = self.g_range[0] + self.g_range_width*randu(nleft)
+            tpars[0:nleft,3] = self.g_range[0] + self.g_range_width*randu(nleft)
 
-            randpars[start:end,2] = -1 + 2*randu(nleft)
-            randpars[start:end,3] = -1 + 2*randu(nleft)
-
-            randpars[start:end,4] =self.T_range[0] + self.T_range_width*randu(nleft)
-            randpars[start:end,5] =self.counts_range[0] + self.counts_range_width*randu(nleft)
+            tpars[0:nleft,4] = self.T_range[0] + self.T_range_width*randu(nleft)
+            tpars[0:nleft,5] = self.counts_range[0] + self.counts_range_width*randu(nleft)
 
             # a bit of padding since we are modifying the distribution
             height = maxval*randu(nleft)
 
-            prob_vals = self(randpars[start:end,:])
+            prob_vals = self(tpars[0:nleft,:])
+
+            """
+            wbad,=numpy.where(prob_vals > maxval)
+            if wbad.size > 0:
+                raise ValueError("bad: %d  %s > %s" % (wbad.size,prob_vals.max(), maxval))
+            """
+
+            #print prob_vals.max()
 
             w,=where(height < prob_vals)
             if w.size > 0:
+
+                start=ngood
+                end=start+w.size
+                randpars[start:end, :] = tpars[w,:]
                 ngood += w.size
                 nleft -= w.size
    
+        overhead=float(ngen)/nrand
+        print 'ngen/nrand = %d/%d = %s' % (ngen,nrand,overhead)
         return randpars
 
 
@@ -1428,18 +1458,91 @@ class CombinedPriorSimple(object):
     def _set_maxval(self):
         maxval = 1.0
 
+        print 'maxval:'
+        print maxval
         for p in self.cen_priors:
             maxval *= p.get_max()
+            print maxval
         for p in self.g_priors:
             maxval *= p.get_max()
+            print maxval
         for p in self.T_priors:
             maxval *= p.get_max()
+            print maxval
         for p in self.counts_priors:
             maxval *= p.get_max()
+            print maxval
 
         self.maxval=maxval
         self.maxval_log = numpy.log(maxval)
 
+def test_combined(show=False):
+    import esutil as eu
+    from esutil.random import LogNormal
+    cen_prior = CenPrior([15.0, 16.0], [0.1, 0.2])
+    g_prior = GPriorBA(0.3)
+    T_prior = LogNormal(16.0, 3.0)
+    counts_prior = LogNormal(100.0, 10.0)
+
+    nsig=3
+    cen1_range=[cen_prior.cen[0]-nsig*cen_prior.sigma[0],
+                cen_prior.cen[0]+nsig*cen_prior.sigma[0]]
+    cen2_range=[cen_prior.cen[1]-nsig*cen_prior.sigma[1],
+                cen_prior.cen[1]+nsig*cen_prior.sigma[1]]
+
+    g_range=[-1.0, 1.0]
+    # might not work for lognormal
+    T_range=[T_prior.mean-nsig*T_prior.sigma,
+             T_prior.mean+nsig*T_prior.sigma]
+    counts_range=[counts_prior.mean-nsig*counts_prior.sigma,
+                  counts_prior.mean+nsig*counts_prior.sigma]
+
+    cen_priors=[cen_prior]
+    g_priors=[g_prior]
+    T_priors=[T_prior]
+    counts_priors=[counts_prior]
+    comb=CombinedPriorSimple(cen1_range,
+                             cen2_range,
+                             cen_priors,
+                             g_range,
+                             g_priors,
+                             T_range,
+                             T_priors,
+                             counts_range,
+                             counts_priors)
+
+    print 'maxval:',comb.maxval
+    n=5000
+    prand = comb.sample(n)
+
+    if show:
+        plot_many_hist(prand)
+
+def plot_many_hist(arr):
+    import biggles
+    import esutil as eu
+    ndim = arr.shape[1]
+
+    nrow,ncol = eu.plotting.get_grid(ndim)
+
+    plt=biggles.Table(nrow,ncol)
+
+    names=['cen1','cen1','g1','g2','T','counts']
+    for dim in xrange(ndim):
+        row=dim/ncol
+        col=dim % ncol
+
+        bsize=0.2*arr[:,dim].std()
+
+        p=eu.plotting.bhist(arr[:,dim],binsize=bsize,
+                            xlabel=names[dim],
+                            show=False)
+        plt[row,col] = p
+
+    plt.show()
+
+
+    
 def test_shear_mean():
     gp=GPrior(A= 12.25,
               B= 0.2,
