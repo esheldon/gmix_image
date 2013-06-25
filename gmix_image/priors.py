@@ -1,6 +1,6 @@
 import numpy
 from numpy import sqrt, cos, sin, exp, pi, zeros,  \
-        random, where, array
+        random, where, array, log
 import math
 
 
@@ -22,6 +22,12 @@ class GPrior(object):
         """
         g = sqrt(g1**2 + g2**2)
         return self.prior2d_gabs(g)
+
+    def lnprob(self, g1, g2):
+        """
+        log of prob
+        """
+        return log(self(g1,g2))
 
     def prior2d_gabs(self, g):
         """
@@ -1305,6 +1311,134 @@ class CenPrior:
         Get a single sample
         """
         return self.cen + self.sigma*numpy.random.randn(2)
+
+class CombinedPriorSimple(object):
+    """
+    Combine all these prior into one.
+
+    Note covariance between the points is not supported.  This must be
+    put into the randoms, for example
+    """
+    def __init__(self,
+                 cen_range,
+                 cen_priors,
+                 g_range,
+                 g_priors,
+                 T_range,
+                 T_priors,
+                 counts_range,
+                 counts_priors):
+
+        self.npars=6
+
+        self.cen_range=cen_range
+        self.cen_range_width=cen_range[2]-cen_range[1]
+        self.cen_priors=cen_priors
+
+        self.g_range = g_range
+        self.g_range_width=g_range[2]-g_range[1]
+        self.g_priors=g_priors
+
+        self.T_range=T_range
+        self.T_range_width=T_range[2]-T_range[1]
+        self.T_priors=T_priors
+
+        self.counts_range=counts_range
+        self.counts_range_width=counts_range[2]-counts_range[1]
+        self.counts_priors=counts_priors
+
+        self._set_maxval()
+
+    def __call__(self, pars_in):
+        """
+        Get the probability of the input parameters
+        """
+        lnp=self.lnprob(pars_in)
+        return exp(lnp)
+
+    def lnprob(self, pars_in):
+        """
+        Get the log probability of the input parameters
+        """
+        ndim_in=len(pars_in.shape)
+
+        pars=numpy.atleast_2d(pars_in)
+        pshape=pars.shape
+        ndim=len(pars.shape)
+        if ndim > 2:
+            raise ValueError("ndim should be 2")
+
+        lnprob = numpy.zeros( pars.shape[1] )
+
+        for p in self.cen_priors:
+            lnprob += p.lnprob(pars[:,0],pars[:,1])
+        for p in self.g_priors:
+            lnprob += p.lnprob(pars[:,2],pars[:,3])
+        for p in self.T_priors:
+            lnprob += p.lnprob(pars[:,4])
+        for p in self.counts_priors:
+            lnprob += p.lnprob(pars[:,5])
+
+        return lnprob
+
+    def sample(self, nrand):
+        """
+        Get random values using 6-d brute force method
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from numpy.random import random as randu
+
+        maxval=self.maxval
+        randpars = zeros( (nrand,self.npars) )
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            start=ngood
+            end=ngood+nleft
+
+            randpars[start:end,0] = self.cen_range[0] + self.cen_range_width*randu(nleft)
+            randpars[start:end,1] = self.cen_range[1] + self.cen_range_width*randu(nleft)
+
+            randpars[start:end,2] = -1 + 2*randu(nleft)
+            randpars[start:end,3] = -1 + 2*randu(nleft)
+
+            randpars[start:end,4] =self.T_range[0] + self.T_range_width*randu(nleft)
+            randpars[start:end,5] =self.counts_range[0] + self.counts_range_width*randu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            height = maxval*randu(nleft)
+
+            prob_vals = self(randpars[start:end,:])
+
+            w,=where(height < prob_vals)
+            if w.size > 0:
+                ngood += w.size
+                nleft -= w.size
+   
+        return randpars
+
+
+
+    def _set_maxval(self):
+        maxval = 1.0
+
+        for p in self.cen_priors:
+            maxval *= p.get_max()
+        for p in self.g_priors:
+            maxval *= p.get_max()
+        for p in self.T_priors:
+            maxval *= p.get_max()
+        for p in self.counts_priors:
+            maxval *= p.get_max()
+
+        self.maxval=maxval
+        self.maxval_log = numpy.log(maxval)
 
 def test_shear_mean():
     gp=GPrior(A= 12.25,

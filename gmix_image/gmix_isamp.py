@@ -32,12 +32,12 @@ class GMixIsampSimple(MixMCSimple):
 
         self.model=model
 
-        self.gprior=gprior
         self.T_guess=T_guess
         self.counts_guess=counts_guess
         self.cen_guess=cen_guess
         self.g_guess=keys.get('g_guess',None)
 
+        self.gprior=gprior
         self.cen_prior=keys.get('cen_prior',None)
         if self.cen_prior is None:
             self.cen_width=keys.get('cen_width',1.0)
