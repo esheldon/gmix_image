@@ -321,6 +321,67 @@ class GPrior(object):
         """
         return -self.prior1d(g)
 
+class GPriorTimesGauss(object):
+    """
+    Gprior*g1_gauss*g2_gauss
+
+    g1,g2 are treated without covariance
+    """
+    def __init__(self, g_prior, g_gauss):
+        self.g_prior = g_prior
+        self.g_gauss=g_gauss
+
+        self.ga = numpy.zeros(2)
+    def lnprob(self, g1, g2):
+        self.ga[0] = g1
+        self.ga[1] = g2
+        lnprob =   self.g_prior.lnprob(g1,g2) + self.g_gauss.lnprob(self.ga)
+        return lnprob
+
+    def prob(self, g1, g2):
+        return exp(self.lnprob(g1,g2))
+
+    def sample2d(self, nrand):
+        """
+        Get random g1,g2 values using 2-d brute
+        force method
+
+        parameters
+        ----------
+        nrand: int
+            Number to generate
+        """
+        from .util import srandu
+
+        maxval_2d = self(0.0,0.0)
+        g1,g2=zeros(nrand),zeros(nrand)
+
+        ngood=0
+        nleft=nrand
+        while ngood < nrand:
+
+            # generate on cube [-1,1,h]
+            g1rand=srandu(nleft)
+            g2rand=srandu(nleft)
+
+            # a bit of padding since we are modifying the distribution
+            h = maxval_2d*random.random(nleft)
+
+            vals = self(g1rand,g2rand)
+            
+            #wbad,=where(vals > maxval_2d)
+            #if wbad.size > 0:
+            #    raise ValueError("found %d > maxval" % wbad.size)
+
+            w,=where(h < vals)
+            if w.size > 0:
+                g1[ngood:ngood+w.size] = g1rand[w]
+                g2[ngood:ngood+w.size] = g2rand[w]
+                ngood += w.size
+                nleft -= w.size
+   
+        return g1,g2
+
 
 def plot_pqr(gsigma=0.3, other=0.0):
     import biggles
@@ -1341,49 +1402,21 @@ class CombinedPriorSimple(object):
     put into the randoms, for example
     """
     def __init__(self,
-                 cen_priors,
-                 g_priors,
-                 T_priors,
-                 counts_priors,
-
-                 # for cut method
-                 cen1_range=None,
-                 cen2_range=None,
-                 g_range=None,
-                 T_range=None,
-                 counts_range=None):
+                 cen_prior,
+                 g_prior,
+                 T_prior,
+                 counts_prior):
 
         self.npars=6
 
-        self.cen1_range=cen1_range
-        self.cen2_range=cen2_range
 
-        self.cen_priors=cen_priors
+        self.cen_prior=cen_prior
 
-        self.g_range = g_range
-        self.g_priors=g_priors
+        self.g_prior=g_prior
 
-        self.T_range=T_range
-        self.T_priors=T_priors
+        self.T_prior=T_prior
 
-        self.counts_range=counts_range
-        self.counts_priors=counts_priors
-
-        self._set_maxval()
-
-    def _set_ranges(self):
-        if self.cen1_range is not None:
-            self.cen1_range_width=cen1_range[1]-cen1_range[0]
-        if self.cen2_range is not None:
-            self.cen2_range_width=cen2_range[1]-cen2_range[0]
-
-        if self.g_range is not None:
-            self.g_range_width=g_range[1]-g_range[0]
-        if self.T_range is not None:
-            self.T_range_width=T_range[1]-T_range[0]
-        if self.counts_range is not None:
-            self.counts_range_width=counts_range[1]-counts_range[0]
-
+        self.counts_prior=counts_prior
 
 
     def __call__(self, pars_in):
@@ -1396,6 +1429,11 @@ class CombinedPriorSimple(object):
     def lnprob(self, pars_in):
         """
         Get the log probability of the input parameters
+
+        parameters
+        ----------
+        pars: sequence,array
+            Array of parameters
         """
         LOWVAL=-9999.0e47
 
@@ -1409,18 +1447,11 @@ class CombinedPriorSimple(object):
 
         lnprob = numpy.zeros( pars.shape[0] )
 
-        #print 'pars in shape:',pars.shape
-        #print 'pars shape:   ',pars.shape
-        #stop
         try:
-            for p in self.cen_priors:
-                lnprob += p.lnprob(pars[:,0:2])
-            for p in self.g_priors:
-                lnprob += p.lnprob(pars[:,2],pars[:,3])
-            for p in self.T_priors:
-                lnprob += p.lnprob(pars[:,4])
-            for p in self.counts_priors:
-                lnprob += p.lnprob(pars[:,5])
+            lnprob += self.cen_prior.lnprob(pars[:,0:2])
+            lnprob += self.g_prior.lnprob(pars[:,2],pars[:,3])
+            lnprob += self.T_prior.lnprob(pars[:,4])
+            lnprob += self.counts_prior.lnprob(pars[:,5])
         except ValueError:
             lnprob[:] = LOWVAL
 
@@ -1429,7 +1460,12 @@ class CombinedPriorSimple(object):
         else:
             return lnprob
 
-    def sample(self, nrand, method='mcmc', **keys):
+    def sample(self,
+               guess,
+               nrand, 
+               nwalkers=20,
+               burnin=25,
+               full=False):
         """
         Get random values in 6-d
 
@@ -1437,22 +1473,12 @@ class CombinedPriorSimple(object):
         ----------
         nrand: int
             Number to generate
+        method: string, optional
+            'mcmc' or 'cut'
+        full: bool, optional
+            Return the mcmc sampler
         """
-
-        if method=='cut':
-            return self._sample_cut(nrand)
-        else:
-            return self._sample_mcmc(nrand, **keys)
-
-    def _sample_mcmc(self, nrand, **keys):
         import emcee
-
-        guess=keys.get('start',None)
-        if guess is None:
-            raise ValueError("send start= for mcmc sampling")
-
-        nwalkers=keys.get('nwalkers',20)
-        burnin=keys.get('burnin',25) # play with this
 
         nstep=nrand/nwalkers
 
@@ -1464,147 +1490,56 @@ class CombinedPriorSimple(object):
         sampler.reset()
         pos, prob, state = sampler.run_mcmc(pos, nstep)
 
-        prand = sampler.flatchain
-
-        full=keys.get('full',False)
         if full:
-            arates = sampler.acceptance_fraction
-            arate = arates.mean()
-            lnprobs = sampler.lnprobability.reshape(nwalkers*nstep)
-
-            return prand, lnprobs, arate
+            return sampler
         else:
+            prand = sampler.flatchain
             return prand
 
-    def _sample_cut(self, nrand):
-        from numpy.random import random as randu
-
-        maxval=self.maxval
-        randpars = zeros( (nrand,self.npars) )
-        tpars = zeros( (nrand,self.npars) )
-
-        ngood=0
-        nleft=nrand
-        ngen=0
-        while ngood < nrand:
-            #print '%d/%d' % (ngood,nrand)
-
-            ngen += nleft
-            tpars[0:nleft,0] = self.cen1_range[0] + self.cen1_range_width*randu(nleft)
-            tpars[0:nleft,1] = self.cen2_range[0] + self.cen2_range_width*randu(nleft)
-
-            tpars[0:nleft,2] = self.g_range[0] + self.g_range_width*randu(nleft)
-            tpars[0:nleft,3] = self.g_range[0] + self.g_range_width*randu(nleft)
-
-            tpars[0:nleft,4] = self.T_range[0] + self.T_range_width*randu(nleft)
-            tpars[0:nleft,5] = self.counts_range[0] + self.counts_range_width*randu(nleft)
-
-            # a bit of padding since we are modifying the distribution
-            height = maxval*randu(nleft)
-
-            prob_vals = self(tpars[0:nleft,:])
-
-            """
-            wbad,=numpy.where(prob_vals > maxval)
-            if wbad.size > 0:
-                raise ValueError("bad: %d  %s > %s" % (wbad.size,prob_vals.max(), maxval))
-            """
-
-            #print prob_vals.max()
-
-            w,=where(height < prob_vals)
-            if w.size > 0:
-
-                start=ngood
-                end=start+w.size
-                randpars[start:end, :] = tpars[w,:]
-                ngood += w.size
-                nleft -= w.size
-   
-        overhead=float(ngen)/nrand
-        print 'ngen/nrand = %d/%d = %s' % (ngen,nrand,overhead)
-        return randpars
-
-
-
-    def _set_maxval(self):
-        maxval = 1.0
-
-        print 'maxval:'
-        print maxval
-        for p in self.cen_priors:
-            maxval *= p.get_max()
-            print maxval
-        for p in self.g_priors:
-            maxval *= p.get_max()
-            print maxval
-        for p in self.T_priors:
-            maxval *= p.get_max()
-            print maxval
-        for p in self.counts_priors:
-            maxval *= p.get_max()
-            print maxval
-
-        self.maxval=maxval
-        self.maxval_log = numpy.log(maxval)
-
-def test_combined(show=False, method='cut'):
+def test_combined(show=False, nwalkers=20, burnin=25, nrand=500, ntry=1):
     import esutil as eu
-    from esutil.random import LogNormal
+    from esutil.random import LogNormal, Normal, NormalND, srandu
+    import time
     npars=6
 
     cen_prior = CenPrior([15.0, 16.0], [0.1, 0.2])
-    g_prior = GPriorBA(0.3)
+
+    g_prior_ba = GPriorBA(0.3)
+    #g_dist_gauss = NormalND( [0.2,0.1], [0.1, 0.07] )
+    g_dist_gauss = NormalND( [0.2,0.1], [1000.0, 1500.0] )
+    g_prior = GPriorTimesGauss(g_prior_ba, g_dist_gauss)
+
     T_prior = LogNormal(16.0, 3.0)
     counts_prior = LogNormal(100.0, 10.0)
 
-    nsig=3
-    cen1_range=[cen_prior.cen[0]-nsig*cen_prior.sigma[0],
-                cen_prior.cen[0]+nsig*cen_prior.sigma[0]]
-    cen2_range=[cen_prior.cen[1]-nsig*cen_prior.sigma[1],
-                cen_prior.cen[1]+nsig*cen_prior.sigma[1]]
 
-    g_range=[-1.0, 1.0]
-    # might not work for lognormal
-    T_range=[T_prior.mean-nsig*T_prior.sigma,
-             T_prior.mean+nsig*T_prior.sigma]
-    counts_range=[counts_prior.mean-nsig*counts_prior.sigma,
-                  counts_prior.mean+nsig*counts_prior.sigma]
+    comb=CombinedPriorSimple(cen_prior,
+                             g_prior,
+                             T_prior,
+                             counts_prior)
 
-    cen_priors=[cen_prior]
-    g_priors=[g_prior]
-    T_priors=[T_prior]
-    counts_priors=[counts_prior]
-    comb=CombinedPriorSimple(cen_priors,
-                             g_priors,
-                             T_priors,
-                             counts_priors,
 
-                             cen1_range=cen1_range,
-                             cen2_range=cen2_range,
-                             g_range=g_range,
-                             T_range=T_range,
-                             counts_range=counts_range)
+    nwalkers=20
+    print 'nstep per:',nrand/nwalkers
+    start=numpy.zeros( (nwalkers,npars) )
 
-    print 'maxval:',comb.maxval
-    nrand=500
-
-    if method=='cut':
-        prand = comb.sample(nrand, method='cut')
-    elif method=='mcmc':
-        nwalkers=20
-        start=numpy.zeros( (nwalkers,npars) )
-
+    tm=time.time()
+    for i in xrange(ntry):
         start[:,0:2] = cen_prior.sample(nwalkers)
-        start[:,2],start[:,3] = g_prior.sample2d(nwalkers)
+
+        # tight ball
+        start[:,2] = g_dist_gauss.mean[0]*(1.0 + 0.01*srandu(nwalkers))
+        start[:,3] = g_dist_gauss.mean[1]*(1.0 + 0.01*srandu(nwalkers))
+
         start[:,4] = T_prior.sample(nwalkers)
         start[:,5] = counts_prior.sample(nwalkers)
 
-        prand = comb.sample(nrand, method='mcmc',
-                            start=start,
+        prand = comb.sample(start,
+                            nrand, 
+                            burnin=burnin,
                             nwalkers=nwalkers)
-    else:
-        raise ValueError("bad method: '%s'" % method)
+
+    print 'time per:',(time.time()-tm)/ntry
 
     if show:
         plot_many_hist(prand)
@@ -1612,6 +1547,7 @@ def test_combined(show=False, method='cut'):
 def plot_many_hist(arr):
     import biggles
     import esutil as eu
+    biggles.configure('default','fontsize_min',1)
     ndim = arr.shape[1]
 
     nrow,ncol = eu.plotting.get_grid(ndim)
@@ -1628,6 +1564,7 @@ def plot_many_hist(arr):
         p=eu.plotting.bhist(arr[:,dim],binsize=bsize,
                             xlabel=names[dim],
                             show=False)
+        p.aspect_ratio=1
         plt[row,col] = p
 
     plt.show()
