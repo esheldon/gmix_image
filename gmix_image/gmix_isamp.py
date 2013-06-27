@@ -6,6 +6,8 @@ from .gmix_fit import GMIXFIT_CHOLESKY, GMIXFIT_CRAZY_COV
 from .gmix_mcmc import MixMCSimple, _get_as_list, _check_lists
 from .util import print_pars
 
+from . import priors
+
 class GMixIsampSimple(MixMCSimple):
     def __init__(self, image, weight, psf, gprior, T_guess, counts_guess, cen_guess, model, **keys):
         self.keys=keys
@@ -48,9 +50,12 @@ class GMixIsampSimple(MixMCSimple):
 
         self.nsample=keys.get('nsample',500)
 
+        self._presample_gprior()
+
         self._set_im_sums()
 
         self._go()
+
 
     def _go(self):
         """
@@ -67,9 +72,8 @@ class GMixIsampSimple(MixMCSimple):
         if self._lm_result['flags'] != 0:
             self._result=defres
         else:
+
             # self.trials and self.lnprobs are created
-            #print_pars(self._lm_result['pars'],front='lm pars:')
-            #print_pars(self._lm_result['perr'],front='lm perr:')
             if not self._do_isample():
                 defres['flags'] = GMIXFIT_CHOLESKY 
                 self._result=defres
@@ -105,7 +109,8 @@ class GMixIsampSimple(MixMCSimple):
                                            gprior=self.gprior,
                                            cen_prior=self.cen_prior,
                                            T_prior=self.T_prior,
-                                           counts_prior=self.counts_prior)
+                                           counts_prior=self.counts_prior,
+                                           lm_max_try=1)
 
             res=gm.get_result()
             if res['flags']==0:
@@ -158,6 +163,13 @@ class GMixIsampSimple(MixMCSimple):
             # happens when get a crazy fit
             return False
 
+        nsample=self.nsample
+
+        """
+        w,=numpy.where(probs_approx == 0)
+        if w.size!=0:
+            raise ValueError("zero prob approx: %d/%d" % (w.size,nsample))
+        """
         w,=numpy.where(probs_approx > 0)
         if w.size == 0:
             return False
@@ -202,68 +214,158 @@ class GMixIsampSimple(MixMCSimple):
 
         return True
 
+
     def _sample_dist(self):
-        """
-        Represent the n-dimensional distribution as a multi-variate Cauchy
-        distribution.  Draw from it and evaluate the probability.  Also
-        multiply by our priors.
-        """
+        from esutil.random import NormalND, LogNormal
 
-        return self._sample_dist_gaussian()
-
-    def _sample_dist_gaussian(self):
-        from esutil.stat import cholesky_sample
-
-        defres=None,None
+        nwalkers=20
+        burnin=25
 
         pars=self._lm_result['pars']
-        cov=self._lm_result['pcov']
+        cov=self._lm_result['pcov']*4
 
-        # twice as wide
-        cov_sample=cov*4
+        cen_prior = priors.CenPrior(pars[0:2], [cov[0,0], cov[1,1]])
 
-        max_gcov=4**2
-        if cov_sample[2,2] > max_gcov or cov_sample[3,3] > max_gcov:
-            print >>stderr,"    crazy covariance, fixing"
-            print >>stderr,"    ",sqrt(diag(cov_sample[2:2+2, 2:2+2]))
-            csum = cov_sample[2,2] + cov_sample[3,3]
-            cov_sample[2:2+2, 2:2+2] /= csum
-            #return defres
-        try:
-            trials = cholesky_sample(cov_sample,
-                                     self.nsample,
-                                     means=pars)
-        except numpy.linalg.linalg.LinAlgError:
-            print >>stderr,"    could not do cholesky decomposition"
-            return defres
+        g1_sigma = numpy.sqrt(cov[2,2])
+        g2_sigma = numpy.sqrt(cov[3,3])
 
-        pvals = self._eval_par_gauss(trials, pars, cov_sample)
+        if g1_sigma < 0.001:
+            g1_sigma=0.001
+        if g2_sigma < 0.001:
+            g2_sigma=0.001
 
-        return trials, pvals
+        g_dist_gauss = NormalND( pars[2:4], [g1_sigma,g2_sigma])
+        gg_prior = priors.GPriorTimesGauss(self.gprior, g_dist_gauss)
 
-    def _eval_par_gauss(self, locations, pars, cov):
-        from numpy import dot
+        Tg=pars[4]
+        T_sigma = numpy.sqrt(cov[4,4])
+        if Tg < 0.01:
+            Tg=0.01
+        if T_sigma < 0.01:
+            T_sigma=0.01
 
-        npars=pars.size
+        counts_g=pars[5]
+        counts_sigma = numpy.sqrt(cov[5,5])
+        if counts_g < 0.01:
+            counts_g=0.01
+        if counts_sigma < 0.001:
+            counts_sigma=0.001
 
-        pars2d = numpy.atleast_2d(pars)
-        cinv = numpy.linalg.inv(cov)
+        T_prior = LogNormal(Tg, T_sigma)
+        counts_prior = LogNormal(counts_g, counts_sigma)
+ 
+        comb=priors.CombinedPriorSimple(cen_prior,
+                                        gg_prior,
+                                        T_prior,
+                                        counts_prior)
 
-        ones=numpy.ones( (npars,1) )
+        g1rand,g2rand=self._get_gstart(g_dist_gauss,nwalkers)
+        if g1rand is None:
+            # we will just use the lm fit
+            return None,None
 
-        ldiff = locations-pars2d
-        arg   = -0.5 * dot(dot(ldiff, cinv) * ldiff, ones)[:, 0]
-        res=numpy.zeros(arg.size)
+        start=numpy.zeros( (nwalkers,self.npars) )
 
-        wgood,=numpy.where(arg <= 0)
-        if wgood.size != arg.size:
-            wbad,= numpy.where(arg > 0)
-            maxbad = arg[wbad].max()
-            print >>stderr,"    unexpectedly found %d exp arg > 0, max %g" % (wbad.size,maxbad)
+        start[:,0:2] = cen_prior.sample(nwalkers)
 
-        res[wgood] = numpy.exp(arg[wgood])
-        return res
 
+        start[:,2] = g1rand
+        start[:,3] = g2rand
+
+        start[:,4] = T_prior.sample(nwalkers)
+        start[:,5] = counts_prior.sample(nwalkers)
+
+        sampler = comb.sample(start,
+                              self.nsample, 
+                              burnin=burnin,
+                              nwalkers=nwalkers,
+                              get_sampler=True)
+
+        prand = sampler.flatchain
+        lnp = sampler.lnprobability
+        lnp = lnp.reshape(lnp.shape[0]*lnp.shape[1])
+        probs = numpy.exp(lnp)
+        return prand,probs
+
+    def _get_gstart(self,g_dist_gauss, nwalkers):
+        """
+        Get good starts for the walkers
+        """
+        import esutil as eu
+        g1vals_pre =self.g1vals_pre
+        g2vals_pre =self.g2vals_pre
+
+        # just for starts; doesn't have to be perfect
+        nsig_g = 3
+
+        it1=1
+        it2=1
+        while True:
+            g1_range = numpy.array([g_dist_gauss.mean[0]-nsig_g*g_dist_gauss.sigma[0],
+                                    g_dist_gauss.mean[0]+nsig_g*g_dist_gauss.sigma[0]])
+            g2_range = numpy.array([g_dist_gauss.mean[1]-nsig_g*g_dist_gauss.sigma[1],
+                                    g_dist_gauss.mean[1]+nsig_g*g_dist_gauss.sigma[1]])
+
+            g1_range.clip(-1.0,1.0,g1_range)
+            g2_range.clip(-1.0,1.0,g2_range)
+
+            if g1_range[0] == g1_range[1]:
+                print >>stderr,'    bad g1 range',g1_range
+                print >>stderr,'    sigma(g1):',g_dist_gauss.sigma[0]
+                if it1==1:
+                    g_dist_gauss.sigma[0] = 0.01
+                    it1 += 1
+                else:
+                    nsig += 1
+                continue
+
+            if g2_range[0] == g2_range[1]:
+                print >>stderr,'    bad g2 range',g2_range
+                print >>stderr,'    sigma(g2):',g_dist_gauss.sigma[1]
+                if it2==1:
+                    g_dist_gauss.sigma[1] = 0.01
+                    it2 += 1
+                else:
+                    nsig += 1
+                continue
+
+            break
+
+
+        while True:
+            w,=numpy.where(  (g1vals_pre > g1_range[0])
+                           & (g1vals_pre < g1_range[1])
+                           & (g2vals_pre > g2_range[0])
+                           & (g2vals_pre < g2_range[1]) )
+            if w.size < nwalkers:
+                #print >>stderr,'    found',w.size,'expanding range'
+                #print >>stderr,'    ',g1_range
+                #print >>stderr,'    ',g2_range
+                # there just aren't enough in this range, so expand it
+                g1_range[0]-=0.01
+                g1_range[1]+=0.01
+                g2_range[0]-=0.01
+                g2_range[1]+=0.01
+
+                g1_range.clip(-1.0,1.0,g1_range)
+                g2_range.clip(-1.0,1.0,g2_range)
+
+                #print >>stderr,'    ',g1_range
+                #print >>stderr,'    ',g2_range
+            else:
+                randi  = eu.numpy_util.randind(w.size, nwalkers)
+                randi  = w[randi]
+                g1rand = g1vals_pre[randi]
+                g2rand = g2vals_pre[randi]
+                break
+
+        return g1rand,g2rand
+
+
+    def _presample_gprior(self):
+        #npre=self.keys.get('n_pre_sample',100000)
+        npre=self.keys.get('n_pre_sample',10000)
+        self.g1vals_pre,self.g2vals_pre = self.gprior.sample2d(npre)
 
     def _calc_result(self):
         """

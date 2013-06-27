@@ -875,9 +875,10 @@ class GMixFitMultiSimple(GMixFitMultiBase):
         """
 
         if self.cen_prior is not None:
-            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2]-0.0)
+            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2])
 
         if self.gprior is not None:
+            #print >>stderr,'applying gprior'
             g1 = pars[2]
             g2 = pars[3]
             g=sqrt(g1**2 + g2**2)
@@ -1425,7 +1426,7 @@ class GMixFitMultiBD(GMixFitMultiSimpleMB):
         Need to think about flux priors
         """
         if self.cen_prior is not None:
-            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2]-0.0)
+            ydiff[-4] = self.cen_prior.lnprob(pars[0:0+2])
 
         if self.gprior is not None:
             g1 = pars[2]
@@ -1892,7 +1893,7 @@ class GMixFitMultiPSFFlux(GMixFitMultiBase):
         ydiff = self._get_lm_ydiff_gmix_list(self.gmix_list)
 
         if self.cen_prior is not None:
-            ydiff[-1] = self.cen_prior.lnprob(pars3[0:0+2]-0.0)
+            ydiff[-1] = self.cen_prior.lnprob(pars3[0:0+2])
 
         return ydiff
 

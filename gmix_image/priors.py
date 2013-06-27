@@ -1465,7 +1465,7 @@ class CombinedPriorSimple(object):
                nrand, 
                nwalkers=20,
                burnin=25,
-               full=False):
+               get_sampler=False):
         """
         Get random values in 6-d
 
@@ -1490,13 +1490,18 @@ class CombinedPriorSimple(object):
         sampler.reset()
         pos, prob, state = sampler.run_mcmc(pos, nstep)
 
-        if full:
+        if get_sampler:
             return sampler
         else:
             prand = sampler.flatchain
             return prand
 
-def test_combined(show=False, nwalkers=20, burnin=25, nrand=500, ntry=1):
+def test_combined(show=False,
+                  nwalkers=20,
+                  burnin=25,
+                  nrand=500,
+                  ntry=1,
+                  gerr=0.1):
     import esutil as eu
     from esutil.random import LogNormal, Normal, NormalND, srandu
     import time
@@ -1504,17 +1509,22 @@ def test_combined(show=False, nwalkers=20, burnin=25, nrand=500, ntry=1):
 
     cen_prior = CenPrior([15.0, 16.0], [0.1, 0.2])
 
-    g_prior_ba = GPriorBA(0.3)
-    #g_dist_gauss = NormalND( [0.2,0.1], [0.1, 0.07] )
-    g_dist_gauss = NormalND( [0.2,0.1], [1000.0, 1500.0] )
-    g_prior = GPriorTimesGauss(g_prior_ba, g_dist_gauss)
+    g_prior = GPriorBA(0.3)
+    print 'pre-generating g values from prior (for seed to sampler)'
+    ng_pre = 10000
+    g1vals_pre,g2vals_pre = g_prior.sample2d(ng_pre)
+    print 'done'
+
+    g_dist_gauss = NormalND( [0.2,0.1], [gerr,gerr] )
+
+    gg_prior = GPriorTimesGauss(g_prior, g_dist_gauss)
 
     T_prior = LogNormal(16.0, 3.0)
     counts_prior = LogNormal(100.0, 10.0)
 
 
     comb=CombinedPriorSimple(cen_prior,
-                             g_prior,
+                             gg_prior,
                              T_prior,
                              counts_prior)
 
@@ -1523,13 +1533,59 @@ def test_combined(show=False, nwalkers=20, burnin=25, nrand=500, ntry=1):
     print 'nstep per:',nrand/nwalkers
     start=numpy.zeros( (nwalkers,npars) )
 
+    minerr2=0.01**2
     tm=time.time()
     for i in xrange(ntry):
         start[:,0:2] = cen_prior.sample(nwalkers)
 
-        # tight ball
-        start[:,2] = g_dist_gauss.mean[0]*(1.0 + 0.01*srandu(nwalkers))
-        start[:,3] = g_dist_gauss.mean[1]*(1.0 + 0.01*srandu(nwalkers))
+        # g start
+        g_err2 = g_dist_gauss.sigma[0]**2 + g_dist_gauss.sigma[1]**2
+
+        if g_err2 < minerr2:
+            print 'error small enough from max like, skipping resample'
+            continue
+
+        nsig_g = 3
+        g1_range = numpy.array([g_dist_gauss.mean[0]-nsig_g*g_dist_gauss.sigma[0],
+                                g_dist_gauss.mean[0]+nsig_g*g_dist_gauss.sigma[0]])
+        g2_range = numpy.array([g_dist_gauss.mean[1]-nsig_g*g_dist_gauss.sigma[1],
+                                g_dist_gauss.mean[1]+nsig_g*g_dist_gauss.sigma[1]])
+
+        g1_range.clip(-1.0,1.0,g1_range)
+        g2_range.clip(-1.0,1.0,g2_range)
+        g1_width = g1_range.max() - g1_range.min()
+        g2_width = g2_range.max() - g2_range.min()
+        if g1_width==0 or g2_width==0:
+            # crazy, probably near e==0.  Just draw from prior
+            randi = eu.numpy_util.randind(ng_pre, nwalkers)
+            g1rand=g1vals_pre[randi]
+            g2rand=g2vals_pre[randi]
+        else:
+
+            w,=numpy.where(  (g1vals_pre > g1_range[0])
+                           & (g1vals_pre < g1_range[1])
+                           & (g2vals_pre > g1_range[0])
+                           & (g2vals_pre < g1_range[1]) )
+            if w.size < nwalkers:
+                raise ValueError("too few")
+
+            randi = eu.numpy_util.randind(w.size, nwalkers)
+            randi=w[randi]
+            g1rand=g1vals_pre[randi]
+            g2rand=g2vals_pre[randi]
+
+
+        """
+        sig2=g_dist_gauss.sigma[0]**2 + g_dist_gauss.sigma[1]**2
+        if sig2 < 0.3**2:
+            g1rand = g_dist_gauss.mean[0]*(1.0 + 0.01*srandu(nwalkers))
+            g2rand = g_dist_gauss.mean[1]*(1.0 + 0.01*srandu(nwalkers))
+        else:
+            g1rand,g2rand=g_prior_ba.sample2d(nwalkers)
+        """
+
+        start[:,2] = g1rand
+        start[:,3] = g2rand
 
         start[:,4] = T_prior.sample(nwalkers)
         start[:,5] = counts_prior.sample(nwalkers)
@@ -1541,6 +1597,8 @@ def test_combined(show=False, nwalkers=20, burnin=25, nrand=500, ntry=1):
 
     print 'time per:',(time.time()-tm)/ntry
 
+    print 'g1: %g +/- %g' % (prand[:,2].mean(), prand[:,2].std())
+    print 'g2: %g +/- %g' % (prand[:,3].mean(), prand[:,3].std())
     if show:
         plot_many_hist(prand)
 
