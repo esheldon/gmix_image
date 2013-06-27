@@ -8,8 +8,23 @@ from .util import print_pars
 
 from . import priors
 
+import time
+
 class GMixIsampSimple(MixMCSimple):
-    def __init__(self, image, weight, psf, gprior, T_guess, counts_guess, cen_guess, model, **keys):
+    def __init__(self,
+                 image,
+                 weight,
+                 psf,
+
+                 cen_prior,
+                 gprior,
+                 T_prior,
+                 counts_prior,
+
+                 prior_samples,
+
+                 guess,
+                 model, **keys):
         self.keys=keys
 
         self.make_plots=keys.get('make_plots',False)
@@ -34,23 +49,20 @@ class GMixIsampSimple(MixMCSimple):
 
         self.model=model
 
-        self.T_guess=T_guess
-        self.counts_guess=counts_guess
-        self.cen_guess=cen_guess
-        self.g_guess=keys.get('g_guess',None)
-
+        self.cen_prior=cen_prior
         self.gprior=gprior
-        self.cen_prior=keys.get('cen_prior',None)
-        if self.cen_prior is None:
-            self.cen_width=keys.get('cen_width',1.0)
-            self.cen_prior=CenPrior(self.cen_guess, [self.cen_width]*2)
+        self.T_prior=T_prior
+        self.counts_prior=counts_prior
 
-        self.T_prior=keys.get('T_prior',None)
-        self.counts_prior=keys.get('counts_prior',None)
+        self.guess=guess
 
         self.nsample=keys.get('nsample',500)
 
-        self._presample_gprior()
+        self.verbose=keys.get('verbose',False)
+
+        #self._presample_gprior()
+        #self._presample_prior()
+        self.prior_samples=prior_samples
 
         self._set_im_sums()
 
@@ -92,7 +104,6 @@ class GMixIsampSimple(MixMCSimple):
         If we get a crazy covariance matrix (large g errors)
         we repeat
         """
-        #guess=self._get_lm_guess()
         nretry=10
         for i in xrange(nretry):
             gm=gmix_fit.GMixFitMultiSimple(self.im_list,
@@ -101,10 +112,10 @@ class GMixIsampSimple(MixMCSimple):
                                            self.psf_list,
                                            self.model,
 
-                                           g_guess=self.g_guess,
-                                           T_guess=self.T_guess,
-                                           counts_guess=self.counts_guess,
-                                           cen_guess=self.cen_guess,
+                                           g_guess=self.guess[2:4],
+                                           T_guess=self.guess[4],
+                                           counts_guess=self.guess[5],
+                                           cen_guess=self.guess[0:2],
 
                                            gprior=self.gprior,
                                            cen_prior=self.cen_prior,
@@ -122,27 +133,6 @@ class GMixIsampSimple(MixMCSimple):
 
 
         self._lm_result=res
-
-    def _get_lm_guess(self, randomize=False):
-        guess=numpy.zeros(self.npars)
-
-        T0 = self.T_guess
-        counts0 = self.counts_guess
-
-        if self.g_guess is None:
-            gtot = 0.9*numpy.random.random()
-            theta=numpy.random.random()*numpy.pi
-            g1rand = gtot*numpy.cos(2*theta)
-            g2rand = gtot*numpy.sin(2*theta)
-            guess[2]=g1rand
-            guess[3]=g2rand
-        else:
-            guess[2:2+2] = self.g_guess
-
-        guess[4] = T0
-        guess[5] = counts0
-
-        return guess
 
 
     def _do_isample(self):
@@ -214,8 +204,57 @@ class GMixIsampSimple(MixMCSimple):
 
         return True
 
-
     def _sample_dist(self):
+        return self._sample_dist_with_gauss()
+        #return self._sample_dist_prior_only()
+
+    def _sample_dist_prior_only(self):
+        import esutil as eu
+        from esutil.random import NormalND, LogNormal
+
+        nwalkers=20
+        burnin=25
+
+        pars=self._lm_result['pars']
+        cov=self._lm_result['pcov']*4
+
+        errs = numpy.sqrt( numpy.diag(cov) ) 
+
+        w,=numpy.where(errs < 0.01)
+        if w.size > 0:
+            errs[w] = 0.01
+
+        all_samp=self.prior_samples['samples']
+
+        nsample=self.nsample
+        nsig=4
+        while True:
+            w,=numpy.where(  (all_samp[:,0] > (pars[0]-nsig*errs[0]) )
+                           & (all_samp[:,0] < (pars[0]+nsig*errs[0]) )
+                           & (all_samp[:,1] > (pars[1]-nsig*errs[1]) )
+                           & (all_samp[:,1] < (pars[1]+nsig*errs[1]) )
+                           & (all_samp[:,2] > (pars[2]-nsig*errs[2]) )
+                           & (all_samp[:,2] < (pars[2]+nsig*errs[2]) )
+                           & (all_samp[:,3] > (pars[3]-nsig*errs[3]) )
+                           & (all_samp[:,3] < (pars[3]+nsig*errs[3]) )
+                           & (all_samp[:,4] > (pars[4]-nsig*errs[4]) )
+                           & (all_samp[:,4] < (pars[4]+nsig*errs[4]) )
+                           & (all_samp[:,5] > (pars[5]-nsig*errs[5]) )
+                           & (all_samp[:,5] < (pars[5]+nsig*errs[5]) ) )
+            if w.size < nsample:
+                nsig+=0.5
+                print >>stderr,'    found',w.size,'increasing sigma to',nsig
+            else:
+                randi  = eu.numpy_util.randind(w.size, nwalkers)
+                randi  = w[randi]
+                break
+
+        samples = all_samp[randi,:]
+        probs = self.prior_samples['prob'][randi]
+        return samples,probs
+
+
+    def _sample_dist_with_gauss(self):
         from esutil.random import NormalND, LogNormal
 
         nwalkers=20
@@ -292,8 +331,8 @@ class GMixIsampSimple(MixMCSimple):
         Get good starts for the walkers
         """
         import esutil as eu
-        g1vals_pre =self.g1vals_pre
-        g2vals_pre =self.g2vals_pre
+        g1vals_pre = self.prior_samples['g1']
+        g2vals_pre = self.prior_samples['g2']
 
         # just for starts; doesn't have to be perfect
         nsig_g = 3
@@ -338,7 +377,7 @@ class GMixIsampSimple(MixMCSimple):
                            & (g2vals_pre > g2_range[0])
                            & (g2vals_pre < g2_range[1]) )
             if w.size < nwalkers:
-                #print >>stderr,'    found',w.size,'expanding range'
+                print >>stderr,'    found',w.size,'expanding range'
                 #print >>stderr,'    ',g1_range
                 #print >>stderr,'    ',g2_range
                 # there just aren't enough in this range, so expand it
@@ -366,6 +405,8 @@ class GMixIsampSimple(MixMCSimple):
         #npre=self.keys.get('n_pre_sample',100000)
         npre=self.keys.get('n_pre_sample',10000)
         self.g1vals_pre,self.g2vals_pre = self.gprior.sample2d(npre)
+
+
 
     def _calc_result(self):
         """
@@ -404,7 +445,8 @@ class GMixIsampSimple(MixMCSimple):
                       'flux':flux,
                       'flux_err':flux_err,
                       'flux_s2n':Fs2n,
-                      'arate':1.0}
+                      'arate':1.0,
+                      'lm_result':self._lm_result}
 
         if self.do_pqr:
             pqr_res = self._get_PQR()

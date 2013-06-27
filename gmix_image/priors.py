@@ -27,7 +27,10 @@ class GPrior(object):
         """
         log of prob
         """
-        return log(self(g1,g2))
+        p=self(g1,g2)
+        if p < 1.e-10:
+            return -23.025850929940457
+        return log(p)
 
     def prior2d_gabs(self, g):
         """
@@ -1411,11 +1414,8 @@ class CombinedPriorSimple(object):
 
 
         self.cen_prior=cen_prior
-
         self.g_prior=g_prior
-
         self.T_prior=T_prior
-
         self.counts_prior=counts_prior
 
 
