@@ -1,26 +1,8 @@
-#ifndef _GVEC_HEADER_GUARD
-#define _GVEC_HEADER_GUARD
+#ifndef _GMIX_HEADER_GUARD
+#define _GMIX_HEADER_GUARD
 
 #include <stdint.h>
 
-//#include "matrix.h"
-
-/*
-struct gauss2 {
-    double p;
-    double norm;
-
-    double cen[2];
-    double cov[2][2];
-};
-struct gauss2 {
-    double p;
-    double norm;
-
-    struct vec2;
-    struct mtx2;
-};
-*/
 
 struct gauss {
     double p;
@@ -38,7 +20,7 @@ struct gauss {
     double norm; // 1/(2*pi*sqrt(det))
 };
 
-struct gvec {
+struct gmix {
     size_t size;
     struct gauss* data;
 
@@ -49,7 +31,7 @@ struct gvec {
     double total_icc;
 };
 
-enum gvec_model {
+enum gmix_model {
     GMIX_FULL=0,
     GMIX_COELLIP=1,
     GMIX_TURB=2,
@@ -59,41 +41,41 @@ enum gvec_model {
     GMIX_BD=6
 };
 
-long gvec_get_simple_ngauss(enum gvec_model model);
-long gvec_get_coellip_ngauss(long npars);
-long gvec_get_full_ngauss(long npars);
+long gmix_get_simple_ngauss(enum gmix_model model);
+long gmix_get_coellip_ngauss(long npars);
+long gmix_get_full_ngauss(long npars);
 
-struct gvec *gvec_new(size_t n);
+struct gmix *gmix_new(size_t n);
 
-struct gvec* gvec_new_empty_simple(enum gvec_model model);
-struct gvec* gvec_new_empty_coellip(long npars);
-struct gvec* gvec_new_empty_full(long npars);
+struct gmix* gmix_new_empty_simple(enum gmix_model model);
+struct gmix* gmix_new_empty_coellip(long npars);
+struct gmix* gmix_new_empty_full(long npars);
 
-struct gvec* gvec_new_model(enum gvec_model model, double *pars, long npars);
-struct gvec *gvec_new_coellip(double *pars, long npars);
+struct gmix* gmix_new_model(enum gmix_model model, double *pars, long npars);
+struct gmix *gmix_new_coellip(double *pars, long npars);
 
 
-long gvec_fill_model(struct gvec *self,
-                     enum gvec_model model,
+long gmix_fill_model(struct gmix *self,
+                     enum gmix_model model,
                      double *pars,
                      long npars);
 
-long gvec_fill_full(struct gvec *self, double *pars, long npars);
-long gvec_fill_coellip(struct gvec *self, double *pars, long npars);
-long gvec_fill_exp6(struct gvec *self, double *pars, long npars);
-long gvec_fill_dev10(struct gvec *self, double *pars, long npars);
-long gvec_fill_bd(struct gvec *self, double *pars, long npars);
-long gvec_fill_turb3(struct gvec *self, double *pars, long npars);
+long gmix_fill_full(struct gmix *self, double *pars, long npars);
+long gmix_fill_coellip(struct gmix *self, double *pars, long npars);
+long gmix_fill_exp6(struct gmix *self, double *pars, long npars);
+long gmix_fill_dev10(struct gmix *self, double *pars, long npars);
+long gmix_fill_bd(struct gmix *self, double *pars, long npars);
+long gmix_fill_turb3(struct gmix *self, double *pars, long npars);
 
 
-struct gvec *gvec_free(struct gvec *self);
-void gvec_set_dets(struct gvec *self);
+struct gmix *gmix_free(struct gmix *self);
+void gmix_set_dets(struct gmix *self);
 
 // make sure pointer not null and det>0 for all gauss
-long gvec_verify(const struct gvec *self);
+long gmix_verify(const struct gmix *self);
 
 // only makes sense for same center, e.g. psf
-void gvec_set_total_moms(struct gvec *self);
+void gmix_set_total_moms(struct gmix *self);
 
 // this is actually kind of unclear to use in practice since it is easy to
 // screw up which parameters go where
@@ -105,42 +87,42 @@ void gauss_set(struct gauss* self,
                double irc,
                double icc);
 
-long gvec_copy(const struct gvec *self, struct gvec* dest);
-void gvec_print(const struct gvec *self, FILE* fptr);
+long gmix_copy(const struct gmix *self, struct gmix* dest);
+void gmix_print(const struct gmix *self, FILE* fptr);
 
 // calculate the weighted sum of the moments
 //  sum_gi( p*(irr + icc )
-double gvec_wmomsum(const struct gvec* gvec);
+double gmix_wmomsum(const struct gmix* gmix);
 
-void gvec_get_cen(const struct gvec *gvec, double *row, double *col);
+void gmix_get_cen(const struct gmix *gmix, double *row, double *col);
 // set the overall centroid.  Note individual gaussians can have
 // a different center
-void gvec_set_cen(struct gvec *gvec, double row, double col);
+void gmix_set_cen(struct gmix *gmix, double row, double col);
 
-double gvec_get_T(const struct gvec *self);
-double gvec_get_psum(const struct gvec *gvec);
+double gmix_get_T(const struct gmix *self);
+double gmix_get_psum(const struct gmix *gmix);
 // set the overall sum(p)
-void gvec_set_psum(struct gvec *gvec, double psum);
+void gmix_set_psum(struct gmix *gmix, double psum);
 
 // 0 returned if a zero determinant is found somewhere, else 1
-//int gvec_wmean_center(const struct gvec* gvec, struct vec2* mu_new);
+//int gmix_wmean_center(const struct gmix* gmix, struct vec2* mu_new);
 
-//void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
+//void gmix_wmean_covar(const struct gmix* gmix, struct mtx2 *cov);
 
 /* convolution results in an nobj*npsf total gaussians */
-struct gvec *gvec_convolve(const struct gvec *obj_gvec, 
-                           const struct gvec *psf_gvec);
+struct gmix *gmix_convolve(const struct gmix *obj_gmix, 
+                           const struct gmix *psf_gmix);
 
-long gvec_convolve_fill(struct gvec *self, 
-                        const struct gvec *obj_gvec, 
-                        const struct gvec *psf_gvec);
+long gmix_convolve_fill(struct gmix *self, 
+                        const struct gmix *obj_gmix, 
+                        const struct gmix *psf_gmix);
 
 // old
-//struct gvec *gvec_from_pars(double *pars, long npars);
-//struct gvec *gvec_new_coellip_Tfrac(double *pars, long npars);
+//struct gmix *gmix_from_pars(double *pars, long npars);
+//struct gmix *gmix_new_coellip_Tfrac(double *pars, long npars);
 
 /* 
-   Generate a gvec from the inputs pars assuming an appoximate
+   Generate a gmix from the inputs pars assuming an appoximate
    gaussian representation of an exponential disk.  Values
    from Hogg and Lang
 
@@ -150,13 +132,13 @@ long gvec_convolve_fill(struct gvec *self,
 
    The p and F values are chosen to make this so
 */
-//struct gvec *gvec_from_pars_exp4(double *pars, long npars);
-//struct gvec *gvec_from_pars_exp6(double *pars, long npars);
+//struct gmix *gmix_from_pars_exp4(double *pars, long npars);
+//struct gmix *gmix_from_pars_exp6(double *pars, long npars);
 
 
 
 /* 
-   Generate a gvec from the inputs pars assuming an appoximate
+   Generate a gmix from the inputs pars assuming an appoximate
    10-gaussian representation of a devauc profile.
 
    pars should be [row,col,e1,e2,T,p]
@@ -166,10 +148,10 @@ long gvec_convolve_fill(struct gvec *self,
    The p and F values are chosen to make this so
 */
 
-//struct gvec *gvec_from_pars_dev10(double *pars, long npars);
+//struct gmix *gmix_from_pars_dev10(double *pars, long npars);
 
 /* similar to above but for a turbulent psf */
-//struct gvec *gvec_from_pars_turb(double *pars, long npars);
+//struct gmix *gmix_from_pars_turb(double *pars, long npars);
 
 /*
    co-elliptical bulg+disk
@@ -179,7 +161,7 @@ long gvec_convolve_fill(struct gvec *self,
    npars is 8
 */
 
-//struct gvec *gvec_from_pars_bd(double *pars, long npars);
+//struct gmix *gmix_from_pars_bd(double *pars, long npars);
 
 
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \
@@ -200,7 +182,7 @@ long gvec_convolve_fill(struct gvec *self,
 })
 
 
-#define GVEC_EVAL(gmix, rowval, colval) ({                     \
+#define GMIX_EVAL(gmix, rowval, colval) ({                     \
     int _i=0;                                                  \
     double _val=0.0;                                           \
     struct gauss *_gauss=(gmix)->data;                         \
@@ -212,9 +194,9 @@ long gvec_convolve_fill(struct gvec *self,
 })
 
 
-// evaluate the gvec and store in "val"
+// evaluate the gmix and store in "val"
 // also store the number of evaluations that were done
-#define GVEC_EVAL_COUNT(gmix, rowval, colval, val, count) {    \
+#define GMIX_EVAL_COUNT(gmix, rowval, colval, val, count) {    \
     int _i=0;                                                  \
     double _u;                                                 \
     double _v;                                                 \

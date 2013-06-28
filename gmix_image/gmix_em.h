@@ -2,7 +2,7 @@
 #define _GMIX_EM_HEADER_GUARD
 
 #include "image.h"
-#include "gvec.h"
+#include "gmix.h"
 #include "jacobian.h"
 
 struct gmix_em {
@@ -61,31 +61,31 @@ void gmix_em_add_jacobian(struct gmix_em *self,
 
 int gmix_em_run(struct gmix_em* self,
                 const struct image *image, 
-                struct gvec *gvec,
+                struct gmix *gmix,
                 size_t *iter,
                 double *fdiff);
 int gmix_em_cocenter_run(struct gmix_em* self,
                          const struct image *image, 
-                         struct gvec *gvec,
+                         struct gmix *gmix,
                          size_t *iter,
                          double *fdiff);
 
 /*
 int gmix_em_coellip(struct gmix_em* self,
         struct image *image, 
-        struct gvec *gvec,
-        struct gvec *gvec_psf, // can be NULL
+        struct gmix *gmix,
+        struct gmix *gmix_psf, // can be NULL
         size_t *iter,
         double *fdiff);
 */
 int gmix_get_sums(struct gmix_em* self,
                   const struct image *image,
-                  struct gvec *gvec,
+                  struct gmix *gmix,
                   struct iter* iter);
 
 int gmix_get_sums_pix(struct gmix_em* self,
                       const struct image *image,
-                      struct gvec *gvec,
+                      struct gmix *gmix,
                       struct iter* iter);
 
 /*
@@ -93,13 +93,13 @@ int gmix_get_sums_pix(struct gmix_em* self,
 */
 int gmix_get_sums_jacobian(struct gmix_em* self,
                            const struct image *image,
-                           struct gvec *gvec,
+                           struct gmix *gmix,
                            struct iter* iter);
 
 /*
 double gmix_evaluate_convolved(struct gmix_em* self,
                                struct gauss *gauss,
-                               struct gvec *gvec_psf,
+                               struct gmix *gmix_psf,
                                double u2, double uv, double v2,
                                int *flags);
 */
@@ -109,12 +109,12 @@ struct iter *iter_new(size_t ngauss);
 struct iter *iter_free(struct iter *self);
 void iter_clear(struct iter *self);
 
-void gmix_set_gvec_fromiter(struct gvec *gvec, 
+void gmix_set_gmix_fromiter(struct gmix *gmix, 
                             struct iter *iter);
 
 /*
-void gmix_set_gvec_fromiter_convolved(struct gvec *gvec, 
-                                      struct gvec *gvec_psf,
+void gmix_set_gmix_fromiter_convolved(struct gmix *gmix, 
+                                      struct gmix *gmix_psf,
                                       struct iter* iter);
 */
 /* 
@@ -123,7 +123,7 @@ void gmix_set_gvec_fromiter_convolved(struct gvec *gvec,
  */
 
 /*
-void gmix_set_p_and_cen(struct gvec* gvec, 
+void gmix_set_p_and_cen(struct gmix* gmix, 
                         double* pnew,
                         double* rowsum,
                         double* colsum);

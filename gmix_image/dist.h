@@ -8,7 +8,7 @@ enum dist {
     DIST_GAUSS,
     DIST_LOGNORMAL,
     DIST_G_BA
-}
+};
 
 struct dist_gauss {
     double mean;

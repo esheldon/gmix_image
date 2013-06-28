@@ -3,14 +3,14 @@
 #include <time.h>
 
 #include "image.h"
-#include "gvec.h"
+#include "gmix.h"
 #include "gmix_em.h"
 #include "defs.h"
 
 int main(int argc, char** argv)
 {
     size_t ngauss=2;
-    struct gvec *ginit, *gvec;
+    struct gmix *ginit, *gmix;
     struct image *image;
     struct gmix gmix;
     struct gauss *gptr=NULL;
@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     gmix.fixsky = 1;
     gmix.verbose=0;
 
-    ginit = gvec_new(ngauss);
+    ginit = gmix_new(ngauss);
     gptr = ginit->data;
 
     gptr[0].p = 0.6;
@@ -47,7 +47,7 @@ int main(int argc, char** argv)
     gptr[1].col = 8;
  
     // set the deteminants
-    gvec_set_dets(ginit);
+    gmix_set_dets(ginit);
 
     // read the data
     image = image_read_text(argv[1]);
@@ -62,12 +62,12 @@ int main(int argc, char** argv)
     wlog("image[7,9]: %.16g\n", IM_GET(image, 7, 9));
     wlog("image[9,7]: %.16g\n", IM_GET(image, 9, 7));
 
-    gvec = gvec_new(ginit->size);
-    gvec_copy(ginit, gvec);
+    gmix = gmix_new(ginit->size);
+    gmix_copy(ginit, gmix);
 
     clock_gettime(CLOCK_MONOTONIC, &ts_start);
     double fdiff=0;
-    int flags = gmix_em(&gmix, image, gvec, NULL, &niter, &fdiff);
+    int flags = gmix_em(&gmix, image, gmix, NULL, &niter, &fdiff);
     clock_gettime(CLOCK_MONOTONIC, &ts_end);
     double sec = 
         ((double)ts_end.tv_sec-ts_start.tv_sec)
@@ -83,9 +83,9 @@ int main(int argc, char** argv)
 
         gptr = ginit->data;
         wlog("input\n");
-        gvec_print(ginit,stderr);
+        gmix_print(ginit,stderr);
 
         wlog("meas\n");
-        gvec_print(gvec,stderr);
+        gmix_print(gmix,stderr);
     }
 }

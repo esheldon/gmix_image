@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "defs.h"
-#include "gvec.h"
+#include "gmix.h"
 #include "image.h"
 #include "render.h"
 
@@ -16,7 +16,7 @@
 
  */
 int fill_model_subgrid_jacob(struct image *image, 
-                             const struct gvec *gvec, 
+                             const struct gmix *gmix, 
                              const struct jacobian *jacob,
                              int nsub)
 {
@@ -29,7 +29,7 @@ int fill_model_subgrid_jacob(struct image *image,
     double stepsize=0, ucolstep=0, vcolstep=0, offset=0, trow=0, tcol=0;
     int flags=0;
 
-    if (!gvec_verify(gvec)) {
+    if (!gmix_verify(gmix)) {
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _fill_model_subgrid_bail;
     }
@@ -59,7 +59,7 @@ int fill_model_subgrid_jacob(struct image *image,
                 v=JACOB_PIX2V(jacob, trow, tcol);
 
                 for (icolsub=0; icolsub<nsub; icolsub++) {
-                    tval += GVEC_EVAL(gvec, u, v);
+                    tval += GMIX_EVAL(gmix, u, v);
                     u += ucolstep;
                     v += vcolstep;
                 }
@@ -90,7 +90,7 @@ _fill_model_subgrid_bail:
 
  */
 int fill_model_subgrid(struct image *image, 
-                       struct gvec *gvec, 
+                       struct gmix *gmix, 
                        int nsub)
 {
 
@@ -99,7 +99,7 @@ int fill_model_subgrid(struct image *image,
     jacobian_set_identity(&jacob);
 
     return fill_model_subgrid_jacob(image,
-                                    gvec, 
+                                    gmix, 
                                     &jacob,
                                     nsub);
 }
@@ -108,13 +108,13 @@ int fill_model_subgrid(struct image *image,
 
 // internal generic routine with optional pars
 // fill in (model-data)/err
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 int
 fill_ydiff_wt_jacob_generic(const struct image *image,
                             const struct image *weight, // either
                             double ivar,                // or
                             const struct jacobian *jacob,
-                            const struct gvec *gvec,
+                            const struct gmix *gmix,
                             struct image *diff_image)
 {
     size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
@@ -126,7 +126,7 @@ fill_ydiff_wt_jacob_generic(const struct image *image,
     double model_val=0, pixval=0;
     int flags=0;
 
-    if (!gvec_verify(gvec)) {
+    if (!gmix_verify(gmix)) {
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _fill_ydiff_wt_jacob_bail;
     }
@@ -143,7 +143,7 @@ fill_ydiff_wt_jacob_generic(const struct image *image,
             }
 
             if (ivar > 0) {
-                model_val=GVEC_EVAL(gvec, u, v);
+                model_val=GMIX_EVAL(gmix, u, v);
                 pixval=IM_GET(image, row, col);
 
                 diff = model_val - pixval;
@@ -166,11 +166,11 @@ _fill_ydiff_wt_jacob_bail:
 }
 
 // fill in (model-data)/err
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 int fill_ydiff_jacob(const struct image *image,
                      double ivar,
                      const struct jacobian *jacob,
-                     const struct gvec *gvec,
+                     const struct gmix *gmix,
                      struct image *diff_image)
 {
 
@@ -179,7 +179,7 @@ int fill_ydiff_jacob(const struct image *image,
                                        junk_weight,
                                        ivar,
                                        jacob,
-                                       gvec,
+                                       gmix,
                                        diff_image);
 
 }
@@ -187,11 +187,11 @@ int fill_ydiff_jacob(const struct image *image,
 
 
 // fill in (model-data)/err
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 int fill_ydiff_wt_jacob(const struct image *image,
                         const struct image *weight,
                         const struct jacobian *jacob,
-                        const struct gvec *gvec,
+                        const struct gmix *gmix,
                         struct image *diff_image)
 {
 
@@ -200,7 +200,7 @@ int fill_ydiff_wt_jacob(const struct image *image,
                                        weight,
                                        junk_ivar,
                                        jacob,
-                                       gvec,
+                                       gmix,
                                        diff_image);
 }
 
@@ -209,7 +209,7 @@ int fill_ydiff_wt_jacob(const struct image *image,
 */
 int fill_ydiff(struct image *image,
                double ivar,
-               struct gvec *gvec,
+               struct gmix *gmix,
                struct image *diff_image)
 {
 
@@ -221,14 +221,14 @@ int fill_ydiff(struct image *image,
                                        junk_weight,
                                        ivar,
                                        &jacob,
-                                       gvec,
+                                       gmix,
                                        diff_image);
 }
 
 
 
 int calculate_loglike_margamp(struct image *image, 
-                              struct gvec *gvec, 
+                              struct gmix *gmix, 
                               double A,
                               double ierr,
                               double *loglike)
@@ -248,7 +248,7 @@ int calculate_loglike_margamp(struct image *image,
     double *rowdata=NULL;
     int flags=0;
 
-    if (!gvec_verify(gvec)) {
+    if (!gmix_verify(gmix)) {
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _calculate_loglike_bail;
     }
@@ -260,8 +260,8 @@ int calculate_loglike_margamp(struct image *image,
         for (col=0; col<ncols; col++) {
 
             model_val=0;
-            gauss=gvec->data;
-            for (i=0; i<gvec->size; i++) {
+            gauss=gmix->data;
+            for (i=0; i<gmix->size; i++) {
                 u = row-gauss->row;
                 u2=u*u;
 
@@ -276,7 +276,7 @@ int calculate_loglike_margamp(struct image *image,
                 }
 
                 gauss++;
-            } // gvec
+            } // gmix
 
             ymodsum += model_val;
             ymod2sum += model_val*model_val;
@@ -302,7 +302,7 @@ _calculate_loglike_bail:
 
 // using a weight image and jacobian.  Not tested.
 // row0,col0 is center of coordinate system
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 // combine s2n_numer and s2n_denom as below
 // can sum over multiple images
 //s2n = s2n_numer/sqrt(s2n_denom);
@@ -311,7 +311,7 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
                                        const struct image *weight, // either
                                        double ivar,                // or
                                        const struct jacobian *jacob,
-                                       const struct gvec *gvec, 
+                                       const struct gmix *gmix, 
                                        double *s2n_numer,
                                        double *s2n_denom,
                                        double *loglike)
@@ -328,7 +328,7 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
 
     (*s2n_numer)=0;
     (*s2n_denom)=0;
-    if (!gvec_verify(gvec)) {
+    if (!gmix_verify(gmix)) {
         *loglike=-9999.9e9;
         flags |= GMIX_ERROR_NEGATIVE_DET;
         goto _calculate_loglike_wt_jacob_bail;
@@ -347,7 +347,7 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
             }
 
             if (ivar > 0) {
-                model_val=GVEC_EVAL(gvec, u, v);
+                model_val=GMIX_EVAL(gmix, u, v);
                 pixval=IM_GET(image, row, col);
                 diff = model_val - pixval;
                 (*loglike) += diff*diff*ivar;
@@ -374,7 +374,7 @@ _calculate_loglike_wt_jacob_bail:
 
 // using a weight image and jacobian.  Not tested.
 // row0,col0 is center of coordinate system
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 // combine s2n_numer and s2n_denom as below
 // can sum over multiple images
 //s2n = s2n_numer/sqrt(s2n_denom);
@@ -382,7 +382,7 @@ _calculate_loglike_wt_jacob_bail:
 int calculate_loglike_wt_jacob(const struct image *image, 
                                const struct image *weight,
                                const struct jacobian *jacob,
-                               const struct gvec *gvec, 
+                               const struct gmix *gmix, 
                                double *s2n_numer,
                                double *s2n_denom,
                                double *loglike)
@@ -393,7 +393,7 @@ int calculate_loglike_wt_jacob(const struct image *image,
                                               weight,
                                               junk_ivar,
                                               jacob,
-                                              gvec, 
+                                              gmix, 
                                               s2n_numer,
                                               s2n_denom,
                                               loglike);
@@ -401,7 +401,7 @@ int calculate_loglike_wt_jacob(const struct image *image,
 }
 
 // row0,col0 is center of coordinate system
-// gvec centers should be in the u,v plane
+// gmix centers should be in the u,v plane
 // combine s2n_numer and s2n_denom as below
 // can sum over multiple images
 //s2n = s2n_numer/sqrt(s2n_denom);
@@ -409,7 +409,7 @@ int calculate_loglike_wt_jacob(const struct image *image,
 int calculate_loglike_jacob(const struct image *image, 
                             double ivar,
                             const struct jacobian *jacob,
-                            const struct gvec *gvec, 
+                            const struct gmix *gmix, 
                             double *s2n_numer,
                             double *s2n_denom,
                             double *loglike)
@@ -421,7 +421,7 @@ int calculate_loglike_jacob(const struct image *image,
                                               junk_weight,
                                               ivar,
                                               jacob,
-                                              gvec, 
+                                              gmix, 
                                               s2n_numer,
                                               s2n_denom,
                                               loglike);
@@ -434,7 +434,7 @@ int calculate_loglike_jacob(const struct image *image,
 //s2n = s2n_numer/sqrt(s2n_denom);
 int calculate_loglike_wt(const struct image *image, 
                          const struct image *weight,
-                         const struct gvec *gvec, 
+                         const struct gmix *gmix, 
                          double *s2n_numer,
                          double *s2n_denom,
                          double *loglike)
@@ -448,7 +448,7 @@ int calculate_loglike_wt(const struct image *image,
                                               weight,
                                               junk_ivar,
                                               &jacob,
-                                              gvec, 
+                                              gmix, 
                                               s2n_numer,
                                               s2n_denom,
                                               loglike);
@@ -457,7 +457,7 @@ int calculate_loglike_wt(const struct image *image,
 
 
 int calculate_loglike(struct image *image, 
-                      struct gvec *gvec, 
+                      struct gmix *gmix, 
                       double ivar,
                       double *s2n_numer,
                       double *s2n_denom,
@@ -474,7 +474,7 @@ int calculate_loglike(struct image *image,
                                              junk_weight,
                                              ivar,
                                              &jacob,
-                                             gvec, 
+                                             gmix, 
                                              s2n_numer,
                                              s2n_denom,
                                              loglike);

@@ -89,13 +89,15 @@ double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
     g2=g*g;
 
     tmp = 1-g2;
-    if ( tmp < LOG_MINARG) {
+    if ( tmp < LOG_MINARG ) {
         lnp = LOG_LOWVAL;
     } else {
 
         //p= (1-g2)**2*exp(-0.5 * g2 * ivar)
         // log(p) = 2*log(1-g^2) - 0.5*g^2 * ivar
 
+        // should do a fast math version; I suspect this
+        // will be a bottleneck
         lnp = log(tmp);
 
         lnp *= 2;

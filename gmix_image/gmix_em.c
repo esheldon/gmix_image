@@ -39,7 +39,7 @@
 #include <string.h>
 #include "gmix_em.h"
 #include "image.h"
-#include "gvec.h"
+#include "gmix.h"
 #include "matrix.h"
 #include "defs.h"
 
@@ -98,7 +98,7 @@ static double get_effective_scale(struct gmix_em* self)
 }
 int gmix_em_run(struct gmix_em* self,
                 const struct image *image, 
-                struct gvec *gvec,
+                struct gmix *gmix,
                 size_t *iter,
                 double *fdiff)
 {
@@ -115,7 +115,7 @@ int gmix_em_run(struct gmix_em* self,
     scale=get_effective_scale(self);
     area = npoints*scale*scale;
 
-    struct iter *iter_struct = iter_new(gvec->size);
+    struct iter *iter_struct = iter_new(gmix->size);
 
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/area);
@@ -123,18 +123,18 @@ int gmix_em_run(struct gmix_em* self,
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
-        if (self->verbose > 1) gvec_print(gvec,stderr);
+        if (self->verbose > 1) gmix_print(gmix,stderr);
 
-        flags = gmix_get_sums(self, image, gvec, iter_struct);
+        flags = gmix_get_sums(self, image, gmix, iter_struct);
         if (flags!=0)
             goto _gmix_em_bail;
 
-        gmix_set_gvec_fromiter(gvec, iter_struct);
+        gmix_set_gmix_fromiter(gmix, iter_struct);
 
         iter_struct->psky = iter_struct->skysum;
         iter_struct->nsky = iter_struct->psky/area;
 
-        wmom = gvec_wmomsum(gvec);
+        wmom = gmix_wmomsum(gmix);
         wmom /= iter_struct->psum;
         *fdiff = fabs((wmom-wmomlast)/wmom);
 
@@ -170,7 +170,7 @@ _gmix_em_bail:
  types in the gaussian!  Maybe some other day.
 
  */
-static int get_cen_new(const struct gvec* gvec, struct vec2* mu_new)
+static int get_cen_new(const struct gmix* gmix, struct vec2* mu_new)
 {
     int status=1;
     struct vec2 mu_Cinvp, mu_Cinvpsum;
@@ -180,12 +180,12 @@ static int get_cen_new(const struct gvec* gvec, struct vec2* mu_new)
     memset(&Cinvpsum,0,sizeof(struct mtx2));
     memset(&mu_Cinvpsum,0,sizeof(struct vec2));
 
-    const struct gauss* gauss = gvec->data;
-    for (i=0; i<gvec->size; i++) {
+    const struct gauss* gauss = gmix->data;
+    for (i=0; i<gmix->size; i++) {
         // p*C^-1
         mtx2_set(&C, gauss->irr, gauss->irc, gauss->icc);
         if (!mtx2_invert(&C, &Cinvp)) {
-            wlog("gvec_fix_centers: zero determinant found in C\n");
+            wlog("gmix_fix_centers: zero determinant found in C\n");
             status=0;
             goto _get_cen_new_bail;
         }
@@ -205,7 +205,7 @@ static int get_cen_new(const struct gvec* gvec, struct vec2* mu_new)
     }
 
     if (!mtx2_invert(&Cinvpsum, &Cinvpsum_inv)) {
-        wlog("gvec_fix_centers: zero determinant found in Cinvpsum\n");
+        wlog("gmix_fix_centers: zero determinant found in Cinvpsum\n");
         status=0;
         goto _get_cen_new_bail;
     }
@@ -218,12 +218,12 @@ _get_cen_new_bail:
 
 
 
-static void set_means(struct gvec *gvec, struct vec2 *cen)
+static void set_means(struct gmix *gmix, struct vec2 *cen)
 {
     size_t i=0;
-    for (i=0; i<gvec->size; i++) {
-        gvec->data[i].row = cen->v1;
-        gvec->data[i].col = cen->v2;
+    for (i=0; i<gmix->size; i++) {
+        gmix->data[i].row = cen->v1;
+        gmix->data[i].col = cen->v2;
     }
 }
 
@@ -232,7 +232,7 @@ static void set_means(struct gvec *gvec, struct vec2 *cen)
  */
 int gmix_em_cocenter_run(struct gmix_em* self,
                          const struct image *image, 
-                         struct gvec *gvec,
+                         struct gmix *gmix,
                          size_t *iter,
                          double *fdiff)
 {
@@ -246,14 +246,14 @@ int gmix_em_cocenter_run(struct gmix_em* self,
     size_t npoints = IM_SIZE(image);
 
     struct vec2 cen_new;
-    struct gvec *gcopy=NULL;
-    struct iter *iter_struct = iter_new(gvec->size);
+    struct gmix *gcopy=NULL;
+    struct iter *iter_struct = iter_new(gmix->size);
 
     // we may not be working in pixel coordinates
     scale=get_effective_scale(self);
     area = npoints*scale*scale;
 
-    gcopy = gvec_new(gvec->size);
+    gcopy = gmix_new(gmix->size);
 
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/area);
@@ -262,38 +262,38 @@ int gmix_em_cocenter_run(struct gmix_em* self,
     wmomlast=-9999;
     *iter=0;
     while (*iter < self->maxiter) {
-        if (self->verbose > 1) gvec_print(gvec,stderr);
+        if (self->verbose > 1) gmix_print(gmix,stderr);
 
         // first pass to get centers
-        flags = gmix_get_sums(self, image, gvec, iter_struct);
+        flags = gmix_get_sums(self, image, gmix, iter_struct);
         if (flags!=0)
             goto _gmix_em_cocenter_bail;
 
         // copy for getting centers only
-        gvec_copy(gvec, gcopy);
-        gmix_set_gvec_fromiter(gcopy, iter_struct);
+        gmix_copy(gmix, gcopy);
+        gmix_set_gmix_fromiter(gcopy, iter_struct);
 
         if (!get_cen_new(gcopy, &cen_new)) {
             flags += GMIX_ERROR_NEGATIVE_DET_COCENTER;
             goto _gmix_em_cocenter_bail;
         }
-        set_means(gvec, &cen_new);
+        set_means(gmix, &cen_new);
 
         // now that we have fixed centers, we re-calculate everything
-        flags = gmix_get_sums(self, image, gvec, iter_struct);
+        flags = gmix_get_sums(self, image, gmix, iter_struct);
         if (flags!=0)
             goto _gmix_em_cocenter_bail;
  
 
-        gmix_set_gvec_fromiter(gvec, iter_struct);
+        gmix_set_gmix_fromiter(gmix, iter_struct);
         // we only wanted to update the moments, set these back.
         // Should do with extra par in above function or something
-        set_means(gvec, &cen_new);
+        set_means(gmix, &cen_new);
 
         iter_struct->psky = iter_struct->skysum;
         iter_struct->nsky = iter_struct->psky/area;
 
-        wmom = gvec_wmomsum(gvec);
+        wmom = gmix_wmomsum(gmix);
         wmom /= iter_struct->psum;
         *fdiff = fabs((wmom-wmomlast)/wmom);
 
@@ -310,7 +310,7 @@ _gmix_em_cocenter_bail:
     }
     if (flags!=0 && self->verbose) wlog("error found at iter %lu\n", *iter);
 
-    gcopy = gvec_free(gcopy);
+    gcopy = gmix_free(gcopy);
     iter_struct = iter_free(iter_struct);
 
     return flags;
@@ -318,21 +318,21 @@ _gmix_em_cocenter_bail:
 
 int gmix_get_sums(struct gmix_em* self,
                   const struct image *image,
-                  struct gvec *gvec,
+                  struct gmix *gmix,
                   struct iter* iter)
 {
     int flags=0;
     if (self->has_jacobian) {
-        flags=gmix_get_sums_jacobian(self, image, gvec, iter);
+        flags=gmix_get_sums_jacobian(self, image, gmix, iter);
     } else {
-        flags=gmix_get_sums_pix(self, image, gvec, iter);
+        flags=gmix_get_sums_pix(self, image, gmix, iter);
     }
     return flags;
 }
 
 int gmix_get_sums_pix(struct gmix_em* self,
                       const struct image *image,
-                      struct gvec *gvec,
+                      struct gmix *gmix,
                       struct iter* iter)
 {
     int flags=0;
@@ -351,8 +351,8 @@ int gmix_get_sums_pix(struct gmix_em* self,
             imnorm /= IM_COUNTS(image);
 
             gtot=0;
-            for (i=0; i<gvec->size; i++) {
-                gauss = &gvec->data[i];
+            for (i=0; i<gmix->size; i++) {
+                gauss = &gmix->data[i];
                 sums  = &iter->sums[i];
 
                 if (gauss->det <= 0) {
@@ -386,7 +386,7 @@ int gmix_get_sums_pix(struct gmix_em* self,
             gtot += iter->nsky;
             igrat = imnorm/gtot;
             sums = &iter->sums[0];
-            for (i=0; i<gvec->size; i++) {
+            for (i=0; i<gmix->size; i++) {
                 // wtau is gi[pix]/gtot[pix]*imnorm[pix]
                 // which is Dave's tau*imnorm = wtau
                 wtau = sums->gi*igrat;  
@@ -415,7 +415,7 @@ _gmix_get_sums_bail:
 
 int gmix_get_sums_jacobian(struct gmix_em* self,
                            const struct image *image,
-                           struct gvec *gvec,
+                           struct gmix *gmix,
                            struct iter* iter)
 {
     int flags=0;
@@ -440,8 +440,8 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
             imnorm /= IM_COUNTS(image);
 
             gtot=0;
-            for (i=0; i<gvec->size; i++) {
-                gauss = &gvec->data[i];
+            for (i=0; i<gmix->size; i++) {
+                gauss = &gmix->data[i];
                 sums  = &iter->sums[i];
 
                 if (gauss->det <= 0) {
@@ -475,7 +475,7 @@ int gmix_get_sums_jacobian(struct gmix_em* self,
             }
             gtot += iter->nsky;
             igrat = imnorm/gtot;
-            for (i=0; i<gvec->size; i++) {
+            for (i=0; i<gmix->size; i++) {
                 sums = &iter->sums[i];
 
                 // wtau is gi[pix]/gtot[pix]*imnorm[pix]
@@ -525,15 +525,15 @@ _gmix_get_sums_bail:
 
 
 
-void gmix_set_gvec_fromiter(struct gvec *gvec, 
+void gmix_set_gmix_fromiter(struct gmix *gmix, 
                             struct iter* iter)
 {
     size_t i=0;
     struct sums *sums   = NULL;
     struct gauss *gauss = NULL;
-    for (i=0; i<gvec->size; i++) {
+    for (i=0; i<gmix->size; i++) {
         sums  = &iter->sums[i];
-        gauss = &gvec->data[i];
+        gauss = &gmix->data[i];
 
         gauss_set(gauss,
                   sums->pnew,               // p

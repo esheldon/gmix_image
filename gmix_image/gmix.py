@@ -1,7 +1,7 @@
 import numpy
 from numpy import array, zeros
 import copy
-from . import _render
+from . import _gmix
 
 GMIX_FULL=0
 GMIX_COELLIP=1
@@ -87,7 +87,7 @@ def GMixTurb(pars):
 
 
 
-class GMix(_render.GVec):
+class GMix(_gmix.GMix):
     """
     Generate a gaussian mixture from the input parameters.
 

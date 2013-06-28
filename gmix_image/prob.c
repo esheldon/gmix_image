@@ -3,7 +3,7 @@
 #include "prob.h"
 #include "render.h"
 
-struct prob_data_simple_ba *prob_data_simple_ba_new(enum gvec_model model,
+struct prob_data_simple_ba *prob_data_simple_ba_new(enum gmix_model model,
                                                     const struct observations *obs
 
                                                     const struct dist_gauss *cen1_prior,
@@ -28,10 +28,10 @@ struct prob_data_simple_ba *prob_data_simple_ba_new(enum gvec_model model,
     data->model=model;
     data->obs_list = obs;
 
-    data->obj0 = gvec_new_empty_simple(model);
+    data->obj0 = gmix_new_empty_simple(model);
     ngauss_tot = psf_list->data[0].size * data->obj0->size;
 
-    data->obj = gvec_new(ngauss_tot);
+    data->obj = gmix_new(ngauss_tot);
 
     data->cen1_prior = cen1_prior;
     data->cen2_prior = cen2_prior;
@@ -43,8 +43,8 @@ struct prob_data_simple_ba *prob_data_simple_ba_new(enum gvec_model model,
 struct prob_data_simple_ba *prob_data_simple_ba_free(struct prob_data_simple_ba *self)
 {
     if (self) {
-        self->obj0=gvec_free(self->obj0);
-        self->obj=gvec_free(self->obj);
+        self->obj0=gmix_free(self->obj0);
+        self->obj=gmix_free(self->obj);
         free(self);
     }
     return NULL;
@@ -64,7 +64,7 @@ static long prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
     *s2n_numer=0;
     *s2n_denom=0;
 
-    if (!gvec_fill_model(self->obj0,self->model,pars,npars)) {
+    if (!gmix_fill_model(self->obj0,self->model,pars,npars)) {
         flags = GMIX_ERROR_MODEL;
         goto _prob_simple_ba_calc_like_bail;
     }
@@ -72,7 +72,7 @@ static long prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
     for (i=0; i<self->obs_list->size; i++) {
         obs=&self->obs_list->data[i];
 
-        if (!gvec_convolve_fill(self->obj, self->obj0, obs->psf)) {
+        if (!gmix_convolve_fill(self->obj, self->obj0, obs->psf)) {
             flags = GMIX_ERROR_MODEL;
             goto _prob_simple_ba_calc_like_bail;
         }
@@ -128,6 +128,8 @@ long prob_simple_ba_calc(struct prob_data_simple_ba *self,
 
     long flags=0;
     double loglike=0, priors_lnprob=0;
+
+    *lnprob=0;
 
     flags=prob_simple_ba_calc_likelihood(self, pars, npars,
                                          s2n_numer, s2n_denom,

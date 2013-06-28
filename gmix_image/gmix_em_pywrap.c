@@ -1,7 +1,7 @@
 #include <Python.h>
 #include <numpy/arrayobject.h> 
 
-#include "gvec.h"
+#include "gmix.h"
 #include "image.h"
 #include "gmix_em.h"
 #include "jacobian.h"
@@ -12,7 +12,7 @@ struct PyGMixEMObject {
 
   struct image *image;
   // holds the result
-  struct gvec *gvec;
+  struct gmix *gmix;
 
   int flags;
   size_t numiter;
@@ -121,7 +121,7 @@ check_double_image(PyObject* image, size_t *nrows, size_t *ncols)
 
 
 /*
- * methods working on gvec or gaussians
+ * methods working on gmix or gaussians
  */
 
 
@@ -162,38 +162,38 @@ _gauss_copy_from_dict_bail:
     return status;
 }
 
-static struct gvec
-*gvec_from_list_of_dicts(PyObject* lod, const char* name)
+static struct gmix
+*gmix_from_list_of_dicts(PyObject* lod, const char* name)
 {
     int status=1;
     Py_ssize_t num=0, i=0;
     PyObject *dict;
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
 
 
     if (!PyList_Check(lod)) {
         PyErr_SetString(PyExc_ValueError,
-                        "You must init GVec with a list of dictionaries");
+                        "You must init GMix with a list of dictionaries");
         status=0;
-        goto _gvec_copy_list_of_dicts_bail;
+        goto _gmix_copy_list_of_dicts_bail;
     }
 
     num = PyList_Size(lod);
     if (num <= 0) {
         PyErr_SetString(PyExc_ValueError, 
-                        "You must init GVec with a list of dictionaries "
+                        "You must init GMix with a list of dictionaries "
                         "of size > 0");
         status=0;
-        goto _gvec_copy_list_of_dicts_bail;
+        goto _gmix_copy_list_of_dicts_bail;
     }
 
-    self = gvec_new(num);
+    self = gmix_new(num);
 
     if (self==NULL) {
         PyErr_Format(PyExc_MemoryError, 
-                     "GVec failed to allocate %ld gaussians",num);
+                     "GMix failed to allocate %ld gaussians",num);
         status=0;
-        goto _gvec_copy_list_of_dicts_bail;
+        goto _gmix_copy_list_of_dicts_bail;
     }
 
     for (i=0; i<num; i++) {
@@ -204,15 +204,15 @@ static struct gvec
             PyErr_Format(PyExc_ValueError, 
                     "Element %ld of '%s' is not a dict", i, name);
             status=0;
-            goto _gvec_copy_list_of_dicts_bail;
+            goto _gmix_copy_list_of_dicts_bail;
         }
         if (!gauss_from_dict(&self->data[i], dict)) {
             status=0;
-            goto _gvec_copy_list_of_dicts_bail;
+            goto _gmix_copy_list_of_dicts_bail;
         }
     }
 
-_gvec_copy_list_of_dicts_bail:
+_gmix_copy_list_of_dicts_bail:
     if (status != 1) {
         if (self) {
             free(self);
@@ -357,7 +357,7 @@ _bound_copy_from_dict_bail:
 void gmix_cleanup(struct PyGMixEMObject* self)
 {
     self->image    = image_free(self->image);
-    self->gvec     = gvec_free(self->gvec);
+    self->gmix     = gmix_free(self->gmix);
 }
 
 static int
@@ -376,7 +376,7 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     PyObject* jacobian_dict=NULL;
 
     double sky=0, counts=0;
-    self->image=NULL; self->gvec=NULL;
+    self->image=NULL; self->gmix=NULL;
 
     static char* argnames[] = {"image", "sky", "counts", "guess",
                                "maxiter", "tol",
@@ -416,10 +416,10 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
        }
     }
 
-    // copy all data from dict into the gvec as a starting point
-    // need to free gvec in the destructor
-    self->gvec = gvec_from_list_of_dicts(guess_lod,"guess");
-    if (!self->gvec) {
+    // copy all data from dict into the gmix as a starting point
+    // need to free gmix in the destructor
+    self->gmix = gmix_from_list_of_dicts(guess_lod,"guess");
+    if (!self->gmix) {
         status=0;
         goto _gmix_init_bail;
     }
@@ -428,13 +428,13 @@ PyGMixEMObject_init(struct PyGMixEMObject* self, PyObject *args, PyObject *kwds)
     if (gmix_em->cocenter) {
         self->flags = gmix_em_cocenter_run(gmix_em, 
                 self->image, 
-                self->gvec, 
+                self->gmix, 
                 &self->numiter,
                 &self->fdiff);
     } else {
         self->flags = gmix_em_run(gmix_em, 
                 self->image, 
-                self->gvec, 
+                self->gmix, 
                 &self->numiter,
                 &self->fdiff);
     }
@@ -471,13 +471,13 @@ PyGMixEMObject_write(struct PyGMixEMObject* self)
            "\tnumiter: %lu\n"
            "\tfdiff:   %g\n"
            "\tflags:   %d\n"
-            ,self->gvec->size,
+            ,self->gmix->size,
             self->numiter,
             self->fdiff,
             self->flags);
 
     printf("gaussians\n");
-    gvec_print(self->gvec,stdout);
+    gmix_print(self->gmix,stdout);
     Py_RETURN_NONE;
 }
 
@@ -491,7 +491,7 @@ PyGMixEMObject_repr(struct PyGMixEMObject* self) {
             "\tnumiter: %lu\n"
             "\tfdiff:   %g\n"
             "\tflags:   %d\n"
-            ,self->gvec->size,
+            ,self->gmix->size,
             self->numiter,
             self->fdiff,
             self->flags);
@@ -506,14 +506,14 @@ PyGMixEMObject_get_dlist(struct PyGMixEMObject* self)
     PyObject* lod=NULL;
     PyObject* tdict=NULL;
     size_t i=0;
-    struct gvec *gvec=NULL;
+    struct gmix *gmix=NULL;
     struct gauss *gauss=NULL;
 
-    gvec = self->gvec;
+    gmix = self->gmix;
     lod=PyList_New(0);
 
-    gauss=gvec->data;
-    for (i=0; i<gvec->size; i++) {
+    gauss=gmix->data;
+    for (i=0; i<gmix->size; i++) {
         tdict = gauss_to_dict(gauss);
         PyList_Append(lod, tdict);
         Py_XDECREF(tdict);
@@ -621,7 +621,7 @@ static PyMethodDef gmix_module_methods[] = {
     static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
         "_gmix_em",      /* m_name */
-        "Defines the GMix and GVec classes",  /* m_doc */
+        "Defines the GMix and GMix classes",  /* m_doc */
         -1,                  /* m_size */
         gmix_module_methods,    /* m_methods */
         NULL,                /* m_reload */

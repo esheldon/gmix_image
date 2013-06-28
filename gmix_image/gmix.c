@@ -2,12 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include "gvec.h"
+#include "gmix.h"
 #include "defs.h"
 #include "matrix.h"
 #include "convert.h"
 
-long gvec_get_simple_ngauss(enum gvec_model model)
+long gmix_get_simple_ngauss(enum gmix_model model)
 {
     long ngauss=0;
     switch (model) {
@@ -32,7 +32,7 @@ long gvec_get_simple_ngauss(enum gvec_model model)
     return ngauss;
 }
 
-long gvec_get_coellip_ngauss(long npars)
+long gmix_get_coellip_ngauss(long npars)
 {
     long ngauss=0;
 
@@ -45,7 +45,7 @@ long gvec_get_coellip_ngauss(long npars)
     return ngauss;
 
 }
-long gvec_get_full_ngauss(long npars)
+long gmix_get_full_ngauss(long npars)
 {
     long ngauss=0;
 
@@ -60,17 +60,17 @@ long gvec_get_full_ngauss(long npars)
 }
 
 
-struct gvec* gvec_new(size_t ngauss)
+struct gmix* gmix_new(size_t ngauss)
 {
-    struct gvec*self=NULL;
+    struct gmix*self=NULL;
     if (ngauss == 0) {
         wlog("number of gaussians must be > 0\n");
         return NULL;
     }
 
-    self = calloc(1, sizeof(struct gvec));
+    self = calloc(1, sizeof(struct gmix));
     if (self==NULL) {
-        wlog("could not allocate struct gvec\n");
+        wlog("could not allocate struct gmix\n");
         exit(EXIT_FAILURE);
     }
 
@@ -87,63 +87,63 @@ struct gvec* gvec_new(size_t ngauss)
 
 }
 
-struct gvec* gvec_new_empty_simple(enum gvec_model model)
+struct gmix* gmix_new_empty_simple(enum gmix_model model)
 {
-    struct gvec*self=NULL;
+    struct gmix*self=NULL;
     long ngauss=0;
 
-    ngauss=gvec_get_simple_ngauss(model);
+    ngauss=gmix_get_simple_ngauss(model);
 
     if (ngauss <= 0) {
         return NULL;
     }
 
-    self=gvec_new(ngauss);
+    self=gmix_new(ngauss);
     return self;
 }
 
-struct gvec* gvec_new_empty_coellip(long npars)
+struct gmix* gmix_new_empty_coellip(long npars)
 {
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
     long ngauss=0;
-    ngauss=gvec_get_coellip_ngauss(npars);
+    ngauss=gmix_get_coellip_ngauss(npars);
     if (ngauss <= 0) {
         return NULL;
     }
-    self = gvec_new(ngauss);
+    self = gmix_new(ngauss);
     return self;
 }
 
-struct gvec* gvec_new_empty_full(long npars)
+struct gmix* gmix_new_empty_full(long npars)
 {
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
     long ngauss=0;
-    ngauss=gvec_get_full_ngauss(npars);
+    ngauss=gmix_get_full_ngauss(npars);
     if (ngauss <= 0) {
         return NULL;
     }
-    self = gvec_new(ngauss);
+    self = gmix_new(ngauss);
     return self;
 }
 
 
-struct gvec* gvec_new_model(enum gvec_model model, double *pars, long npars)
+struct gmix* gmix_new_model(enum gmix_model model, double *pars, long npars)
 {
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
 
     if (model==GMIX_COELLIP) {
-        self = gvec_new_empty_coellip(npars);
+        self = gmix_new_empty_coellip(npars);
     } else if (model==GMIX_FULL) {
-        self = gvec_new_empty_full(npars);
+        self = gmix_new_empty_full(npars);
     } else {
-        self = gvec_new_empty_simple(model);
+        self = gmix_new_empty_simple(model);
     }
     if (!self) {
         return NULL;
     }
 
-    if (!gvec_fill_model(self, model, pars, npars)) {
-        self=gvec_free(self);
+    if (!gmix_fill_model(self, model, pars, npars)) {
+        self=gmix_free(self);
     }
 
     return self;
@@ -152,27 +152,27 @@ struct gvec* gvec_new_model(enum gvec_model model, double *pars, long npars)
 /*
    fill is provided so we aren't constantly hitting the heap
 */
-long gvec_fill_model(struct gvec *self,
-                     enum gvec_model model,
+long gmix_fill_model(struct gmix *self,
+                     enum gmix_model model,
                      double *pars,
                      long npars)
 {
     long status=0;
     switch (model) {
         case GMIX_EXP:
-            status=gvec_fill_exp6(self, pars, npars);
+            status=gmix_fill_exp6(self, pars, npars);
             break;
         case GMIX_DEV:
-            status=gvec_fill_dev10(self, pars, npars);
+            status=gmix_fill_dev10(self, pars, npars);
             break;
         case GMIX_BD:
-            status=gvec_fill_bd(self, pars, npars);
+            status=gmix_fill_bd(self, pars, npars);
             break;
         case GMIX_COELLIP:
-            status=gvec_fill_coellip(self, pars, npars);
+            status=gmix_fill_coellip(self, pars, npars);
             break;
         case GMIX_FULL:
-            status=gvec_fill_full(self, pars, npars);
+            status=gmix_fill_full(self, pars, npars);
             break;
         default:
             fprintf(stderr, "bad simple gmix model type: %u\n", model);
@@ -184,7 +184,7 @@ long gvec_fill_model(struct gvec *self,
 
 
 
-struct gvec *gvec_free(struct gvec *self)
+struct gmix *gmix_free(struct gmix *self)
 {
     if (self) {
         free(self->data);
@@ -218,7 +218,7 @@ void gauss_set(struct gauss* self,
     self->norm = 1./(M_TWO_PI*sqrt(self->det));
 
 }
-void gvec_set_dets(struct gvec *self)
+void gmix_set_dets(struct gmix *self)
 {
     struct gauss *gauss = NULL;
     size_t i=0;
@@ -228,20 +228,20 @@ void gvec_set_dets(struct gvec *self)
     }
 }
 
-long gvec_verify(const struct gvec *self)
+long gmix_verify(const struct gmix *self)
 {
     size_t i=0;
     const struct gauss *gauss=NULL;
 
     if (!self || !self->data) {
-        DBG wlog("gvec is not initialized\n");
+        DBG wlog("gmix is not initialized\n");
         return 0;
     }
 
     for (i=0; i<self->size; i++) {
         gauss=&self->data[i];
         if (gauss->det <= 0) {
-            DBG wlog("gvec_verify found det: %.16g\n", gauss->det);
+            DBG wlog("gmix_verify found det: %.16g\n", gauss->det);
             return 0;
         }
     }
@@ -249,17 +249,17 @@ long gvec_verify(const struct gvec *self)
 }
 
 
-long gvec_copy(const struct gvec *self, struct gvec* dest)
+long gmix_copy(const struct gmix *self, struct gmix* dest)
 {
     if (dest->size != self->size) {
-        wlog("gvec are not same size\n");
+        wlog("gmix are not same size\n");
         return 0;
     }
     memcpy(dest->data, self->data, self->size*sizeof(struct gauss));
     return 1;
 }
 
-void gvec_print(const struct gvec *self, FILE* fptr)
+void gmix_print(const struct gmix *self, FILE* fptr)
 {
     const struct gauss *gauss = NULL;
     size_t i=0;
@@ -274,7 +274,7 @@ void gvec_print(const struct gvec *self, FILE* fptr)
     }
 }
 
-double gvec_wmomsum(const struct gvec* self)
+double gmix_wmomsum(const struct gmix* self)
 {
     double wmom=0;
     const struct gauss* gauss=NULL;
@@ -286,7 +286,7 @@ double gvec_wmomsum(const struct gvec* self)
     return wmom;
 }
 
-void gvec_get_cen(const struct gvec *self, double *row, double *col)
+void gmix_get_cen(const struct gmix *self, double *row, double *col)
 {
     long i=0;
     const struct gauss *gauss=NULL;
@@ -306,7 +306,7 @@ void gvec_get_cen(const struct gvec *self, double *row, double *col)
     (*col) /= psum;
 }
 
-void gvec_set_cen(struct gvec *self, double row, double col)
+void gmix_set_cen(struct gmix *self, double row, double col)
 {
     long i=0;
     struct gauss *gauss=NULL;
@@ -314,7 +314,7 @@ void gvec_set_cen(struct gvec *self, double row, double col)
     double row_cur=0, col_cur=0;
     double row_shift=0, col_shift=0;
 
-    gvec_get_cen(self, &row_cur, &col_cur);
+    gmix_get_cen(self, &row_cur, &col_cur);
 
     row_shift = row - row_cur;
     col_shift = col - col_cur;
@@ -328,7 +328,7 @@ void gvec_set_cen(struct gvec *self, double row, double col)
 }
 
 
-double gvec_get_T(const struct gvec *self)
+double gmix_get_T(const struct gmix *self)
 {
     long i=0;
     const struct gauss *gauss=NULL;
@@ -343,7 +343,7 @@ double gvec_get_T(const struct gvec *self)
     T /= psum;
     return T;
 }
-double gvec_get_psum(const struct gvec *self)
+double gmix_get_psum(const struct gmix *self)
 {
     long i=0;
     const struct gauss *gauss=NULL;
@@ -356,13 +356,13 @@ double gvec_get_psum(const struct gvec *self)
     }
     return psum;
 }
-void gvec_set_psum(struct gvec *self, double psum)
+void gmix_set_psum(struct gmix *self, double psum)
 {
     long i=0;
     double psum_cur=0, rat=0;
     struct gauss *gauss=NULL;
 
-    psum_cur=gvec_get_psum(self);
+    psum_cur=gmix_get_psum(self);
     rat=psum/psum_cur;
 
     for (i=0; i<self->size; i++) {
@@ -372,7 +372,7 @@ void gvec_set_psum(struct gvec *self, double psum)
     }
 }
 
-void gvec_set_total_moms(struct gvec *self)
+void gmix_set_total_moms(struct gmix *self)
 {
     size_t i=0;
     double p=0, psum=0;
@@ -398,52 +398,9 @@ void gvec_set_total_moms(struct gvec *self)
 }
 
 
-/* convolution results in nobj*npsf total gaussians */
-/*
-struct gvec *gvec_convolve_wrong(struct gvec *obj_gvec, 
-                           struct gvec *psf_gvec)
-{
-    struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
-    struct gvec *gvec=NULL;
-
-    int ntot=0, iobj=0, ipsf=0;
-    double irr=0, irc=0, icc=0, psum=0;
-
-    ntot = obj_gvec->size*psf_gvec->size;
-
-    gvec = gvec_new(ntot);
-
-    for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
-        psf = &psf_gvec->data[ipsf];
-        psum += psf->p;
-    }
-
-    comb = gvec->data;
-    for (iobj=0; iobj<obj_gvec->size; iobj++) {
-        obj = &obj_gvec->data[iobj];
-
-        for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
-            psf = &psf_gvec->data[ipsf];
-
-            irr = obj->irr + psf->irr;
-            irc = obj->irc + psf->irc;
-            icc = obj->icc + psf->icc;
-
-            gauss_set(comb,
-                      obj->p*psf->p/psum,
-                      obj->row, obj->col, 
-                      irr, irc, icc);
-
-            comb++;
-        }
-    }
-
-    return gvec;
-}
-*/
-long gvec_convolve_fill(struct gvec *self, 
-                        const struct gvec *obj_gvec, 
-                        const struct gvec *psf_gvec)
+long gmix_convolve_fill(struct gmix *self, 
+                        const struct gmix *obj_gmix, 
+                        const struct gmix *psf_gmix)
 {
     struct gauss *psf=NULL, *obj=NULL, *comb=NULL;
 
@@ -452,27 +409,27 @@ long gvec_convolve_fill(struct gvec *self,
     double row=0, col=0;
     double psf_rowcen=0, psf_colcen=0;
 
-    ntot = obj_gvec->size*psf_gvec->size;
+    ntot = obj_gmix->size*psf_gmix->size;
     if (ntot != self->size) {
         fprintf(stderr,
-                "gvec (%lu) wrong size to accept convolution %ld\n",
+                "gmix (%lu) wrong size to accept convolution %ld\n",
                 self->size, ntot);
         return 0;
     }
 
-    gvec_get_cen(psf_gvec, &psf_rowcen, &psf_colcen);
+    gmix_get_cen(psf_gmix, &psf_rowcen, &psf_colcen);
 
-    for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
-        psf = &psf_gvec->data[ipsf];
+    for (ipsf=0; ipsf<psf_gmix->size; ipsf++) {
+        psf = &psf_gmix->data[ipsf];
         psum += psf->p;
     }
 
     comb = self->data;
-    for (iobj=0; iobj<obj_gvec->size; iobj++) {
-        obj = &obj_gvec->data[iobj];
+    for (iobj=0; iobj<obj_gmix->size; iobj++) {
+        obj = &obj_gmix->data[iobj];
 
-        for (ipsf=0; ipsf<psf_gvec->size; ipsf++) {
-            psf = &psf_gvec->data[ipsf];
+        for (ipsf=0; ipsf<psf_gmix->size; ipsf++) {
+            psf = &psf_gmix->data[ipsf];
 
             irr = obj->irr + psf->irr;
             irc = obj->irc + psf->irc;
@@ -495,19 +452,19 @@ long gvec_convolve_fill(struct gvec *self,
     return 1;
 }
 
-struct gvec *gvec_convolve(const struct gvec *obj_gvec,
-                           const struct gvec *psf_gvec)
+struct gmix *gmix_convolve(const struct gmix *obj_gmix,
+                           const struct gmix *psf_gmix)
 {
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
     long ntot=0;
-    ntot = obj_gvec->size*psf_gvec->size;
-    self= gvec_new(ntot);
+    ntot = obj_gmix->size*psf_gmix->size;
+    self= gmix_new(ntot);
     if (!self) {
         return NULL;
     }
 
-    if (!gvec_convolve_fill(self, obj_gvec, psf_gvec)) {
-        self=gvec_free(self);
+    if (!gmix_convolve_fill(self, obj_gmix, psf_gmix)) {
+        self=gmix_free(self);
     }
     return self;
 }
@@ -516,11 +473,11 @@ struct gvec *gvec_convolve(const struct gvec *obj_gvec,
 
 // pars are full gmix of size 6*ngauss
 /*
-struct gvec *gvec_from_pars(double *pars, long npars)
+struct gmix *gmix_from_pars(double *pars, long npars)
 {
     long ngauss=0;
     struct gauss *gauss=NULL;
-    struct gvec *gvec = NULL;
+    struct gmix *gmix = NULL;
 
     long i=0, beg=0;
 
@@ -529,10 +486,10 @@ struct gvec *gvec_from_pars(double *pars, long npars)
     }
     ngauss = npars/6;
 
-    gvec = gvec_new(ngauss);
+    gmix = gmix_new(ngauss);
 
     for (i=0; i<ngauss; i++) {
-        gauss = &gvec->data[i];
+        gauss = &gmix->data[i];
 
         beg = i*6;
 
@@ -545,13 +502,13 @@ struct gvec *gvec_from_pars(double *pars, long npars)
                   pars[beg+5]); // icc
     }
 
-    return gvec;
+    return gmix;
 }
 */
 
 
 /*
-struct gvec *gvec_new_coellip_Tfrac(double *pars, long npars)
+struct gmix *gmix_new_coellip_Tfrac(double *pars, long npars)
 {
     int ngauss=0;
     double row=0, col=0, g1=0, g2=0, e1=0, e2=0;
@@ -575,10 +532,10 @@ struct gvec *gvec_new_coellip_Tfrac(double *pars, long npars)
     if (!g1g2_to_e1e2(g1,g2,&e1,&e2)) {
         return NULL;
     }
-    struct gvec * gvec = gvec_new(ngauss);
+    struct gmix * gmix = gmix_new(ngauss);
 
     for (i=0; i<ngauss; i++) {
-        gauss = &gvec->data[i];
+        gauss = &gmix->data[i];
 
         if (i==0) {
             Ti = Tmax;
@@ -598,23 +555,23 @@ struct gvec *gvec_new_coellip_Tfrac(double *pars, long npars)
                   (Ti/2.)*(1+e1));
     }
 
-    return gvec;
+    return gmix;
 }
 */
 
-long gvec_fill_full(struct gvec *self, double *pars, long npars)
+long gmix_fill_full(struct gmix *self, double *pars, long npars)
 {
     long ngauss=0;
     struct gauss *gauss=NULL;
 
     long i=0, beg=0;
 
-    ngauss=gvec_get_full_ngauss(npars);
+    ngauss=gmix_get_full_ngauss(npars);
     if (ngauss <= 0) {
         return 0;
     }
     if (self->size != ngauss) {
-        fprintf(stderr,"full gvec (%lu) has wrong size, expected %ld\n",
+        fprintf(stderr,"full gmix (%lu) has wrong size, expected %ld\n",
                 self->size, ngauss);
         return 0;
     }
@@ -637,7 +594,7 @@ long gvec_fill_full(struct gvec *self, double *pars, long npars)
 }
 
 
-long gvec_fill_coellip(struct gvec *self, double *pars, long npars)
+long gmix_fill_coellip(struct gmix *self, double *pars, long npars)
 {
     long ngauss=0, Tstart=0, Astart=0;
     double row=0, col=0, g1=0, g2=0, e1=0, e2=0, Ti=0, Ai=0;
@@ -645,12 +602,12 @@ long gvec_fill_coellip(struct gvec *self, double *pars, long npars)
 
     long i=0;
 
-    ngauss=gvec_get_coellip_ngauss(npars);
+    ngauss=gmix_get_coellip_ngauss(npars);
     if (ngauss <= 0) {
         return 0;
     }
     if (self->size != ngauss) {
-        fprintf(stderr,"coellip gvec (%lu) has wrong size, expected %ld\n",
+        fprintf(stderr,"coellip gmix (%lu) has wrong size, expected %ld\n",
                 self->size, ngauss);
         return 0;
     }
@@ -687,21 +644,21 @@ long gvec_fill_coellip(struct gvec *self, double *pars, long npars)
 
 
 
-struct gvec *gvec_new_coellip(double *pars, long npars)
+struct gmix *gmix_new_coellip(double *pars, long npars)
 {
-    struct gvec *self=NULL;
+    struct gmix *self=NULL;
 
-    self=gvec_new_empty_coellip(npars);
+    self=gmix_new_empty_coellip(npars);
     if (self) {
-        if (!gvec_fill_coellip(self, pars, npars)) {
-            self=gvec_free(self);
+        if (!gmix_fill_coellip(self, pars, npars)) {
+            self=gmix_free(self);
         }
     }
     return self;
 }
 
 /*
-static struct gvec *_gapprox_pars_to_gvec(double *pars, 
+static struct gmix *_gapprox_pars_to_gmix(double *pars, 
                                           const double *Fvals, 
                                           const double *pvals,
                                           long ngauss)
@@ -711,7 +668,7 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
     double counts=0, counts_i=0;
 
     struct gauss *gauss=NULL;
-    struct gvec  *gvec=NULL;
+    struct gmix  *gmix=NULL;
 
     long i=0;
 
@@ -726,10 +683,10 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
         return NULL;
     }
 
-    gvec = gvec_new(ngauss);
+    gmix = gmix_new(ngauss);
 
-    for (i=0; i<gvec->size; i++) {
-        gauss=&gvec->data[i];
+    for (i=0; i<gmix->size; i++) {
+        gauss=&gmix->data[i];
 
         T_i = T*Fvals[i];
         counts_i=counts*pvals[i];
@@ -742,10 +699,10 @@ static struct gvec *_gapprox_pars_to_gvec(double *pars,
                   (T_i/2.)*(1+e1));
     }
 
-    return gvec;
+    return gmix;
 }
 
-struct gvec *gvec_from_pars_dev6(double *pars, long npars)
+struct gmix *gmix_from_pars_dev6(double *pars, long npars)
 {
     if (npars != 6) {
         fprintf(stderr,"wrong par len for dev6: %ld\n", npars);
@@ -768,10 +725,10 @@ struct gvec *gvec_from_pars_dev6(double *pars, long npars)
          0.30562612308952852, 
          0.53188815599808381};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
+    return _gapprox_pars_to_gmix(pars, Fvals, pvals, 6);
 }
 
-struct gvec *gvec_from_pars_dev10(double *pars, long npars)
+struct gmix *gmix_from_pars_dev10(double *pars, long npars)
 {
     if (npars != 6) {
         fprintf(stderr,"wrong par len for dev10: %ld\n", npars);
@@ -802,10 +759,10 @@ struct gvec *gvec_from_pars_dev10(double *pars, long npars)
          0.29254151133139222, 
          0.28905301416582552};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 10);
+    return _gapprox_pars_to_gmix(pars, Fvals, pvals, 10);
 }
 
-struct gvec *gvec_from_pars_exp4(double *pars, long npars)
+struct gmix *gmix_from_pars_exp4(double *pars, long npars)
 {
     if (npars != 6) {
         fprintf(stderr,"wrong par len for exp4: %ld\n", npars);
@@ -824,10 +781,10 @@ struct gvec *gvec_from_pars_exp4(double *pars, long npars)
          0.4214499816612774, 
          0.47523176351057955};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 4);
+    return _gapprox_pars_to_gmix(pars, Fvals, pvals, 4);
 }
 
-struct gvec *gvec_from_pars_exp6(double *pars, long npars)
+struct gmix *gmix_from_pars_exp6(double *pars, long npars)
 {
     if (npars != 6) {
         fprintf(stderr,"wrong par len for exp6: %ld\n", npars);
@@ -850,15 +807,15 @@ struct gvec *gvec_from_pars_exp6(double *pars, long npars)
          0.45496740582554868, 
          0.26521634184240478};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 6);
+    return _gapprox_pars_to_gmix(pars, Fvals, pvals, 6);
 }
 
-struct gvec *gvec_from_pars_bd(double *pars, long npars)
+struct gmix *gmix_from_pars_bd(double *pars, long npars)
 {
     long ngauss_exp=6, ngauss_dev=10;
 
     double pars_exp[6], pars_dev[6];
-    struct gvec *gvec_exp=NULL, *gvec_dev=NULL, *gvec=NULL;
+    struct gmix *gmix_exp=NULL, *gmix_dev=NULL, *gmix=NULL;
 
     if (npars != 8) {
         fprintf(stderr,"wrong par len for bulge+disk: %ld\n", npars);
@@ -879,24 +836,24 @@ struct gvec *gvec_from_pars_bd(double *pars, long npars)
     pars_dev[4] = pars[5];
     pars_dev[5] = pars[7];
 
-    gvec_exp=gvec_from_pars_exp6(pars_exp, 6);
-    gvec_dev=gvec_from_pars_dev10(pars_dev, 6);
+    gmix_exp=gmix_from_pars_exp6(pars_exp, 6);
+    gmix_dev=gmix_from_pars_dev10(pars_dev, 6);
 
-    gvec=gvec_new(16);
-    memcpy(gvec->data,
-           gvec_exp->data,
+    gmix=gmix_new(16);
+    memcpy(gmix->data,
+           gmix_exp->data,
            ngauss_exp*sizeof(struct gauss));
-    memcpy(gvec->data+ngauss_exp,
-           gvec_dev->data,
+    memcpy(gmix->data+ngauss_exp,
+           gmix_dev->data,
            ngauss_dev*sizeof(struct gauss));
 
-    gvec_exp=gvec_free(gvec_exp);
-    gvec_dev=gvec_free(gvec_dev);
+    gmix_exp=gmix_free(gmix_exp);
+    gmix_dev=gmix_free(gmix_dev);
 
-    return gvec;
+    return gmix;
 }
 
-struct gvec *gvec_from_pars_turb(double *pars, long npars)
+struct gmix *gmix_from_pars_turb(double *pars, long npars)
 {
     if (npars != 6) {
         fprintf(stderr,"wrong par len for turb: %ld\n", npars);
@@ -908,12 +865,12 @@ struct gvec *gvec_from_pars_turb(double *pars, long npars)
     static const double pvals[3] = 
         {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
 
-    return _gapprox_pars_to_gvec(pars, Fvals, pvals, 3);
+    return _gapprox_pars_to_gmix(pars, Fvals, pvals, 3);
 }
 */
 
 /* no error checking except on shape */
-static long _gvec_fill_simple(struct gvec *self,
+static long _gmix_fill_simple(struct gmix *self,
                               double *pars, 
                               const double *Fvals, 
                               const double *pvals)
@@ -954,7 +911,7 @@ static long _gvec_fill_simple(struct gvec *self,
     return 1;
 }
 
-long gvec_fill_bd(struct gvec *self, double *pars, long npars)
+long gmix_fill_bd(struct gmix *self, double *pars, long npars)
 {
     static const long 
         npars_expected=8,
@@ -962,14 +919,14 @@ long gvec_fill_bd(struct gvec *self, double *pars, long npars)
         ngauss_expected=16;
 
     double pars_exp[6], pars_dev[6];
-    struct gvec *gvec_exp=NULL, *gvec_dev=NULL;
+    struct gmix *gmix_exp=NULL, *gmix_dev=NULL;
 
     if (npars != npars_expected) {
         fprintf(stderr,"wrong par len for bulge+disk: %ld\n", npars);
         return 0;
     }
     if (self->size != ngauss_expected) {
-        fprintf(stderr,"bulge+disk gvec size %lu != %ld\n", self->size, ngauss_expected);
+        fprintf(stderr,"bulge+disk gmix size %lu != %ld\n", self->size, ngauss_expected);
         return 0;
     }
 
@@ -987,25 +944,25 @@ long gvec_fill_bd(struct gvec *self, double *pars, long npars)
     pars_dev[4] = pars[5];
     pars_dev[5] = pars[7];
 
-    gvec_exp = gvec_new_model(GMIX_EXP,pars_exp,npars_exp);
-    gvec_exp = gvec_new_model(GMIX_DEV,pars_dev,npars_dev);
+    gmix_exp = gmix_new_model(GMIX_EXP,pars_exp,npars_exp);
+    gmix_exp = gmix_new_model(GMIX_DEV,pars_dev,npars_dev);
 
     memcpy(self->data,
-           gvec_exp->data,
+           gmix_exp->data,
            ngauss_exp*sizeof(struct gauss));
     memcpy(self->data+ngauss_exp,
-           gvec_dev->data,
+           gmix_dev->data,
            ngauss_dev*sizeof(struct gauss));
 
-    gvec_exp=gvec_free(gvec_exp);
-    gvec_dev=gvec_free(gvec_dev);
+    gmix_exp=gmix_free(gmix_exp);
+    gmix_dev=gmix_free(gmix_dev);
 
     return 1;
 }
 
 
 
-long gvec_fill_dev10(struct gvec *self, double *pars, long npars)
+long gmix_fill_dev10(struct gmix *self, double *pars, long npars)
 {
     static const long npars_expected=6, ngauss_expected=10;
     if (npars != npars_expected) {
@@ -1042,12 +999,12 @@ long gvec_fill_dev10(struct gvec *self, double *pars, long npars)
          0.29254151133139222, 
          0.28905301416582552};
 
-    return _gvec_fill_simple(self, pars, Fvals, pvals);
+    return _gmix_fill_simple(self, pars, Fvals, pvals);
 }
 
 
 
-long gvec_fill_exp6(struct gvec *self, double *pars, long npars)
+long gmix_fill_exp6(struct gmix *self, double *pars, long npars)
 {
     static const long npars_expected=6, ngauss_expected=6;
     if (npars != npars_expected) {
@@ -1075,12 +1032,12 @@ long gvec_fill_exp6(struct gvec *self, double *pars, long npars)
          0.45496740582554868, 
          0.26521634184240478};
 
-    return _gvec_fill_simple(self, pars, Fvals, pvals);
+    return _gmix_fill_simple(self, pars, Fvals, pvals);
 }
 
 
 
-long gvec_fill_turb3(struct gvec *self, double *pars, long npars)
+long gmix_fill_turb3(struct gmix *self, double *pars, long npars)
 {
     static const long npars_expected=6, ngauss_expected=3;
     if (npars != npars_expected) {
@@ -1097,7 +1054,7 @@ long gvec_fill_turb3(struct gvec *self, double *pars, long npars)
     static const double pvals[3] = 
         {0.596510042804182,0.4034898268889178,1.303069003078001e-07};
 
-    return _gvec_fill_simple(self, pars, Fvals, pvals);
+    return _gmix_fill_simple(self, pars, Fvals, pvals);
 }
 
 
