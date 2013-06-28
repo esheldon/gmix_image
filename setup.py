@@ -8,12 +8,15 @@ em_ext=Extension("gmix_image._gmix_em",
                  ["gmix_image/gmix_em_pywrap.c",
                   "gmix_image/gmix_em.c",
                   "gmix_image/gvec.c",
+                  "gmix_image/convert.c",
                   "gmix_image/image.c",
                   "gmix_image/matrix.c",
                   "gmix_image/jacobian.c"])
 
 render_sources=["gmix_image/render_pywrap.c",
+                "gmix_image/render.c",
                 "gmix_image/gvec.c",
+                "gmix_image/convert.c",
                 "gmix_image/image.c",
                 "gmix_image/jacobian.c"]
 render_ext=Extension("gmix_image._render", render_sources)

@@ -1,6 +1,8 @@
 #ifndef _GVEC_HEADER_GUARD
 #define _GVEC_HEADER_GUARD
 
+#include <stdint.h>
+
 //#include "matrix.h"
 
 /*
@@ -47,19 +49,48 @@ struct gvec {
     double total_icc;
 };
 
-
-enum gapprox {
-    GAPPROX_EXP,
-    GAPPROX_DEV,
-    GAPPROX_BD
+enum gvec_model {
+    GMIX_FULL=0,
+    GMIX_COELLIP=1,
+    GMIX_TURB=2,
+    GMIX_EXP=3,
+    GMIX_DEV=4,
+    GMIX_COELLIP_TFRAC=5,
+    GMIX_BD=6
 };
- 
+
+long gvec_get_simple_ngauss(enum gvec_model model);
+long gvec_get_coellip_ngauss(long npars);
+long gvec_get_full_ngauss(long npars);
+
 struct gvec *gvec_new(size_t n);
+
+struct gvec* gvec_new_empty_simple(enum gvec_model model);
+struct gvec* gvec_new_empty_coellip(long npars);
+struct gvec* gvec_new_empty_full(long npars);
+
+struct gvec* gvec_new_model(enum gvec_model model, double *pars, long npars);
+struct gvec *gvec_new_coellip(double *pars, long npars);
+
+
+long gvec_fill_model(struct gvec *self,
+                     enum gvec_model model,
+                     double *pars,
+                     long npars);
+
+long gvec_fill_full(struct gvec *self, double *pars, long npars);
+long gvec_fill_coellip(struct gvec *self, double *pars, long npars);
+long gvec_fill_exp6(struct gvec *self, double *pars, long npars);
+long gvec_fill_dev10(struct gvec *self, double *pars, long npars);
+long gvec_fill_bd(struct gvec *self, double *pars, long npars);
+long gvec_fill_turb3(struct gvec *self, double *pars, long npars);
+
+
 struct gvec *gvec_free(struct gvec *self);
 void gvec_set_dets(struct gvec *self);
 
 // make sure pointer not null and det>0 for all gauss
-int gvec_verify(const struct gvec *self);
+long gvec_verify(const struct gvec *self);
 
 // only makes sense for same center, e.g. psf
 void gvec_set_total_moms(struct gvec *self);
@@ -74,7 +105,7 @@ void gauss_set(struct gauss* self,
                double irc,
                double icc);
 
-int gvec_copy(const struct gvec *self, struct gvec* dest);
+long gvec_copy(const struct gvec *self, struct gvec* dest);
 void gvec_print(const struct gvec *self, FILE* fptr);
 
 // calculate the weighted sum of the moments
@@ -97,20 +128,16 @@ void gvec_set_psum(struct gvec *gvec, double psum);
 //void gvec_wmean_covar(const struct gvec* gvec, struct mtx2 *cov);
 
 /* convolution results in an nobj*npsf total gaussians */
-struct gvec *gvec_convolve(struct gvec *obj_gvec, 
-                           struct gvec *psf_gvec);
+struct gvec *gvec_convolve(const struct gvec *obj_gvec, 
+                           const struct gvec *psf_gvec);
 
+long gvec_convolve_fill(struct gvec *self, 
+                        const struct gvec *obj_gvec, 
+                        const struct gvec *psf_gvec);
 
-/* full parameters list
-   [pi,rowi,coli,irri,irci,icci,...]
-*/
-struct gvec *gvec_from_pars(double *pars, int size);
-
-/* coellip list
-   [row,col,e1,e2,Tmax,f2,f3,...,p1,p2,p3..]
- */
-struct gvec *gvec_from_coellip(double *pars, int size);
-struct gvec *gvec_from_coellip_Tfrac(double *pars, int size);
+// old
+//struct gvec *gvec_from_pars(double *pars, long npars);
+//struct gvec *gvec_new_coellip_Tfrac(double *pars, long npars);
 
 /* 
    Generate a gvec from the inputs pars assuming an appoximate
@@ -123,8 +150,8 @@ struct gvec *gvec_from_coellip_Tfrac(double *pars, int size);
 
    The p and F values are chosen to make this so
 */
-struct gvec *gvec_from_pars_exp4(double *pars, int size);
-struct gvec *gvec_from_pars_exp6(double *pars, int size);
+//struct gvec *gvec_from_pars_exp4(double *pars, long npars);
+//struct gvec *gvec_from_pars_exp6(double *pars, long npars);
 
 
 
@@ -139,10 +166,10 @@ struct gvec *gvec_from_pars_exp6(double *pars, int size);
    The p and F values are chosen to make this so
 */
 
-struct gvec *gvec_from_pars_dev10(double *pars, int size);
+//struct gvec *gvec_from_pars_dev10(double *pars, long npars);
 
 /* similar to above but for a turbulent psf */
-struct gvec *gvec_from_pars_turb(double *pars, int size);
+//struct gvec *gvec_from_pars_turb(double *pars, long npars);
 
 /*
    co-elliptical bulg+disk
@@ -152,7 +179,7 @@ struct gvec *gvec_from_pars_turb(double *pars, int size);
    npars is 8
 */
 
-struct gvec *gvec_from_pars_bd(double *pars, int size);
+//struct gvec *gvec_from_pars_bd(double *pars, long npars);
 
 
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \

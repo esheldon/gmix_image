@@ -10,6 +10,7 @@ struct jacobian {
     double dvdcol;
 };
 
+
 // row col here are relative to the "center"
 #define JACOB_PIX2U(jacob, row, col)             \
     (  (jacob)->dudrow*(row - (jacob)->row0)     \

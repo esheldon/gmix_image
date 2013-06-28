@@ -5,7 +5,13 @@
 #define GMIX_ERROR_MAXIT 0x2
 #define GMIX_ERROR_NEGATIVE_DET_COCENTER 0x4
 
+#define GMIX_ERROR_MODEL 0x8
+
 #define wlog(...) fprintf(stderr, __VA_ARGS__)
+
+// when arg is too small or negative, return this
+#define LOG_LOWVAL -9.999e9
+#define LOG_MINARG 1.0e-10
 
 # define M_TWO_PI   6.28318530717958647693
 

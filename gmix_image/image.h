@@ -33,7 +33,6 @@ struct image {
 };
 
 
-
 #define IM_SIZE(im) ((im)->size)
 #define IM_NROWS(im) ((im)->nrows)
 #define IM_NCOLS(im) ((im)->ncols)
