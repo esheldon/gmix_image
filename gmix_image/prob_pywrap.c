@@ -7,43 +7,300 @@
 #include "render.h"
 #include "image.h"
 #include "defs.h"
+#include "obs.h"
+
+#include "gmix_pywrap.h"
 
 #include "py_helpers.h"
 
 struct PyProbObject {
     PyObject_HEAD
     enum prob_type type;
+    enum gmix_model model;
+    long npars;
+    struct obs_list *obs_list;
     void *data;
 };
 
 
-static
-struct observations *load_observations(PyObject *im_list,
-                                      PyObject *wt_list,
-                                      PyObject *jacob_list,
-                                      PyObject *psf_gmix_list)
+static int check_numpy_image(PyObject *obj, const char *name)
 {
 
+    if (!PyArray_Check(obj) 
+            || NPY_DOUBLE != PyArray_TYPE(obj)
+            || 2 != PyArray_NDIM(obj)) {
+        PyErr_Format(PyExc_TypeError, "%s must be numpy double array",name);
+        return 0;
+    }
+    return 1;
+}
+static int check_numpy_array(PyObject *obj, const char *name)
+{
+    if (!PyArray_Check(obj) || NPY_DOUBLE != PyArray_TYPE(obj)) {
+        PyErr_Format(PyExc_TypeError, "%s must be numpy double array",name);
+        return 0;
+    }
+    return 1;
+}
+
+static long check_lists(PyObject *im_list,
+                        PyObject *wt_list,
+                        PyObject *jacob_list,
+                        PyObject *psf_gmix_list)
+{
+    size_t s=0;
+    if (!PyList_Check(im_list)) {
+        PyErr_Format(PyExc_TypeError, "im_list is not a list");
+        return 0;
+    }
+    if (!PyList_Check(wt_list)) {
+        PyErr_Format(PyExc_TypeError, "wt_list is not a list");
+        return 0;
+    }
+    if (!PyList_Check(jacob_list)) {
+        PyErr_Format(PyExc_TypeError, "jacob_list is not a list");
+        return 0;
+    }
+    if (!PyList_Check(psf_gmix_list)) {
+        PyErr_Format(PyExc_TypeError, "psf_gmix_list is not a list");
+        return 0;
+    }
+    s=PyList_Size(im_list);
+    if (   (PyList_Size(wt_list) != s)
+        || (PyList_Size(jacob_list) != s)
+        || (PyList_Size(psf_gmix_list) != s) ) {
+
+        PyErr_Format(PyExc_ValueError, "all lists must be same size");
+        return 0;
+    }
+    return 1;
+}
+
+// no error checking
+static
+struct obs_list *load_obs_list(PyObject *im_list,
+                               PyObject *wt_list,
+                               PyObject *jacob_list,
+                               PyObject *psf_gmix_list)
+{
+    ssize_t nobs=0;
+    struct obs_list *obs_list=NULL;
+    ssize_t i=0;
+
+    PyObject *im_obj=NULL;
+    PyObject *wt_obj=NULL;
+    PyObject *jacob_dict_obj=NULL;
+    struct PyGMixObject *gmix_obj=NULL;
+
+    struct image *im_tmp=NULL;
+    struct image *wt_tmp=NULL;
+    struct jacobian jacob_tmp;
+
+    long ok=1;
+
+    if (! (ok=check_lists(im_list,wt_list,jacob_list,psf_gmix_list))) {
+        goto _load_obs_list_bail;
+    }
+    nobs = PyList_Size(im_list);
+
+    obs_list=obs_list_new(nobs);
+    for (i=0; i<nobs; i++) {
+
+        // borrowed reference, no need to decref
+        im_obj=PyList_GetItem(im_list, i);
+        wt_obj=PyList_GetItem(wt_list, i);
+        jacob_dict_obj=PyList_GetItem(jacob_list, i);
+
+        // we have no type checking for this... how to?
+        gmix_obj=(struct PyGMixObject *) PyList_GetItem(psf_gmix_list, i);
+
+        Py_XINCREF(im_obj);
+        if ( !(ok=check_numpy_image(im_obj,"image")) ) {
+            goto _load_obs_list_bail;
+        }
+        Py_XDECREF(im_obj);
+
+        if (! (ok=check_numpy_image(wt_obj,"weight") ) ) {
+            goto _load_obs_list_bail;
+        }
+
+        im_tmp = pyhelp_associate_image(im_obj);
+        wt_tmp = pyhelp_associate_image(wt_obj);
+
+        if (! (ok=pyhelp_dict_to_jacob(jacob_dict_obj, &jacob_tmp) ) ) {
+            goto _load_obs_list_bail;
+        }
+
+        obs_fill(&obs_list->data[i],
+                 im_tmp,
+                 wt_tmp,
+                 &jacob_tmp,
+                 gmix_obj->gmix);
+
+        // underlying data not freed
+        im_tmp=image_free(im_tmp);
+        wt_tmp=image_free(wt_tmp);
+    }
+
+_load_obs_list_bail:
+    if (!ok) {
+        obs_list=obs_list_free(obs_list);
+        // it is OK if they are NULL
+        im_tmp=image_free(im_tmp);
+        wt_tmp=image_free(wt_tmp);
+    }
+    return obs_list;
 }
 
 
 static
-struct prob_data_simple_ba *load_ba_data(PyObject *im_list,
-                                         PyObject *wt_list,
-                                         PyObject *jacob_list,
-                                         PyObject *psf_gmix_list,
-                                         enum prob_type prob_type,
+struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
                                          enum gmix_model model,
                                          PyObject *prior_dict)
 {
+    PyObject *tmp=NULL;
 
+    struct prob_data_simple_ba *data=NULL;
+
+    struct dist_gauss cen1_prior, cen2_prior;
+    struct dist_g_ba g_prior;
+    struct dist_lognorm T_prior, counts_prior;
+    double mean=0, width=0;
+    long status=0;
+
+    if (!PyDict_Check(prior_dict)) {
+        PyErr_Format(PyExc_TypeError, "prior is not a dict");
+        return NULL;
+    }
+
+    // borrowed ref
+    // cen1
+    tmp=PyDict_GetItemString(prior_dict, "cen1_mean");
+    mean = PyFloat_AsDouble(tmp);
+
+    mean = pyhelp_dict_get_double(prior_dict,"cen1_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(prior_dict,"cen1_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_gauss_fill(&cen1_prior, mean, width);
+    DBG dist_gauss_print(&cen1_prior,stderr);
+
+    mean = pyhelp_dict_get_double(prior_dict,"cen2_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(prior_dict,"cen2_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_gauss_fill(&cen2_prior, mean, width);
+    DBG dist_gauss_print(&cen2_prior,stderr);
+
+
+    // g
+    width = pyhelp_dict_get_double(prior_dict,"g_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_g_ba_fill(&g_prior, width);
+    DBG dist_g_ba_print(&g_prior,stderr);
+
+    // T
+    mean = pyhelp_dict_get_double(prior_dict,"T_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(prior_dict,"T_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_lognorm_fill(&T_prior, mean, width);
+    DBG dist_lognorm_print(&T_prior,stderr);
+
+    // counts
+    mean = pyhelp_dict_get_double(prior_dict,"counts_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(prior_dict,"counts_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_lognorm_fill(&counts_prior, mean, width);
+    DBG dist_lognorm_print(&counts_prior,stderr);
+
+
+    data=prob_data_simple_ba_new(model,
+                                 obs_list,
+
+                                 &cen1_prior,
+                                 &cen2_prior,
+
+                                 &g_prior,
+
+                                 &T_prior,
+                                 &counts_prior);
+
+    return data;
 }
+
+
+long load_data(struct PyProbObject* self, PyObject *prior_dict)
+{
+    long status=1;
+    switch (self->type) {
+        case PROB_BA13:
+            self->data = (void *) load_ba_data(self->obs_list,
+                                               self->model,
+                                               prior_dict);
+            break;
+        default:
+            PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
+    }
+
+    if (!self->data) {
+        status=0;
+    }
+    return status;
+}
+
+static void cleanup(struct PyProbObject* self)
+{
+    if (self) {
+        if (self->obs_list) {
+            self->obs_list = obs_list_free(self->obs_list);
+        }
+        if (self->data) {
+            switch (self->type) {
+                case PROB_BA13:
+                    self->data = prob_data_simple_ba_free(self->data);
+                    break;
+
+                default:
+                    PyErr_Format(PyExc_ValueError,
+                            "Invalid PROB_TYPE in dealloc: %d; memory leak is likely",
+                            self->type);
+            }
+        }
+    }
+}
+
 
 static int
 PyProbObject_init(struct PyProbObject* self, PyObject *args)
 {
 
     int prob_type=0, model=0;
+    int ok=1;
 
     PyObject *im_list=NULL;
     PyObject *wt_list=NULL;
@@ -52,9 +309,8 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
 
     PyObject *prior_dict=NULL;
 
-
     if (!PyArg_ParseTuple(args,
-                          (char*)"OOOOii",
+                          (char*)"OOOOiiO",
                           &im_list,
                           &wt_list,
                           &jacob_list,
@@ -65,44 +321,35 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
         return -1;
     }
 
-    if (prob_type != PROB_BA13) {
-        return -1;
-    }
 
     self->type=prob_type;
-    switch (self->type) {
-        case PROB_BA13:
-            self->data=NULL;
-            /*
-            self->data = prob_data_simple_ba_new(model,
-                                                 obs_list,
-                                                 cen1_prior,
-                                                 cen2_prior,
-                                                 g_prior,
-                                                 T_prior,
-                                                 counts_prior);
-                                                 */
-            break;
-        default:
-            PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", prob_type);
-            return -1;
+    self->model=model;
+    self->obs_list = load_obs_list(im_list,
+                                   wt_list,
+                                   jacob_list,
+                                   psf_gmix_list);
+    if (!self->obs_list) {
+        ok=0;
+        goto _prob_obj_init_bail;
+    }
+
+    if ( !(ok=load_data(self, prior_dict)) ) {
+        goto _prob_obj_init_bail;
+    }
+
+_prob_obj_init_bail:
+    if (!ok) {
+        cleanup(self);
+        return -1;
     }
     return 0;
 }
 
+
 static void
 PyProbObject_dealloc(struct PyProbObject* self)
 {
-    switch (self->type) {
-        case PROB_BA13:
-            self->data = prob_data_simple_ba_free(self->data);
-            break;
-
-        default:
-            PyErr_Format(PyExc_ValueError,
-                "Invalid PROB_TYPE in dealloc: %d; memory leak is likely",
-                self->type);
-    }
+    cleanup(self);
 
 #if PY_MAJOR_VERSION >= 3
     // introduced in python 2.6
@@ -125,7 +372,68 @@ static PyObject *PyProbObject_get_prob_type(struct PyProbObject* self)
 }
 
 
+static void do_calc(struct PyProbObject* self,
+                    double *pars, long npars,
+                    double *s2n_numer, double *s2n_denom,
+                    double *lnprob, long *flags)
+{
+    switch (self->type) {
+        case PROB_BA13:
+            prob_simple_ba_calc(self->data,
+                                pars, npars,
+                                s2n_numer, s2n_denom,
+                                lnprob, flags);
+
+            if (*flags != 0) {
+                PyErr_Format(PyExc_ValueError, "prob internal error, flags: %ld", *flags);
+            }
+            break;
+        default:
+            *flags=GMIX_WRONG_PROB_TYPE;
+            PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
+    }
+}
+
+static PyObject *
+PyProbObject_get_lnprob(struct PyProbObject* self, PyObject *args)
+{
+    PyObject* pars_obj=NULL;
+    double *pars=NULL;
+    double lnprob=0, s2n_numer=0, s2n_denom=0;
+    long npars=0;
+    long flags=0;
+    PyObject *tup=NULL;
+
+    if (!PyArg_ParseTuple(args, (char*)"O", &pars_obj)) {
+        return NULL;
+    }
+
+    if (!check_numpy_array(pars_obj,"pars")) {
+        return NULL;
+    }
+
+    npars=PyArray_SIZE(pars_obj);
+    pars=PyArray_DATA(pars_obj);
+
+    do_calc(self, pars, npars, &s2n_numer, &s2n_denom,
+            &lnprob, &flags);
+
+    // we only set flags if something catastrophic happened
+    if (flags != 0) {
+        return NULL;
+    }
+
+    tup = PyTuple_New(4);
+    PyTuple_SetItem(tup, 0, PyFloat_FromDouble(lnprob));
+    PyTuple_SetItem(tup, 1, PyFloat_FromDouble(s2n_numer));
+    PyTuple_SetItem(tup, 2, PyFloat_FromDouble(s2n_denom));
+    PyTuple_SetItem(tup, 3, PyInt_FromLong(flags));
+
+    return tup;
+}
+
 static PyMethodDef PyProbObject_methods[] = {
+    {"get_lnprob", (PyCFunction)PyProbObject_get_lnprob,  METH_VARARGS,  "get the loglike for the input pars"},
     {"get_prob_type", (PyCFunction)PyProbObject_get_prob_type, METH_NOARGS, "Get the prob type"},
     {NULL}  /* Sentinel */
 };
@@ -230,6 +538,6 @@ init_prob(void)
 #endif
 
     Py_INCREF(&PyProbObjectType);
-    PyModule_AddObject(m, "ProbObject", (PyObject *)&PyProbObjectType);
+    PyModule_AddObject(m, "Prob", (PyObject *)&PyProbObjectType);
     import_array();
 }

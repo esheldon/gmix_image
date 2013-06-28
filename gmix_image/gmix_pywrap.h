@@ -1,5 +1,5 @@
-#ifndef _gmix_pywrap_header_guard
-#define _gmix_pywrap_header_guard
+#ifndef _GMIX_PYWRAP_HEADER_GUARD
+#define _GMIX_PYWRAP_HEADER_GUARD
 
 #include "gmix.h"
 

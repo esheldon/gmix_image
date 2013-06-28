@@ -1875,4 +1875,74 @@ class MixMCPSF:
             print
 
 
+def test_cprob():
+    from . import prob
+    import fimage
+    import images
 
+    pars=numpy.array( [15,15,0.2,0.1,16,100.0] )
+
+    obj0=GMix(pars,type='exp')
+
+    psf=GMix([15,15, 0.0, 0.0, 4.0, 1.0],type='coellip')
+
+    obj=obj0.convolve(psf)
+
+    Ttot = obj.get_T()
+    sigma_tot = numpy.sqrt(Ttot/2)
+
+    dims=[5*2*sigma_tot]*2
+
+    im0=gmix2image(obj, dims, nsub=16)
+    
+    s2n_true=100.0
+    im,skysig=fimage.noise.add_noise_matched(im0, s2n_true)
+
+    #images.multiview(im)
+    #stop
+
+    wt=im.copy()
+    wt[:,:] = 1.0/skysig**2
+
+    jacob={'row0':0,
+           'col0':0,
+           'dudrow':1.0,
+           'dudcol':0.0,
+           'dvdrow':0.0,
+           'dvdcol':1.0}
+
+
+    priors={'cen1_mean':15,
+            'cen1_width':0.1,
+            'cen2_mean':15.6,
+            'cen2_width':0.1,
+            'g_width':0.3,
+            'T_mean':16.0,
+            'T_width':16.0*0.3,
+            'counts_mean':100.0,
+            'counts_width':100.0*0.3}
+
+    im_list=[im]
+    wt_list=[wt]
+    jacob_list=[jacob]
+    psf_list=[psf]
+
+    prob_type='ba13'
+    model='exp'
+
+    n=1
+    for i in xrange(n):
+        p = prob.Prob(im_list,
+                      wt_list,
+                      jacob_list,
+                      psf_list,
+                      prob_type,
+                      model,
+                      priors)
+
+        lnprob,s2n_numer,s2n_denom,flags=p.get_lnprob(pars) 
+        s2n=s2n_numer/sqrt(s2n_denom)
+        print 'lnprob:',lnprob
+        print 's2n:   ',s2n
+        print 'flags: ',flags
+        del p

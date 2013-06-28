@@ -10,6 +10,7 @@ from sys import stderr
 from . import gmix_em
 from . import gmix_fit
 from . import gmix_isamp
+from . import prob
 from . import util
 
 from . import render

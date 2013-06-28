@@ -28,12 +28,14 @@ gmix_sources=["gmix_image/gmix_pywrap.c",
 gmix_ext=Extension("gmix_image._gmix", gmix_sources)
 
 prob_sources=["gmix_image/prob_pywrap.c",
+              "gmix_image/prob.c",
+              "gmix_image/dist.c",
               "gmix_image/gmix.c",
               "gmix_image/convert.c",
               "gmix_image/image.c",
               "gmix_image/jacobian.c",
               "gmix_image/render.c",
-              "gmix_image/observation.c",
+              "gmix_image/obs.c",
               "gmix_image/py_helpers.c",
              ]
 prob_ext=Extension("gmix_image._prob", prob_sources)

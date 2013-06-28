@@ -7,6 +7,8 @@
 
 #define GMIX_ERROR_MODEL 0x8
 
+#define GMIX_WRONG_PROB_TYPE 0x10
+
 #define wlog(...) fprintf(stderr, __VA_ARGS__)
 
 // when arg is too small or negative, return this

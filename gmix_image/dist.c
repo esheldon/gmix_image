@@ -1,7 +1,15 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 #include "dist.h"
+#include "defs.h"
 
+void dist_gauss_fill(struct dist_gauss *self, double mean, double sigma)
+{
+    self->mean=mean;
+    self->sigma=sigma;
+    self->ivar=1./(sigma*sigma);
+}
 struct dist_gauss *dist_gauss_new(double mean, double sigma)
 {
     struct dist_gauss *self=calloc(1, sizeof(struct dist_gauss));
@@ -10,10 +18,7 @@ struct dist_gauss *dist_gauss_new(double mean, double sigma)
         exit(1);
     }
 
-    self->mean=mean;
-    self->sigma=sigma;
-    self->ivar=1./(sigma*sigma);
-
+    dist_gauss_fill(self, mean, sigma);
     return self;
 }
 double dist_gauss_lnprob(const struct dist_gauss *self, double x)
@@ -28,6 +33,23 @@ double dist_gauss_lnprob(const struct dist_gauss *self, double x)
     lnp *= (-0.5);
     return lnp;
 }
+void dist_gauss_print(const struct dist_gauss *self, FILE *stream)
+{
+    fprintf(stream,"guass dist\n");
+    fprintf(stream,"    mean: %g\n", self->mean);
+    fprintf(stream,"    sigma: %g\n", self->sigma);
+}
+
+
+
+void dist_lognorm_fill(struct dist_lognorm *self, double mean, double sigma)
+{
+    self->mean=mean;
+    self->sigma=sigma;
+
+    self->logmean = log(mean) - 0.5*log( 1 + sigma*sigma/(mean*mean) );
+    self->logivar = 1./(  log(1 + sigma*sigma/(mean*mean) ) );
+}
 
 struct dist_lognorm *dist_lognorm_new(double mean, double sigma)
 {
@@ -37,17 +59,12 @@ struct dist_lognorm *dist_lognorm_new(double mean, double sigma)
         exit(1);
     }
 
-    self->mean=mean;
-    self->sigma=sigma;
-
-    self->logmean = log(mean) - 0.5*log( 1 + sigma*sigma/(mean*mean) );
-    self->logivar = 1./(  log(1 + sigma*sigma/(mean*mean) ) );
-
+    dist_lognorm_fill(self, mean, sigma);
     return self;
 }
 double dist_lognorm_lnprob(const struct dist_lognorm *self, double x)
 {
-    double lnp=0.0;
+    double lnp=0.0, logx=0;
 
     //chi2 = self.logivar*(logx-self.logmean)**2;
     //lnprob = - 0.5*chi2 - logx;
@@ -55,7 +72,8 @@ double dist_lognorm_lnprob(const struct dist_lognorm *self, double x)
     if (x < LOG_MINARG) {
         lnp = LOG_LOWVAL;
     } else {
-        lnp = log(x);
+        logx=log(x);
+        lnp = logx;
 
         lnp -= self->logmean;
         lnp *= lnp;
@@ -66,6 +84,22 @@ double dist_lognorm_lnprob(const struct dist_lognorm *self, double x)
     }
     return lnp;
 }
+void dist_lognorm_print(const struct dist_lognorm *self, FILE *stream)
+{
+    fprintf(stream,"lognorm dist\n");
+    fprintf(stream,"    mean: %g\n", self->mean);
+    fprintf(stream,"    sigma: %g\n", self->sigma);
+}
+
+
+
+
+void dist_g_ba_fill(struct dist_g_ba *self, double sigma)
+{
+    self->sigma=sigma;
+    self->ivar=1./(sigma*sigma);
+}
+
 
 struct dist_g_ba *dist_g_ba_new(double sigma)
 {
@@ -75,25 +109,22 @@ struct dist_g_ba *dist_g_ba_new(double sigma)
         exit(1);
     }
 
-    self->sigma=sigma;
-    self->ivar=1./(sigma*sigma);
-
+    dist_g_ba_fill(self, sigma);
     return self;
 }
 
 double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
 {
-    double lnp=0, g=0, g2=0, tmp=0;
+    double lnp=0, gsq=0, tmp=0;
 
-    g=sqrt(g1**2 + g2**2);
-    g2=g*g;
+    gsq = g1*g1 + g2*g2;
 
-    tmp = 1-g2;
+    tmp = 1-gsq;
     if ( tmp < LOG_MINARG ) {
         lnp = LOG_LOWVAL;
     } else {
 
-        //p= (1-g2)**2*exp(-0.5 * g2 * ivar)
+        //p= (1-g**2)**2*exp(-0.5 * g**2 * ivar)
         // log(p) = 2*log(1-g^2) - 0.5*g^2 * ivar
 
         // should do a fast math version; I suspect this
@@ -103,10 +134,15 @@ double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
         lnp *= 2;
         
         tmp = 0.5;
-        tmp *= g2;
+        tmp *= gsq;
         tmp *= self->ivar;
         lnp -= tmp;
     }
     return lnp;
 
+}
+void dist_g_ba_print(const struct dist_g_ba *self, FILE *stream)
+{
+    fprintf(stream,"g dist BA13\n");
+    fprintf(stream,"    sigma: %g\n", self->sigma);
 }

@@ -108,6 +108,9 @@ struct image *_image_new(size_t nrows, size_t ncols, int alloc_data);
 struct image* image_from_array(double* data, size_t nrows, size_t ncols);
 struct image *image_read_text(const char* filename);
 
+int image_copy(const struct image *image, struct image *imout);
+struct image *image_newcopy(const struct image *image);
+
 struct image *image_free(struct image *self);
 
 // note the bounds will be trimmed to within the image

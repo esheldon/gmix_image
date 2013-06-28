@@ -54,3 +54,14 @@ void jacobian_set_identity(struct jacobian *self)
     self->dvdcol=1;
 }
 
+
+void jacobian_print(const struct jacobian *self, FILE *stream)
+{
+    fprintf(stream,"jacobian\n");
+    fprintf(stream,"    row0: %g\n", self->row0);
+    fprintf(stream,"    col0: %g\n", self->col0);
+    fprintf(stream,"    dudrow: %g\n", self->dudrow);
+    fprintf(stream,"    dudcol: %g\n", self->dudcol);
+    fprintf(stream,"    dvdrow: %g\n", self->dvdrow);
+    fprintf(stream,"    dvdcol: %g\n", self->dvdcol);
+}

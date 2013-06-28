@@ -88,6 +88,7 @@ void gauss_set(struct gauss* self,
                double icc);
 
 long gmix_copy(const struct gmix *self, struct gmix* dest);
+struct gmix *gmix_newcopy(const struct gmix *self);
 void gmix_print(const struct gmix *self, FILE* fptr);
 
 // calculate the weighted sum of the moments

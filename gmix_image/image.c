@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "image.h"
 #include "bound.h"
 #include "defs.h"
@@ -63,6 +64,49 @@ struct image *_image_new(size_t nrows, size_t ncols, int alloc_data)
     return self;
 }
 
+int image_copy(const struct image *image, struct image *imout)
+{
+    size_t nrows=0, ncols=0, row=0;
+    double *rowdata=NULL, *rowdata_out;
+
+    nrows=IM_NROWS(image);
+    ncols=IM_NCOLS(image);
+    if (nrows != IM_NROWS(imout) 
+            || ncols != IM_NCOLS(imout)) {
+        return 0;
+    }
+    // could be masked, so do a loop
+    for (row=0; row<nrows; row++) {
+        rowdata=IM_ROW(image, row);
+        rowdata_out=IM_ROW(imout, row);
+
+        memcpy(rowdata_out, rowdata, ncols*sizeof(double));
+    }
+    return 1;
+}
+struct image *image_newcopy(const struct image *image)
+{
+    struct image *imout=NULL;
+    size_t nrows=0, ncols=0, row=0;
+    const double *rowdata=NULL;
+    double *rowdata_out=NULL;
+
+    nrows=IM_NROWS(image);
+    ncols=IM_NCOLS(image);
+    imout=image_new(nrows,ncols);
+
+    // could be masked, so do a loop
+    for (row=0; row<nrows; row++) {
+        rowdata=IM_ROW(image, row);
+        rowdata_out=IM_ROW(imout, row);
+
+        memcpy(rowdata_out, rowdata, ncols*sizeof(double));
+    }
+
+    imout->sky=image->sky;
+
+    return imout;
+}
 
 
 struct image *image_free(struct image *self)

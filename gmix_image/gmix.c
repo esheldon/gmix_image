@@ -258,6 +258,16 @@ long gmix_copy(const struct gmix *self, struct gmix* dest)
     memcpy(dest->data, self->data, self->size*sizeof(struct gauss));
     return 1;
 }
+struct gmix *gmix_newcopy(const struct gmix *self)
+{
+    struct gmix *dest=NULL;
+
+    dest=gmix_new(self->size);
+    memcpy(dest->data, self->data, self->size*sizeof(struct gauss));
+
+    return dest;
+}
+
 
 void gmix_print(const struct gmix *self, FILE* fptr)
 {

@@ -328,6 +328,8 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
 
     (*s2n_numer)=0;
     (*s2n_denom)=0;
+    (*loglike)=0;
+
     if (!gmix_verify(gmix)) {
         *loglike=-9999.9e9;
         flags |= GMIX_ERROR_NEGATIVE_DET;
@@ -335,7 +337,6 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
     }
 
     if (ivar < 0) ivar=0.0;
-    (*loglike)=0;
     for (row=0; row<nrows; row++) {
         u=JACOB_PIX2U(jacob, row, 0);
         v=JACOB_PIX2V(jacob, row, 0);
@@ -350,6 +351,7 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
                 model_val=GMIX_EVAL(gmix, u, v);
                 pixval=IM_GET(image, row, col);
                 diff = model_val - pixval;
+
                 (*loglike) += diff*diff*ivar;
 
                 (*s2n_numer) += pixval*model_val*ivar;

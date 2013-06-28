@@ -37,4 +37,5 @@ void jacobian_set(struct jacobian *self,
 
 void jacobian_set_identity(struct jacobian *self);
 
+void jacobian_print(const struct jacobian *self, FILE *stream);
 #endif
