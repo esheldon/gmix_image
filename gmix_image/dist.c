@@ -86,25 +86,25 @@ double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
     double lnp=0, g=0, g2=0, tmp=0;
 
     g=sqrt(g1**2 + g2**2);
-
-    if (g >= 1) {
-        lnp = LOG_LOWVAL;
-    }
-
     g2=g*g;
 
-    //p= (1-g2)**2*exp(-0.5 * g2 * ivar)
-    // log(p) = 2*log(1-g^2) - 0.5*g^2 * ivar
+    tmp = 1-g2;
+    if ( tmp < LOG_MINARG) {
+        lnp = LOG_LOWVAL;
+    } else {
 
-    lnp = log( 1 - g2 );
+        //p= (1-g2)**2*exp(-0.5 * g2 * ivar)
+        // log(p) = 2*log(1-g^2) - 0.5*g^2 * ivar
 
-    lnp *= 2;
-    
-    tmp = 0.5;
-    tmp *= g2;
-    tmp *= self->ivar;
-    lnp -= tmp;
+        lnp = log(tmp);
 
+        lnp *= 2;
+        
+        tmp = 0.5;
+        tmp *= g2;
+        tmp *= self->ivar;
+        lnp -= tmp;
+    }
     return lnp;
 
 }
