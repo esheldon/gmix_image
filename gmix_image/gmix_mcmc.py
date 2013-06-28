@@ -1930,8 +1930,10 @@ def test_cprob():
     prob_type='ba13'
     model='exp'
 
-    n=1
+    n=10
     for i in xrange(n):
+
+
         p = prob.Prob(im_list,
                       wt_list,
                       jacob_list,
@@ -1940,9 +1942,17 @@ def test_cprob():
                       model,
                       priors)
 
-        lnprob,s2n_numer,s2n_denom,flags=p.get_lnprob(pars) 
+        tpars = pars.copy()
+        tpars[0:2] += 0.1*srandu()
+        tpars[2:4] += 0.1*srandu()
+        tpars[4] += tpars[4]*(1.0 + 0.1*srandu())
+        tpars[5] += tpars[5]*(1.0 + 0.1*srandu())
+
+        lnprob,s2n_numer,s2n_denom,flags=p.get_lnprob(tpars) 
         s2n=s2n_numer/sqrt(s2n_denom)
-        print 'lnprob:',lnprob
-        print 's2n:   ',s2n
-        print 'flags: ',flags
+        print i
+        print_pars(tpars,front='    pars:')
+        print '    lnprob:',lnprob
+        print '    s2n:   ',s2n
+        print '    flags: ',flags
         del p
