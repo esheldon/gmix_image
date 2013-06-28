@@ -1896,13 +1896,16 @@ def test_cprob():
     im0=gmix2image(obj, dims, nsub=16)
     
     s2n_true=100.0
-    im,skysig=fimage.noise.add_noise_matched(im0, s2n_true)
+    im1,skysig1=fimage.noise.add_noise_matched(im0, s2n_true)
+    im2,skysig2=fimage.noise.add_noise_matched(im0, s2n_true)
 
     #images.multiview(im)
     #stop
 
-    wt=im.copy()
-    wt[:,:] = 1.0/skysig**2
+    wt1=im1.copy()
+    wt2=im2.copy()
+    wt1[:,:] = 1.0/skysig1**2
+    wt2[:,:] = 1.0/skysig2**2
 
     jacob={'row0':0,
            'col0':0,
@@ -1922,10 +1925,10 @@ def test_cprob():
             'counts_mean':100.0,
             'counts_width':100.0*0.3}
 
-    im_list=[im]
-    wt_list=[wt]
-    jacob_list=[jacob]
-    psf_list=[psf]
+    im_list=[im1,im2]
+    wt_list=[wt1,wt2]
+    jacob_list=[jacob]*2
+    psf_list=[psf]*2
 
     prob_type='ba13'
     model='exp'
