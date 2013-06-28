@@ -13,6 +13,8 @@ struct dist_gauss *dist_gauss_new(double mean, double sigma)
     self->mean=mean;
     self->sigma=sigma;
     self->ivar=1./(sigma*sigma);
+
+    return self;
 }
 double dist_gauss_lnprob(const struct dist_gauss *self, double x)
 {
@@ -41,6 +43,7 @@ struct dist_lognorm *dist_lognorm_new(double mean, double sigma)
     self->logmean = log(mean) - 0.5*log( 1 + sigma*sigma/(mean*mean) );
     self->logivar = 1./(  log(1 + sigma*sigma/(mean*mean) ) );
 
+    return self;
 }
 double dist_lognorm_lnprob(const struct dist_lognorm *self, double x)
 {
@@ -62,4 +65,46 @@ double dist_lognorm_lnprob(const struct dist_lognorm *self, double x)
         lnp -= logx;
     }
     return lnp;
+}
+
+struct dist_g_ba *dist_g_ba_new(double sigma)
+{
+    struct dist_g_ba *self=calloc(1, sizeof(struct dist_g_ba));
+    if (!self) {
+        fprintf(stderr,"Could not allocate struct dist_g_ba\n");
+        exit(1);
+    }
+
+    self->sigma=sigma;
+    self->ivar=1./(sigma*sigma);
+
+    return self;
+}
+
+double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
+{
+    double lnp=0, g=0, g2=0, tmp=0;
+
+    g=sqrt(g1**2 + g2**2);
+
+    if (g >= 1) {
+        lnp = LOG_LOWVAL;
+    }
+
+    g2=g*g;
+
+    //p= (1-g2)**2*exp(-0.5 * g2 * ivar)
+    // log(p) = 2*log(1-g^2) - 0.5*g^2 * ivar
+
+    lnp = log( 1 - g2 );
+
+    lnp *= 2;
+    
+    tmp = 0.5;
+    tmp *= g2;
+    tmp *= self->ivar;
+    lnp -= tmp;
+
+    return lnp;
+
 }

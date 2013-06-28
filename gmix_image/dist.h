@@ -26,6 +26,7 @@ struct dist_lognorm {
 
 struct dist_g_ba {
     double sigma;
+    double ivar;
 };
 
 
@@ -35,7 +36,8 @@ double dist_gauss_lnprob(const struct dist_gauss *self, double x);
 struct dist_lognorm *dist_lognorm_new(double mean, double sigma);
 double dist_lognorm_lnprob(const struct dist_gauss *self, double x);
 
-double dist_g_ba_lnprob(const struct dist_gauss *self, double g1, double g2);
+struct dist_g_ba *dist_g_ba_new(double sigma);
+double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2);
 
 #endif
 
