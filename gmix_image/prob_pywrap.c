@@ -156,7 +156,7 @@ _load_obs_list_bail:
 static
 struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
                                          enum gmix_model model,
-                                         PyObject *prior_dict)
+                                         PyObject *config)
 {
     PyObject *tmp=NULL;
 
@@ -168,21 +168,21 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     double mean=0, width=0;
     long status=0;
 
-    if (!PyDict_Check(prior_dict)) {
+    if (!PyDict_Check(config)) {
         PyErr_Format(PyExc_TypeError, "prior is not a dict");
         return NULL;
     }
 
     // borrowed ref
     // cen1
-    tmp=PyDict_GetItemString(prior_dict, "cen1_mean");
+    tmp=PyDict_GetItemString(config, "cen1_mean");
     mean = PyFloat_AsDouble(tmp);
 
-    mean = pyhelp_dict_get_double(prior_dict,"cen1_mean",&status);
+    mean = pyhelp_dict_get_double(config,"cen1_mean",&status);
     if (status) {
         return NULL;
     }
-    width = pyhelp_dict_get_double(prior_dict,"cen1_width",&status);
+    width = pyhelp_dict_get_double(config,"cen1_width",&status);
     if (status) {
         return NULL;
     }
@@ -190,11 +190,11 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     dist_gauss_fill(&cen1_prior, mean, width);
     DBG dist_gauss_print(&cen1_prior,stderr);
 
-    mean = pyhelp_dict_get_double(prior_dict,"cen2_mean",&status);
+    mean = pyhelp_dict_get_double(config,"cen2_mean",&status);
     if (status) {
         return NULL;
     }
-    width = pyhelp_dict_get_double(prior_dict,"cen2_width",&status);
+    width = pyhelp_dict_get_double(config,"cen2_width",&status);
     if (status) {
         return NULL;
     }
@@ -204,7 +204,7 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
 
 
     // g
-    width = pyhelp_dict_get_double(prior_dict,"g_width",&status);
+    width = pyhelp_dict_get_double(config,"g_width",&status);
     if (status) {
         return NULL;
     }
@@ -213,11 +213,11 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     DBG dist_g_ba_print(&g_prior,stderr);
 
     // T
-    mean = pyhelp_dict_get_double(prior_dict,"T_mean",&status);
+    mean = pyhelp_dict_get_double(config,"T_mean",&status);
     if (status) {
         return NULL;
     }
-    width = pyhelp_dict_get_double(prior_dict,"T_width",&status);
+    width = pyhelp_dict_get_double(config,"T_width",&status);
     if (status) {
         return NULL;
     }
@@ -226,11 +226,11 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     DBG dist_lognorm_print(&T_prior,stderr);
 
     // counts
-    mean = pyhelp_dict_get_double(prior_dict,"counts_mean",&status);
+    mean = pyhelp_dict_get_double(config,"counts_mean",&status);
     if (status) {
         return NULL;
     }
-    width = pyhelp_dict_get_double(prior_dict,"counts_width",&status);
+    width = pyhelp_dict_get_double(config,"counts_width",&status);
     if (status) {
         return NULL;
     }
@@ -254,14 +254,14 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
 }
 
 
-long load_data(struct PyProbObject* self, PyObject *prior_dict)
+long load_data(struct PyProbObject* self, PyObject *config)
 {
     long status=1;
     switch (self->type) {
         case PROB_BA13:
             self->data = (void *) load_ba_data(self->obs_list,
                                                self->model,
-                                               prior_dict);
+                                               config);
             break;
         default:
             PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
@@ -294,36 +294,53 @@ static void cleanup(struct PyProbObject* self)
     }
 }
 
+static long set_prob_and_model(struct PyProbObject* self, PyObject *config)
+{
+    long status=0;
+
+    if (!PyDict_Check(config)) {
+        PyErr_Format(PyExc_TypeError, "config must be a dict");
+        return 0;
+    }
+    self->type=pyhelp_dict_get_long(config, "prob_type", &status);
+    if (status) {
+        return 0;
+    }
+    self->model=pyhelp_dict_get_long(config, "model", &status);
+    if (status) {
+        return 0;
+    }
+
+    return 1;
+}
 
 static int
 PyProbObject_init(struct PyProbObject* self, PyObject *args)
 {
 
-    int prob_type=0, model=0;
-    int ok=1;
+    long ok=1;
 
     PyObject *im_list=NULL;
     PyObject *wt_list=NULL;
     PyObject *jacob_list=NULL;
     PyObject *psf_gmix_list=NULL;
 
-    PyObject *prior_dict=NULL;
+    PyObject *config=NULL;
 
     if (!PyArg_ParseTuple(args,
-                          (char*)"OOOOiiO",
+                          (char*)"OOOOO",
                           &im_list,
                           &wt_list,
                           &jacob_list,
                           &psf_gmix_list,
-                          &prob_type,
-                          &model,
-                          &prior_dict) ) {
+                          &config) ) {
         return -1;
     }
 
 
-    self->type=prob_type;
-    self->model=model;
+    if ( !(ok=set_prob_and_model(self, config)) ) {
+        goto _prob_obj_init_bail;
+    }
     self->obs_list = load_obs_list(im_list,
                                    wt_list,
                                    jacob_list,
@@ -333,7 +350,7 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
         goto _prob_obj_init_bail;
     }
 
-    if ( !(ok=load_data(self, prior_dict)) ) {
+    if ( !(ok=load_data(self, config)) ) {
         goto _prob_obj_init_bail;
     }
 
@@ -431,6 +448,79 @@ PyProbObject_get_lnprob(struct PyProbObject* self, PyObject *args)
 
     return tup;
 }
+
+static void eval_g_prior(struct PyProbObject* self,
+                         double *g1,
+                         double *g2,
+                         double *prob,
+                         long n,
+                         long *status)
+{
+    long i=0;
+    (*status)=0;
+    switch (self->type) {
+        case PROB_BA13:
+            {
+                struct prob_data_simple_ba *data=self->data;
+                for (i=0; i<n; i++) {
+                    prob[i] = dist_g_ba_prob(&data->g_prior, g1[i], g2[i]);
+                } 
+            }
+            break;
+        default:
+            (*status)=1;
+            PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
+    }
+}
+
+/*
+   Evalutate just the gprior at the indicated g1,g2 values
+*/
+static PyObject *
+PyProbObject_get_g_prior(struct PyProbObject* self, PyObject *args)
+{
+    PyObject* g1_obj=NULL;
+    PyObject* g2_obj=NULL;
+    PyObject* prob_obj=NULL;
+
+    double *g1data=NULL, *g2data=NULL, *prob_data=NULL;
+    npy_intp ng=0, dims[1];
+    long status=0;
+
+    if (!PyArg_ParseTuple(args, (char*)"OO", &g1_obj, &g2_obj)) {
+        return NULL;
+    }
+
+    if (!check_numpy_array(g1_obj,"g1")) {
+        return NULL;
+    }
+    if (!check_numpy_array(g2_obj,"g2")) {
+        return NULL;
+    }
+
+    ng=PyArray_SIZE(g1_obj);
+    if (PyArray_SIZE(g2_obj) != ng) {
+        PyErr_Format(PyExc_ValueError, "g1 and g2 must be same size");
+        return NULL;
+    }
+
+    g1data=PyArray_DATA(g1_obj);
+    g2data=PyArray_DATA(g2_obj);
+
+    dims[0] = ng;
+    prob_obj =PyArray_ZEROS(1, dims, NPY_FLOAT64, 0);
+    prob_data=PyArray_DATA(prob_obj);
+
+    eval_g_prior(self, g1data, g2data, prob_data, ng, &status);
+    if (status) {
+        Py_XDECREF(prob_obj);
+        return NULL;
+    }
+
+    return prob_obj;
+}
+
+
 
 static PyMethodDef PyProbObject_methods[] = {
     {"get_lnprob", (PyCFunction)PyProbObject_get_lnprob,  METH_VARARGS,  "get the loglike for the input pars"},

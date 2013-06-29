@@ -24,6 +24,8 @@ from .gmix import GMix
 from . import render
 from .render import gmix2image
 
+from . import prob
+
 
 LOWVAL=-9999.0e47
 
@@ -51,9 +53,6 @@ class MixMCSimple:
     def __init__(self, image, weight, psf, gprior, T_guess, counts_guess, cen_guess, model, **keys):
         """
         mcmc sampling of posterior, simple model.
-
-        Two modes of operation - send a center guess and admom will
-        be run internally, or send ares=, with wrow,wcol,Irr,Irc,Icc
 
         parameters
         ----------
@@ -804,6 +803,62 @@ class MixMCSimple:
             if key=='q':
                 stop
             print
+
+class MixMCC(MixMCSimple):
+    """
+    For now requiring gprior also sent
+    """
+    def __init__(self, im_list, wt_list, psf_list, guess, config, **keys):
+        self.npars=6
+        self.keys=keys
+
+        # temporary
+        self.gprior=keys['gprior']
+        self.when_prior="during"
+
+        self.im_list=_get_as_list(im_list)
+        self.nimage=len(self.im_list)
+
+        self._set_wt_list(wt_list)
+        self._set_jacob_list(**keys)
+        self.psf_list=_get_as_list(psf_list)
+
+        _check_lists(self.im_list, self.wt_list, self.psf_list,self.jacob_list)
+
+        self.guess=numpy.array(guess)
+        self.config=config
+        self.model=config['model']
+
+        self.nwalkers = guess.shape[0]
+
+        if self.guess.shape[1] != self.npars:
+            raise ValueError("guess must be length %d" % self.npars)
+
+        self.burnin=config['burnin']
+        self.nstep=config['nstep']
+
+        self.imsize=self.im_list[0].size
+        self.totpix=self.nimage*self.imsize
+        self.mca_a=config['mca_a']
+        self.doiter = config['iter']
+
+        self.make_plots=config['make_plots']
+        self.do_pqr=config['do_pqr']
+
+        self.prob_obj = prob.Prob(self.im_list,
+                                  self.wt_list,
+                                  self.jacob_list,
+                                  self.psf_list,
+                                  self.config)
+
+        self._go()
+
+    def _get_guess(self):
+        return self.guess
+
+    def _calc_lnprob(self, pars):
+        lnprob,s2n_numer,s2n_denom,flags = self.prob_obj.get_lnprob(pars)
+        return lnprob
 
 class MixMCMatch(MixMCSimple):
     def __init__(self, image, weight, psf, gmix0, **keys):
@@ -1915,7 +1970,9 @@ def test_cprob():
            'dvdcol':1.0}
 
 
-    priors={'cen1_mean':15,
+    config={'model':'exp',
+            'prob_type':'ba13',
+            'cen1_mean':15,
             'cen1_width':0.1,
             'cen2_mean':15.6,
             'cen2_width':0.1,
@@ -1930,9 +1987,6 @@ def test_cprob():
     jacob_list=[jacob]*2
     psf_list=[psf]*2
 
-    prob_type='ba13'
-    model='exp'
-
     n=10
     for i in xrange(n):
 
@@ -1941,9 +1995,7 @@ def test_cprob():
                       wt_list,
                       jacob_list,
                       psf_list,
-                      prob_type,
-                      model,
-                      priors)
+                      config)
 
         tpars = pars.copy()
         tpars[0:2] += 0.1*srandu()

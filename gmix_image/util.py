@@ -423,7 +423,7 @@ def randomize_e1e2(e1start,e2start, width=0.1):
         e1rand = e1start*(1 + 2*width*srandu())
         e2rand = e2start*(1 + 2*width*srandu())
         etot = sqrt(e1rand**2 + e2rand**2)
-        if etot > 0.95:
+        if etot > 0.9999:
             e1rand,e2rand=randomize_e1e2(None,None)
 
     return e1rand, e2rand

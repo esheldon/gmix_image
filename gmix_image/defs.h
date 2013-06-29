@@ -1,7 +1,10 @@
 #ifndef _GMIX_DEFINITIONS_H
 #define _GMIX_DEFINITIONS_H
 
+// these are the same
 #define GMIX_ERROR_NEGATIVE_DET 0x1
+#define GMIX_ERROR_G_RANGE 0x1
+
 #define GMIX_ERROR_MAXIT 0x2
 #define GMIX_ERROR_NEGATIVE_DET_COCENTER 0x4
 

@@ -141,6 +141,30 @@ double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2)
     return lnp;
 
 }
+
+// p= (1-g**2)**2*exp(-0.5 * g**2 * ivar)
+double dist_g_ba_prob(const struct dist_g_ba *self, double g1, double g2)
+{
+    double prob=0, gsq=0, chi2=0, tmp=0;
+
+    gsq = g1*g1 + g2*g2;
+
+    tmp = 1-gsq;
+    if (tmp > 0) {
+        tmp *= tmp;
+
+        chi2 = gsq;
+        chi2 *= self->ivar;
+
+        prob = exp(-0.5*chi2);
+
+        prob *= tmp;
+    }
+    return prob;
+
+}
+
+
 void dist_g_ba_print(const struct dist_g_ba *self, FILE *stream)
 {
     fprintf(stream,"g dist BA13\n");

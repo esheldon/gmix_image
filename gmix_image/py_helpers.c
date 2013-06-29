@@ -37,8 +37,36 @@ double pyhelp_dict_get_double(PyObject *dict, const char *name, long *status)
         return -1;
     }
     val = PyFloat_AsDouble(tmp);
+
+    if (PyErr_Occurred()) {
+        PyErr_Format(PyExc_KeyError, "'%s' must be double (or castable)", name);
+        (*status)=1;
+        return -1;
+    }
+
     return val;
 }
+long pyhelp_dict_get_long(PyObject *dict, const char *name, long *status)
+{
+    PyObject *tmp=NULL;
+    long val=0;
+
+    // borrowed ref
+    tmp = PyDict_GetItemString(dict, name);
+    if (!tmp) {
+        PyErr_Format(PyExc_KeyError, "Key not found: '%s'", name);
+        (*status)=1;
+        return -1;
+    }
+    val = PyInt_AsLong(tmp);
+    if (PyErr_Occurred()) {
+        PyErr_Format(PyExc_KeyError, "'%s' must be integer (or castable)", name);
+        (*status)=1;
+        return -1;
+    }
+    return val;
+}
+
 
 long pyhelp_dict_to_jacob(PyObject *dict, struct jacobian *jacob)
 {

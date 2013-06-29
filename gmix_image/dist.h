@@ -43,6 +43,7 @@ void dist_lognorm_print(const struct dist_lognorm *self, FILE *stream);
 struct dist_g_ba *dist_g_ba_new(double sigma);
 void dist_g_ba_fill(struct dist_g_ba *self, double sigma);
 double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2);
+double dist_g_ba_prob(const struct dist_g_ba *self, double g1, double g2);
 void dist_g_ba_print(const struct dist_g_ba *self, FILE *stream);
 
 #endif

@@ -15,6 +15,7 @@
 struct image *pyhelp_associate_image(PyObject* image_obj);
 
 double pyhelp_dict_get_double(PyObject *dict, const char *name, long *status);
+long pyhelp_dict_get_long(PyObject *dict, const char *name, long *status);
 long pyhelp_dict_to_jacob(PyObject *dict, struct jacobian *jacob);
 
 #endif

@@ -1,6 +1,8 @@
 from sys import stderr
+import copy
+
 PROB_BA13=1
-from .gmix import as_gmix_type
+from .gmix import as_gmix_type, GMix
 from . import _prob
 
 _prob_type_dict={'ba13':PROB_BA13}
@@ -19,35 +21,28 @@ def as_prob_type(type_in):
 
 
 class Prob(_prob.Prob):
-    def __init__(self, im_list, wt_list, jacob_list, psf_list,
-                 prob_type, model,
-                 prior_dict):
-        prob_type_int, model_int = self._check_args(im_list,
-                                                    wt_list,
-                                                    jacob_list,
-                                                    psf_list, 
-                                                    prob_type,
-                                                    model,
-                                                    prior_dict)
+    def __init__(self, im_list, wt_list, jacob_list, psf_list, config):
+        self.config=copy.deepcopy(config)
 
+        self._integerify_types()
+
+        self._check_psf(psf_list)
         super(Prob,self).__init__(im_list,
                                   wt_list,
                                   jacob_list,
                                   psf_list,
-                                  prob_type_int,
-                                  model_int,
-                                  prior_dict)
+                                  self.config)
 
-    def _check_args(self,
-                    im_list,
-                    wt_list,
-                    jacob_list,
-                    psf_list,
-                    prob_type,
-                    model,
-                    prior_dict):
+    def _integerify_types(self):
+        # convert to integers
+        self.config['model']     = as_gmix_type(self.config['model'])
+        self.config['prob_type'] = as_prob_type(self.config['prob_type'])
 
-        model_int = as_gmix_type(model)
-        prob_type_int = as_prob_type(prob_type)
+    def _check_psf(self, psf_list):
+        """
+        We check types internally except for psf as gmix
+        """
+        for psf in psf_list:
+            if not isinstance(psf,GMix):
+                raise TypeError("psfs must be GMix objects")
 
-        return prob_type_int, model_int

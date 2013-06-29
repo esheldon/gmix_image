@@ -75,6 +75,7 @@ void prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
     *flags=0;
 
     if (!gmix_fill_model(self->obj0,self->model,pars,npars)) {
+        // fatal
         *flags = GMIX_ERROR_MODEL;
         goto _prob_simple_ba_calc_like_bail;
     }
@@ -146,6 +147,7 @@ void prob_simple_ba_calc(struct prob_data_simple_ba *self,
 
     (*lnprob) += loglike;
 
+    // flags are always zero from here
     prob_simple_ba_calc_priors(self, pars, npars, &priors_lnprob, flags);
     if (*flags != 0) {
         goto _prob_simple_ba_calc_bail;
