@@ -229,6 +229,7 @@ void gauss_set(struct gauss* self,
     self->dcc = self->icc/self->det;
     self->norm = 1./(M_TWO_PI*sqrt(self->det));
 
+    self->pnorm = p*self->norm;
 }
 void gmix_set_dets(struct gmix *self)
 {

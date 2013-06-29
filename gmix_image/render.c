@@ -307,6 +307,121 @@ _calculate_loglike_bail:
 // can sum over multiple images
 //s2n = s2n_numer/sqrt(s2n_denom);
 
+/*
+int calculate_loglike_wt_jacob_generic(const struct image *image, 
+                                       const struct image *weight, // either
+                                       double ivar,                // or
+                                       const struct jacobian *jacob,
+                                       const struct gmix *gmix, 
+                                       double *s2n_numer,
+                                       double *s2n_denom,
+                                       double *loglike)
+{
+    size_t nrows=IM_NROWS(image), ncols=IM_NCOLS(image);
+
+    double u=0, v=0;
+    double diff=0;
+    ssize_t col=0, row=0;
+
+    double model_val=0;
+    double pixval=0, *ptr=NULL;
+    int flags=0;
+
+    double _u=0;
+    double _v=0;
+    double _chi2=0;
+    double tmp=0, tloglike=0, ts2n_numer=0, ts2n_denom=0;
+
+
+    (*s2n_numer)=0;
+    (*s2n_denom)=0;
+    (*loglike)=0;
+
+    if (!gmix_verify(gmix)) {
+        *loglike=-9999.9e9;
+        flags |= GMIX_ERROR_NEGATIVE_DET;
+        goto _calculate_loglike_wt_jacob_bail;
+    }
+
+    if (ivar < 0) ivar=0.0;
+
+    ptr=IM_GETP(image,0,0);
+
+    for (row=0; row<nrows; row++) {
+        u=JACOB_PIX2U(jacob, row, 0);
+        v=JACOB_PIX2V(jacob, row, 0);
+        for (col=0; col<ncols; col++) {
+
+            if (weight) {
+                ivar=IM_GET(weight, row, col);
+                if (ivar < 0) ivar=0.0; // fpack...
+            }
+
+            if (ivar > 0) {
+                model_val=0.0;
+                int _i=0;
+                struct gauss *gauss=gmix->data;
+
+                for (_i=0; _i<gmix->size; _i++) {
+                    _u = u-gauss->row;
+                    _v = v-gauss->col;
+                    _chi2 = gauss->dcc*_u*_u + gauss->drr*_v*_v - 2.0*gauss->drc*_u*_v;
+
+                    if (_chi2 < EXP_MAX_CHI2) {
+                        _chi2 *= (-0.5);
+                        tmp = expd(_chi2);
+                        tmp *= gauss->pnorm;
+                        model_val += tmp;
+                    }
+                    gauss++;
+                }
+
+                // (model_val-pixval)**2*ivar
+                //pixval=IM_GET(image, row, col);
+                //diff = model_val - pixval;
+
+                pixval=*ptr;
+
+                diff=model_val;
+                diff -= pixval;
+
+                // diff*diff*ivar;
+                diff *= diff;
+                diff *= ivar;
+                tloglike += diff;
+
+                /// pixval*model_val*ivar
+                tmp = pixval;
+                tmp *= model_val;
+                tmp *= ivar;
+                ts2n_numer += tmp;
+
+                //  model_val*model_val*ivar;
+                tmp = model_val;
+                tmp *= model_val;
+                tmp *= ivar;
+                ts2n_denom += tmp;
+            }
+
+            u += jacob->dudcol; v += jacob->dvdcol;
+            ptr ++;
+        } // cols
+    } // rows
+
+    //(*loglike) *= (-0.5);
+    (*loglike) = -0.5*tloglike;
+    (*s2n_numer) = ts2n_numer;
+    (*s2n_denom) = ts2n_denom;
+
+    if (!isfinite((*loglike))) {
+        (*loglike) = -GMIX_IMAGE_BIGNUM;
+    }
+
+_calculate_loglike_wt_jacob_bail:
+    return flags;
+}
+*/
+
 int calculate_loglike_wt_jacob_generic(const struct image *image, 
                                        const struct image *weight, // either
                                        double ivar,                // or
@@ -370,7 +485,6 @@ int calculate_loglike_wt_jacob_generic(const struct image *image,
 _calculate_loglike_wt_jacob_bail:
     return flags;
 }
-
 
 
 

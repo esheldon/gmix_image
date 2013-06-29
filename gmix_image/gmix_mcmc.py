@@ -825,7 +825,8 @@ class MixMCC(MixMCSimple):
 
         _check_lists(self.im_list, self.wt_list, self.psf_list,self.jacob_list)
 
-        self.guess=numpy.array(guess)
+        self.guess=guess
+
         self.config=config
         self.model=config['model']
 

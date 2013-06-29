@@ -117,7 +117,7 @@ void prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
     }
 
 _prob_simple_ba_calc_like_bail:
-    if (*flags != 0) {
+    if (*flags) {
         *loglike = LOG_LOWVAL;
         *s2n_numer=0;
         *s2n_denom=0;

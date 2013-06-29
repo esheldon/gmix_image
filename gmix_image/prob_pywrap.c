@@ -81,7 +81,8 @@ static
 struct obs_list *load_obs_list(PyObject *im_list,
                                PyObject *wt_list,
                                PyObject *jacob_list,
-                               PyObject *psf_gmix_list)
+                               PyObject *psf_gmix_list,
+                               long *flags)
 {
     ssize_t nobs=0;
     struct obs_list *obs_list=NULL;
@@ -114,11 +115,9 @@ struct obs_list *load_obs_list(PyObject *im_list,
         // we have no type checking for this... how to?
         gmix_obj=(struct PyGMixObject *) PyList_GetItem(psf_gmix_list, i);
 
-        Py_XINCREF(im_obj);
         if ( !(ok=check_numpy_image(im_obj,"image")) ) {
             goto _load_obs_list_bail;
         }
-        Py_XDECREF(im_obj);
 
         if (! (ok=check_numpy_image(wt_obj,"weight") ) ) {
             goto _load_obs_list_bail;
@@ -135,8 +134,11 @@ struct obs_list *load_obs_list(PyObject *im_list,
                  im_tmp,
                  wt_tmp,
                  &jacob_tmp,
-                 gmix_obj->gmix);
-
+                 gmix_obj->gmix,
+                 flags);
+        if (*flags) {
+            goto _load_obs_list_bail;
+        }
         // underlying data not freed
         im_tmp=image_free(im_tmp);
         wt_tmp=image_free(wt_tmp);
@@ -344,7 +346,8 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
     self->obs_list = load_obs_list(im_list,
                                    wt_list,
                                    jacob_list,
-                                   psf_gmix_list);
+                                   psf_gmix_list,
+                                   &flags);
     if (!self->obs_list) {
         ok=0;
         goto _prob_obj_init_bail;
@@ -399,14 +402,12 @@ static void do_calc(struct PyProbObject* self,
     switch (self->type) {
         case PROB_BA13:
             prob_simple_ba_calc(self->data,
-                                pars, npars,
-                                s2n_numer, s2n_denom,
+                                pars,
+                                npars,
+                                s2n_numer,
+                                s2n_denom,
                                 lnprob, flags);
 
-            if (*flags != 0 && (*flags & GMIX_ERROR_G_RANGE)==0) {
-                // we can't ignore such errors
-                PyErr_Format(PyExc_ValueError, "prob internal error, flags: %ld", *flags);
-            }
             break;
         default:
             *flags=GMIX_WRONG_PROB_TYPE;
@@ -438,10 +439,12 @@ PyProbObject_get_lnprob(struct PyProbObject* self, PyObject *args)
     do_calc(self, pars, npars, &s2n_numer, &s2n_denom,
             &lnprob, &flags);
 
-    // we only set flags if something catastrophic happened
-    if (flags != 0) {
+    if (flags != 0 && (flags & GMIX_ERROR_G_RANGE)==0) {
+        // we can't ignore such errors
+        PyErr_Format(PyExc_ValueError, "prob internal error, flags: %ld", flags);
         return NULL;
     }
+
 
     tup = PyTuple_New(4);
     PyTuple_SetItem(tup, 0, PyFloat_FromDouble(lnprob));

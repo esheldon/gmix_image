@@ -8,21 +8,41 @@ void obs_fill(struct obs *self,
               const struct image *image,
               const struct image *weight,
               const struct jacobian *jacob,
-              const struct gmix *psf)
+              const struct gmix *psf,
+              long *flags)
 {
+
+    self->image=image_free(self->image);
+    self->weight=image_free(self->image);
+    self->psf=gmix_free(self->psf);
+
+    // need error checking
     self->image=image_newcopy(image);
     self->weight=image_newcopy(weight);
 
     // jacob is easy straight copy since it is
     // a value type
     self->jacob=(*jacob);
-    self->psf=gmix_newcopy(psf);
+    self->psf=gmix_newcopy(psf,flags);
+    if (*flags) {
+        goto _obs_fill_bail;
+    }
+
+_obs_fill_bail:
+    if (*flags) {
+        // we will let owner clean up; they must anyway
+        //self->image=image_free(self->image);
+        //self->weight=image_free(self->image);
+        //self->psf=gmix_free(self->psf);
+        ;
+    }
 }
 
 struct obs *obs_new(const struct image *image,
                     const struct image *weight,
                     const struct jacobian *jacob,
-                    const struct gmix *psf)
+                    const struct gmix *psf,
+                    long *flags)
 {
     struct obs *self=calloc(1,sizeof(struct obs));
     if (!self) {
@@ -30,7 +50,10 @@ struct obs *obs_new(const struct image *image,
         exit(1);
     }
 
-    obs_fill(self, image, weight, jacob, psf);
+    obs_fill(self, image, weight, jacob, psf, flags);
+    if (*flags) {
+        self=obs_free(self);
+    }
     return self;
 }
 

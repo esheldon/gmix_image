@@ -20,13 +20,17 @@ struct obs_list {
 struct obs *obs_new(const struct image *image,
                     const struct image *weight,
                     const struct jacobian *jacob,
-                    const struct gmix *psf);
+                    const struct gmix *psf,
+                    long *flags);
 
 void obs_fill(struct obs *self,
               const struct image *image,
               const struct image *weight,
               const struct jacobian *jacob,
-              const struct gmix *psf);
+              const struct gmix *psf,
+              long *flags);
+
+struct obs *obs_free(struct obs *self);
 
 struct obs_list *obs_list_new(size_t num);
 struct obs_list *obs_list_free(struct obs_list *self);

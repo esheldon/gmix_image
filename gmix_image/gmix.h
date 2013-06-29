@@ -18,6 +18,8 @@ struct gauss {
     double dcc;
 
     double norm; // 1/(2*pi*sqrt(det))
+
+    double pnorm; // p*norm
 };
 
 struct gmix {
@@ -168,7 +170,6 @@ void gmix_convolve_fill(struct gmix *self,
 
 //struct gmix *gmix_from_pars_bd(double *pars, long npars);
 
-
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \
     double _u = (rowval)-(gauss)->row;                         \
     double _v = (colval)-(gauss)->col;                         \
@@ -185,7 +186,6 @@ void gmix_convolve_fill(struct gmix *self,
                                                                \
     _val;                                                      \
 })
-
 
 #define GMIX_EVAL(gmix, rowval, colval) ({                     \
     int _i=0;                                                  \
