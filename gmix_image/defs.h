@@ -1,6 +1,8 @@
 #ifndef _GMIX_DEFINITIONS_H
 #define _GMIX_DEFINITIONS_H
 
+#include <math.h>
+
 // these are the same
 #define GMIX_ERROR_NEGATIVE_DET 0x1
 #define GMIX_ERROR_G_RANGE 0x1
@@ -14,6 +16,9 @@
 #define GMIX_MISMATCH_SIZE 0x100
 
 
+#ifndef isfinite
+# define isfinite(x) ((x) * 0 == 0)
+#endif
 
 #define wlog(...) fprintf(stderr, __VA_ARGS__)
 
