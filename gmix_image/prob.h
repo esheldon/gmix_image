@@ -45,7 +45,8 @@ struct prob_data_simple_ba *prob_data_simple_ba_new(enum gmix_model model,
                                                     const struct dist_g_ba *g_prior,
 
                                                     const struct dist_lognorm *T_prior,
-                                                    const struct dist_lognorm *counts_prior);
+                                                    const struct dist_lognorm *counts_prior,
+                                                    long *flags);
  
 struct prob_data_simple_ba *prob_data_simple_ba_free(struct prob_data_simple_ba *self);
                                                  

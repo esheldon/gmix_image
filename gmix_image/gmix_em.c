@@ -237,6 +237,7 @@ int gmix_em_cocenter_run(struct gmix_em* self,
                          double *fdiff)
 {
     int flags=0;
+    long lflags=0;
     double wmomlast=0, wmom=0;
     double scale=1;
     double area=0;
@@ -253,7 +254,8 @@ int gmix_em_cocenter_run(struct gmix_em* self,
     scale=get_effective_scale(self);
     area = npoints*scale*scale;
 
-    gcopy = gmix_new(gmix->size);
+    // ignoring errors...
+    gcopy = gmix_new(gmix->size, &lflags);
 
     iter_struct->nsky = sky/counts;
     iter_struct->psky = sky/(counts/area);
@@ -270,7 +272,7 @@ int gmix_em_cocenter_run(struct gmix_em* self,
             goto _gmix_em_cocenter_bail;
 
         // copy for getting centers only
-        gmix_copy(gmix, gcopy);
+        gmix_copy(gmix, gcopy, &lflags);
         gmix_set_gmix_fromiter(gcopy, iter_struct);
 
         if (!get_cen_new(gcopy, &cen_new)) {
@@ -531,17 +533,20 @@ void gmix_set_gmix_fromiter(struct gmix *gmix,
     size_t i=0;
     struct sums *sums   = NULL;
     struct gauss *gauss = NULL;
+    long flags=0;
     for (i=0; i<gmix->size; i++) {
         sums  = &iter->sums[i];
         gauss = &gmix->data[i];
 
+        // should not ignore flags
         gauss_set(gauss,
                   sums->pnew,               // p
                   sums->rowsum/sums->pnew,  // row
                   sums->colsum/sums->pnew,  // col
                   sums->u2sum/sums->pnew,   // irr
                   sums->uvsum/sums->pnew,   // irc
-                  sums->v2sum/sums->pnew);  // icc
+                  sums->v2sum/sums->pnew,   // icc
+                  &flags);
     }
 }
 

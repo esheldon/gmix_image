@@ -14,34 +14,46 @@ struct prob_data_simple_ba *prob_data_simple_ba_new(enum gmix_model model,
                                                     const struct dist_g_ba *g_prior,
 
                                                     const struct dist_lognorm *T_prior,
-                                                    const struct dist_lognorm *counts_prior)
+                                                    const struct dist_lognorm *counts_prior,
+                                                    long *flags)
 
 
 {
 
     long ngauss_tot=0;
 
-    struct prob_data_simple_ba *data=calloc(1, sizeof(struct prob_data_simple_ba));
-    if (!data) {
+    struct prob_data_simple_ba *self=calloc(1, sizeof(struct prob_data_simple_ba));
+    if (!self) {
         fprintf(stderr,"could not allocate struct prob_data_simple_ba\n");
         exit(EXIT_FAILURE);
     }
 
-    data->model=model;
-    data->obs_list = obs_list;
+    self->model=model;
+    self->obs_list = obs_list;
 
-    data->obj0 = gmix_new_empty_simple(model);
-    ngauss_tot = obs_list->data[0].psf->size * data->obj0->size;
+    self->obj0 = gmix_new_empty_simple(model, flags);
+    if (*flags) {
+        goto _prob_data_simple_ba_new_bail;
+    }
 
-    data->obj = gmix_new(ngauss_tot);
+    ngauss_tot = obs_list->data[0].psf->size * self->obj0->size;
 
-    data->cen1_prior = (*cen1_prior);
-    data->cen2_prior = (*cen2_prior);
-    data->g_prior = (*g_prior);
-    data->T_prior = (*T_prior);
-    data->counts_prior = (*counts_prior);
+    self->obj = gmix_new(ngauss_tot, flags);
+    if (*flags) {
+        goto _prob_data_simple_ba_new_bail;
+    }
 
-    return data;
+    self->cen1_prior = (*cen1_prior);
+    self->cen2_prior = (*cen2_prior);
+    self->g_prior = (*g_prior);
+    self->T_prior = (*T_prior);
+    self->counts_prior = (*counts_prior);
+
+_prob_data_simple_ba_new_bail:
+    if (*flags) {
+        self=prob_data_simple_ba_free(self);
+    }
+    return self;
 }
 
 struct prob_data_simple_ba *prob_data_simple_ba_free(struct prob_data_simple_ba *self)
@@ -74,27 +86,28 @@ void prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
 
     *flags=0;
 
-    if (!gmix_fill_model(self->obj0,self->model,pars,npars)) {
-        // fatal
-        *flags = GMIX_ERROR_MODEL;
+    gmix_fill_model(self->obj0,self->model,pars,npars,flags);
+    // g out of range is not a fatal error in the likelihood
+    if (*flags) {
         goto _prob_simple_ba_calc_like_bail;
     }
 
     for (i=0; i<self->obs_list->size; i++) {
         obs=&self->obs_list->data[i];
 
-        if (!gmix_convolve_fill(self->obj, self->obj0, obs->psf)) {
-            *flags = GMIX_ERROR_MODEL;
+        gmix_convolve_fill(self->obj, self->obj0, obs->psf, flags);
+        if (*flags) {
             goto _prob_simple_ba_calc_like_bail;
         }
-        *flags= calculate_loglike_wt_jacob(obs->image, 
-                                           obs->weight,
-                                           &obs->jacob,
-                                           self->obj,
-                                           &t_s2n_numer,
-                                           &t_s2n_denom,
-                                           &t_loglike);
-        if (*flags != 0) {
+        // the only failure is actually redundant with above
+        *flags |= calculate_loglike_wt_jacob(obs->image, 
+                                             obs->weight,
+                                             &obs->jacob,
+                                             self->obj,
+                                             &t_s2n_numer,
+                                             &t_s2n_denom,
+                                             &t_loglike);
+        if (*flags) {
             goto _prob_simple_ba_calc_like_bail;
         }
 

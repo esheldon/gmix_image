@@ -16,6 +16,7 @@ static int
 PyGMixObject_init(struct PyGMixObject* self, PyObject *args)
 {
     int type=0;
+    long flags=0;
     PyObject *pars_obj=NULL;
 
     npy_intp size=0;
@@ -36,10 +37,10 @@ PyGMixObject_init(struct PyGMixObject* self, PyObject *args)
 
     enum gmix_model model=type;
 
-    self->gmix = gmix_new_model(model, pars, size);
+    self->gmix = gmix_new_model(model, pars, size, &flags);
     if (!self->gmix) {
         PyErr_Format(PyExc_ValueError, 
-                "error constructing gmix");
+                "error constructing gmix: %ld", flags);
         return -1;
     }
     /*
@@ -308,6 +309,7 @@ static PyObject *PyGMixObject_convolve_replace(struct PyGMixObject* self, PyObje
     PyObject *psf_obj=NULL;
     struct PyGMixObject *psf=NULL;
     struct gmix *new_gmix=NULL;
+    long flags=0;
 
     if (!PyArg_ParseTuple(args, (char*)"O", &psf_obj)) {
         return NULL;
@@ -315,7 +317,12 @@ static PyObject *PyGMixObject_convolve_replace(struct PyGMixObject* self, PyObje
 
     psf=(struct PyGMixObject *) psf_obj;
 
-    new_gmix = gmix_convolve(self->gmix, psf->gmix);
+    new_gmix = gmix_convolve(self->gmix, psf->gmix, &flags);
+    if (flags) {
+        PyErr_Format(PyExc_ValueError, 
+                "error convolving gmix: %ld", flags);
+        return NULL;
+    }
     self->gmix = gmix_free(self->gmix);
 
     self->gmix = new_gmix;

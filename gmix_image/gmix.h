@@ -41,31 +41,32 @@ enum gmix_model {
     GMIX_BD=6
 };
 
-long gmix_get_simple_ngauss(enum gmix_model model);
-long gmix_get_coellip_ngauss(long npars);
-long gmix_get_full_ngauss(long npars);
+long gmix_get_simple_ngauss(enum gmix_model model, long *flags);
+long gmix_get_coellip_ngauss(long npars, long *flags);
+long gmix_get_full_ngauss(long npars, long *flags);
 
-struct gmix *gmix_new(size_t n);
+struct gmix *gmix_new(size_t n, long *flags);
 
-struct gmix* gmix_new_empty_simple(enum gmix_model model);
-struct gmix* gmix_new_empty_coellip(long npars);
-struct gmix* gmix_new_empty_full(long npars);
+struct gmix* gmix_new_empty_simple(enum gmix_model model, long *flags);
+struct gmix* gmix_new_empty_coellip(long npars, long *flags);
+struct gmix* gmix_new_empty_full(long npars, long *flags);
 
-struct gmix* gmix_new_model(enum gmix_model model, double *pars, long npars);
-struct gmix *gmix_new_coellip(double *pars, long npars);
+struct gmix* gmix_new_model(enum gmix_model model, double *pars, long npars, long *flags);
+struct gmix *gmix_new_coellip(double *pars, long npars, long *flags);
 
 
-long gmix_fill_model(struct gmix *self,
+void gmix_fill_model(struct gmix *self,
                      enum gmix_model model,
                      double *pars,
-                     long npars);
+                     long npars,
+                     long *flags);
 
-long gmix_fill_full(struct gmix *self, double *pars, long npars);
-long gmix_fill_coellip(struct gmix *self, double *pars, long npars);
-long gmix_fill_exp6(struct gmix *self, double *pars, long npars);
-long gmix_fill_dev10(struct gmix *self, double *pars, long npars);
-long gmix_fill_bd(struct gmix *self, double *pars, long npars);
-long gmix_fill_turb3(struct gmix *self, double *pars, long npars);
+void gmix_fill_full(struct gmix *self, double *pars, long npars, long *flags);
+void gmix_fill_coellip(struct gmix *self, double *pars, long npars, long *flags);
+void gmix_fill_exp6(struct gmix *self, double *pars, long npars, long *flags);
+void gmix_fill_dev10(struct gmix *self, double *pars, long npars, long *flags);
+void gmix_fill_bd(struct gmix *self, double *pars, long npars, long *flags);
+void gmix_fill_turb3(struct gmix *self, double *pars, long npars, long *flags);
 
 
 struct gmix *gmix_free(struct gmix *self);
@@ -85,10 +86,11 @@ void gauss_set(struct gauss* self,
                double col,
                double irr,
                double irc,
-               double icc);
+               double icc,
+               long *flags);
 
-long gmix_copy(const struct gmix *self, struct gmix* dest);
-struct gmix *gmix_newcopy(const struct gmix *self);
+void gmix_copy(const struct gmix *self, struct gmix* dest, long *flags);
+struct gmix *gmix_newcopy(const struct gmix *self, long *flags);
 void gmix_print(const struct gmix *self, FILE* fptr);
 
 // calculate the weighted sum of the moments
@@ -112,11 +114,13 @@ void gmix_set_psum(struct gmix *gmix, double psum);
 
 /* convolution results in an nobj*npsf total gaussians */
 struct gmix *gmix_convolve(const struct gmix *obj_gmix, 
-                           const struct gmix *psf_gmix);
+                           const struct gmix *psf_gmix,
+                           long *flags);
 
-long gmix_convolve_fill(struct gmix *self, 
+void gmix_convolve_fill(struct gmix *self, 
                         const struct gmix *obj_gmix, 
-                        const struct gmix *psf_gmix);
+                        const struct gmix *psf_gmix,
+                        long *flags);
 
 // old
 //struct gmix *gmix_from_pars(double *pars, long npars);

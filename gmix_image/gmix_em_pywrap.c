@@ -129,6 +129,7 @@ static int
 gauss_from_dict(struct gauss *self, PyObject *dict)
 {
     int status=1;
+    long flags=0;
     double p=0,row=0,col=0,irr=0,irc=0,icc=0;
 
     if (!get_dict_double(dict,"p", &p)) {
@@ -156,7 +157,11 @@ gauss_from_dict(struct gauss *self, PyObject *dict)
         goto _gauss_copy_from_dict_bail;
     }
 
-    gauss_set(self,p,row,col,irr,irc,icc);
+    gauss_set(self,p,row,col,irr,irc,icc,&flags);
+    if (flags != 0) {
+        status=0;
+        goto _gauss_copy_from_dict_bail;
+    }
 
 _gauss_copy_from_dict_bail:
     return status;
@@ -166,6 +171,7 @@ static struct gmix
 *gmix_from_list_of_dicts(PyObject* lod, const char* name)
 {
     int status=1;
+    long flags=0;
     Py_ssize_t num=0, i=0;
     PyObject *dict;
     struct gmix *self=NULL;
@@ -187,7 +193,13 @@ static struct gmix
         goto _gmix_copy_list_of_dicts_bail;
     }
 
-    self = gmix_new(num);
+    self = gmix_new(num,&flags);
+    if (flags) {
+        PyErr_Format(PyExc_ValueError,
+                        "failed to create gmix: %ld", flags); 
+        status=0;
+        goto _gmix_copy_list_of_dicts_bail;
+    }
 
     if (self==NULL) {
         PyErr_Format(PyExc_MemoryError, 

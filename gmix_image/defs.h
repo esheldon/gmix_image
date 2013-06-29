@@ -4,13 +4,16 @@
 // these are the same
 #define GMIX_ERROR_NEGATIVE_DET 0x1
 #define GMIX_ERROR_G_RANGE 0x1
-
 #define GMIX_ERROR_MAXIT 0x2
 #define GMIX_ERROR_NEGATIVE_DET_COCENTER 0x4
-
 #define GMIX_ERROR_MODEL 0x8
+#define GMIX_BAD_MODEL 0x10
+#define GMIX_WRONG_PROB_TYPE 0x20
+#define GMIX_ZERO_GAUSS 0x40
+#define GMIX_WRONG_NPARS 0x80
+#define GMIX_MISMATCH_SIZE 0x100
 
-#define GMIX_WRONG_PROB_TYPE 0x10
+
 
 #define wlog(...) fprintf(stderr, __VA_ARGS__)
 

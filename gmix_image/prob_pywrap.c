@@ -156,7 +156,8 @@ _load_obs_list_bail:
 static
 struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
                                          enum gmix_model model,
-                                         PyObject *config)
+                                         PyObject *config,
+                                         long *flags)
 {
     PyObject *tmp=NULL;
 
@@ -248,29 +249,27 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
                                  &g_prior,
 
                                  &T_prior,
-                                 &counts_prior);
+                                 &counts_prior,
+                                 flags);
 
     return data;
 }
 
 
-long load_data(struct PyProbObject* self, PyObject *config)
+void load_data(struct PyProbObject* self, PyObject *config, long *flags)
 {
-    long status=1;
     switch (self->type) {
         case PROB_BA13:
             self->data = (void *) load_ba_data(self->obs_list,
                                                self->model,
-                                               config);
+                                               config,
+                                               flags);
             break;
         default:
+            *flags |= GMIX_WRONG_PROB_TYPE;
             PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
     }
-
-    if (!self->data) {
-        status=0;
-    }
-    return status;
+    return;
 }
 
 static void cleanup(struct PyProbObject* self)
@@ -319,6 +318,7 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
 {
 
     long ok=1;
+    long flags=0;
 
     PyObject *im_list=NULL;
     PyObject *wt_list=NULL;
@@ -350,7 +350,9 @@ PyProbObject_init(struct PyProbObject* self, PyObject *args)
         goto _prob_obj_init_bail;
     }
 
-    if ( !(ok=load_data(self, config)) ) {
+    load_data(self, config, &flags);
+    if (flags) {
+        ok=0;
         goto _prob_obj_init_bail;
     }
 
@@ -401,7 +403,8 @@ static void do_calc(struct PyProbObject* self,
                                 s2n_numer, s2n_denom,
                                 lnprob, flags);
 
-            if (*flags != 0) {
+            if (*flags != 0 && (*flags & GMIX_ERROR_G_RANGE)==0) {
+                // we can't ignore such errors
                 PyErr_Format(PyExc_ValueError, "prob internal error, flags: %ld", *flags);
             }
             break;
@@ -525,6 +528,7 @@ PyProbObject_get_g_prior(struct PyProbObject* self, PyObject *args)
 static PyMethodDef PyProbObject_methods[] = {
     {"get_lnprob", (PyCFunction)PyProbObject_get_lnprob,  METH_VARARGS,  "get the loglike for the input pars"},
     {"get_prob_type", (PyCFunction)PyProbObject_get_prob_type, METH_NOARGS, "Get the prob type"},
+    {"get_g_prior", (PyCFunction)PyProbObject_get_g_prior, METH_VARARGS, "Get the prior at g1,g2"},
     {NULL}  /* Sentinel */
 };
 
