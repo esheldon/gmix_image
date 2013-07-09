@@ -498,6 +498,7 @@ class MixMCSimple:
             # for sensitivity we need a factor of (1/P)dP/de
             pars,pcov = mcmc.extract_stats(self.trials)
         else:
+            #print >>stderr,'prior was after (gsens)'
             pars,pcov = mcmc.extract_stats(self.trials,weights=prior)
 
         g = pars[2:4].copy()
@@ -541,6 +542,9 @@ class MixMCSimple:
             if pqr_res is None:
                 return None
             P,Q,R,w = pqr_res
+        else:
+            pass
+            #print >>stderr,'prior was after (PQR)'
 
         P = P.mean()
         Q = Q.mean(axis=0)
@@ -814,7 +818,6 @@ class MixMCC(MixMCSimple):
 
         # temporary
         self.gprior=keys['gprior']
-        self.when_prior="during"
 
         self.im_list=_get_as_list(im_list)
         self.nimage=len(self.im_list)
@@ -828,6 +831,11 @@ class MixMCC(MixMCSimple):
         self.guess=guess
 
         self.config=config
+        if 'after' in self.config['prob_type']:
+            self.when_prior='after'
+        else:
+            self.when_prior='during'
+
         self.model=config['model']
 
         self.nwalkers = guess.shape[0]

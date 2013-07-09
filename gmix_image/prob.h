@@ -12,7 +12,8 @@
 
 enum prob_type {
     PROB_BA13=1,
-    PROB_NOSPLIT_ETA=2
+    PROB_NOSPLIT_ETA=2,
+    PROB_SIMPLE01=3
 };
 
 // BA13 g prior
@@ -93,6 +94,60 @@ struct prob_gmix_eta_simple {
     struct dist_lognorm T_prior;
     struct dist_lognorm counts_prior;
 };
+
+// simple version 1
+//    gauss in centoid
+//    lognormal in T and counts
+//    no g prior during mcmc exploration
+struct prob_data_simple01 {
+    const struct obs_list *obs_list;
+
+    enum gmix_model model;
+    struct gmix *obj0;
+    struct gmix *obj;
+
+    // priors
+    struct dist_gauss cen1_prior;
+    struct dist_gauss cen2_prior;
+
+    struct dist_lognorm T_prior;
+    struct dist_lognorm counts_prior;
+};
+
+struct prob_data_simple01 *prob_data_simple01_new(enum gmix_model model,
+                                                  const struct obs_list *obs_list,
+
+                                                  const struct dist_gauss *cen1_prior,
+                                                  const struct dist_gauss *cen2_prior,
+
+                                                  const struct dist_lognorm *T_prior,
+                                                  const struct dist_lognorm *counts_prior,
+                                                  long *flags);
+ 
+struct prob_data_simple01 *prob_data_simple01_free(struct prob_data_simple01 *self);
+                                                 
+void prob_simple01_calc_priors(struct prob_data_simple01 *self,
+                               double *pars, long npars,
+                               double *lnprob,
+                               long *flags);
+
+
+void prob_simple01_calc_likelihood(struct prob_data_simple01 *self,
+                                   double *pars,
+                                   long npars,
+                                   double *s2n_numer,
+                                   double *s2n_denom,
+                                   double *loglike,
+                                   long *flags);
+
+// calculate the lnprob for the input pars
+// also running s/n values
+void prob_simple01_calc(struct prob_data_simple01 *self,
+                        double *pars, long npars,
+                        double *s2n_numer, double *s2n_denom,
+                        double *lnprob,
+                        long *flags);
+
 
 
 #endif

@@ -257,6 +257,96 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     return data;
 }
 
+static
+struct prob_data_simple01 *load_simple01_data(const struct obs_list *obs_list,
+                                              enum gmix_model model,
+                                              PyObject *config,
+                                              long *flags)
+{
+    PyObject *tmp=NULL;
+
+    struct prob_data_simple01 *data=NULL;
+
+    struct dist_gauss cen1_prior, cen2_prior;
+    struct dist_lognorm T_prior, counts_prior;
+    double mean=0, width=0;
+    long status=0;
+
+    if (!PyDict_Check(config)) {
+        PyErr_Format(PyExc_TypeError, "prior is not a dict");
+        return NULL;
+    }
+
+    // borrowed ref
+    // cen1
+    tmp=PyDict_GetItemString(config, "cen1_mean");
+    mean = PyFloat_AsDouble(tmp);
+
+    mean = pyhelp_dict_get_double(config,"cen1_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(config,"cen1_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_gauss_fill(&cen1_prior, mean, width);
+    DBG dist_gauss_print(&cen1_prior,stderr);
+
+    mean = pyhelp_dict_get_double(config,"cen2_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(config,"cen2_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_gauss_fill(&cen2_prior, mean, width);
+    DBG dist_gauss_print(&cen2_prior,stderr);
+
+
+    // T
+    mean = pyhelp_dict_get_double(config,"T_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(config,"T_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_lognorm_fill(&T_prior, mean, width);
+    DBG dist_lognorm_print(&T_prior,stderr);
+
+    // counts
+    mean = pyhelp_dict_get_double(config,"counts_mean",&status);
+    if (status) {
+        return NULL;
+    }
+    width = pyhelp_dict_get_double(config,"counts_width",&status);
+    if (status) {
+        return NULL;
+    }
+
+    dist_lognorm_fill(&counts_prior, mean, width);
+    DBG dist_lognorm_print(&counts_prior,stderr);
+
+
+    data=prob_data_simple01_new(model,
+                                 obs_list,
+
+                                 &cen1_prior,
+                                 &cen2_prior,
+
+                                 &T_prior,
+                                 &counts_prior,
+                                 flags);
+
+    return data;
+}
+
 
 void load_data(struct PyProbObject* self, PyObject *config, long *flags)
 {
@@ -267,6 +357,13 @@ void load_data(struct PyProbObject* self, PyObject *config, long *flags)
                                                config,
                                                flags);
             break;
+        case PROB_SIMPLE01:
+            self->data = (void *) load_simple01_data(self->obs_list,
+                                                     self->model,
+                                                     config,
+                                                     flags);
+            break;
+
         default:
             *flags |= GMIX_WRONG_PROB_TYPE;
             PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);
@@ -284,6 +381,9 @@ static void cleanup(struct PyProbObject* self)
             switch (self->type) {
                 case PROB_BA13:
                     self->data = prob_data_simple_ba_free(self->data);
+                    break;
+                case PROB_SIMPLE01:
+                    self->data = prob_data_simple01_free(self->data);
                     break;
 
                 default:
@@ -408,6 +508,14 @@ static void do_calc(struct PyProbObject* self,
                                 s2n_denom,
                                 lnprob, flags);
 
+        case PROB_SIMPLE01:
+            prob_simple01_calc(self->data,
+                               pars,
+                               npars,
+                               s2n_numer,
+                               s2n_denom,
+                               lnprob, flags);
+
             break;
         default:
             *flags=GMIX_WRONG_PROB_TYPE;
@@ -473,6 +581,7 @@ static void eval_g_prior(struct PyProbObject* self,
                 } 
             }
             break;
+
         default:
             (*status)=1;
             PyErr_Format(PyExc_ValueError, "Invalid PROB_TYPE: %d", self->type);

@@ -3,10 +3,12 @@ import copy
 
 PROB_BA13=1
 PROB_NOSPLIT_ETA=2
+PROB_SIMPLE01=3
+
 from .gmix import as_gmix_type, GMix
 from . import _prob
 
-_prob_type_dict={'ba13':PROB_BA13, 'nosplit-eta':PROB_NOSPLIT_ETA}
+_prob_type_dict={'ba13':PROB_BA13, 'nosplit-eta':PROB_NOSPLIT_ETA,'simple01':PROB_SIMPLE01}
 
 def as_prob_type(type_in):
     if isinstance(type_in,basestring):
@@ -37,6 +39,11 @@ class Prob(_prob.Prob):
     def _integerify_types(self):
         # convert to integers
         self.config['model']     = as_gmix_type(self.config['model'])
+
+        if self.config['prob_type'] == 'ba13_after':
+            self.config['prob_after_type'] = self.config['prob_type']
+            self.config['prob_type'] = 'simple01'
+
         self.config['prob_type'] = as_prob_type(self.config['prob_type'])
 
     def _check_psf(self, psf_list):
