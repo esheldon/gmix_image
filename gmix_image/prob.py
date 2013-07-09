@@ -2,10 +2,11 @@ from sys import stderr
 import copy
 
 PROB_BA13=1
+PROB_NOSPLIT_ETA=2
 from .gmix import as_gmix_type, GMix
 from . import _prob
 
-_prob_type_dict={'ba13':PROB_BA13}
+_prob_type_dict={'ba13':PROB_BA13, 'nosplit-eta':PROB_NOSPLIT_ETA}
 
 def as_prob_type(type_in):
     if isinstance(type_in,basestring):

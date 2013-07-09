@@ -11,7 +11,8 @@
 #include "obs.h"
 
 enum prob_type {
-    PROB_BA13=1
+    PROB_BA13=1,
+    PROB_NOSPLIT_ETA=2
 };
 
 // BA13 g prior
@@ -71,4 +72,27 @@ void prob_simple_ba_calc(struct prob_data_simple_ba *self,
                          double *s2n_numer, double *s2n_denom,
                          double *lnprob,
                          long *flags);
+
+
+// using gaussian mixture in eta space
+struct prob_gmix_eta_simple {
+    const struct obs_list *obs_list;
+
+    enum gmix_model model;
+    struct gmix *obj0;
+    struct gmix *obj;
+
+    // priors
+
+    // currently cen prior is always gaussian in both directions
+    struct dist_gauss cen1_prior;
+    struct dist_gauss cen2_prior;
+
+    struct dist_gmix3_eta eta_prior;
+
+    struct dist_lognorm T_prior;
+    struct dist_lognorm counts_prior;
+};
+
+
 #endif
