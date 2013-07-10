@@ -67,7 +67,7 @@ void prob_simple_ba_calc(struct prob_data_simple_ba *self,
 
 
 // using gaussian mixture in eta space
-struct prob_gmix_eta_simple {
+struct prob_data_simple_gmix3_eta {
     const struct obs_list *obs_list;
 
     enum gmix_model model;
@@ -80,11 +80,43 @@ struct prob_gmix_eta_simple {
     struct dist_gauss cen1_prior;
     struct dist_gauss cen2_prior;
 
-    struct dist_gmix3_eta eta_prior;
+    struct dist_gmix3_eta shape_prior;
 
     struct dist_lognorm T_prior;
     struct dist_lognorm counts_prior;
 };
+
+
+struct prob_data_simple_gmix3_eta *prob_data_simple_gmix3_eta_new(
+        enum gmix_model model,
+        const struct obs_list *obs_list,
+
+        const struct dist_gauss *cen1_prior,
+        const struct dist_gauss *cen2_prior,
+
+        const struct dist_gmix3_eta *shape_prior,
+
+        const struct dist_lognorm *T_prior,
+        const struct dist_lognorm *counts_prior,
+        long *flags);
+
+struct prob_data_simple_gmix3_eta *prob_data_simple_gmix3_eta_free(struct prob_data_simple_gmix3_eta *self);
+                                                 
+void prob_simple_gmix3_eta_calc_priors(struct prob_data_simple_gmix3_eta *self,
+                                       double *pars, long npars,
+                                       double *lnprob,
+                                       long *flags);
+
+// calculate the lnprob for the input pars
+// also running s/n values
+void prob_simple_gmix3_eta_calc(struct prob_data_simple_gmix3_eta *self,
+                                double *pars, long npars,
+                                double *s2n_numer, double *s2n_denom,
+                                double *lnprob,
+                                long *flags);
+
+
+
 
 // simple version 1
 //    gauss in centoid

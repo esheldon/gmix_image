@@ -170,3 +170,76 @@ void dist_g_ba_print(const struct dist_g_ba *self, FILE *stream)
     fprintf(stream,"g dist BA13\n");
     fprintf(stream,"    sigma: %g\n", self->sigma);
 }
+
+
+
+
+
+void dist_gmix3_eta_fill(struct dist_gmix3_eta *self,
+                         double ivar1, double p1,
+                         double ivar2, double p2,
+                         double ivar3, double p3)
+{
+    self->gauss1_ivar=ivar1;
+    self->gauss1_pnorm = p1*ivar1/(2*M_PI);
+
+    self->gauss2_ivar=ivar2;
+    self->gauss2_pnorm = p2*ivar2/(2*M_PI);
+
+    self->gauss3_ivar=ivar3;
+    self->gauss3_pnorm = p3*ivar3/(2*M_PI);
+}
+
+
+struct dist_gmix3_eta *dist_gmix3_eta_new(double ivar1, double p1,
+                                          double ivar2, double p2,
+                                          double ivar3, double p3)
+{
+    struct dist_gmix3_eta *self=calloc(1, sizeof(struct dist_gmix3_eta));
+    if (!self) {
+        fprintf(stderr,"Could not allocate struct dist_gmix3_eta\n");
+        exit(1);
+    }
+
+    dist_gmix3_eta_fill(self, ivar1, p1, ivar2, p2, ivar3, p3);
+    return self;
+}
+
+double dist_gmix3_eta_lnprob(const struct dist_gmix3_eta *self, double eta1, double eta2)
+{
+    double lnp=LOG_LOWVAL, p=0;
+    p = dist_gmix3_eta_prob(self, eta1, eta2);
+    if (p > 0) {
+        lnp = log(p);
+    } else {
+        fprintf(stderr,"dist_gmix3_eta_prob is <= 0: %g\n", p);
+    }
+    return lnp;
+
+}
+
+double dist_gmix3_eta_prob(const struct dist_gmix3_eta *self, double eta1, double eta2)
+{
+    double prob=0, eta_sq=0;
+
+    eta_sq = eta1*eta1 + eta2*eta2;
+    prob += self->gauss1_pnorm*exp(-0.5*self->gauss1_ivar*eta_sq );
+    prob += self->gauss2_pnorm*exp(-0.5*self->gauss2_ivar*eta_sq );
+    prob += self->gauss3_pnorm*exp(-0.5*self->gauss3_ivar*eta_sq );
+ 
+    return prob;
+}
+
+
+void dist_gmix3_eta_print(const struct dist_gmix3_eta *self, FILE *stream)
+{
+    fprintf(stream,"eta gmix3 dist\n");
+    fprintf(stream,"    ivar1:    %g\n", self->gauss1_ivar);
+    fprintf(stream,"    p1*norm1: %g\n", self->gauss1_pnorm);
+    fprintf(stream,"    ivar2:    %g\n", self->gauss2_ivar);
+    fprintf(stream,"    p2*norm2: %g\n", self->gauss2_pnorm);
+    fprintf(stream,"    ivar3:    %g\n", self->gauss3_ivar);
+    fprintf(stream,"    p3*norm3: %g\n", self->gauss3_pnorm);
+}
+
+

@@ -46,6 +46,7 @@ struct dist_gmix3_eta {
 };
 
 // eta_sq = eta1**2 + eta2**2
+/*
 #define DIST_GMIX3_ETA_EVAL(dist, eta_sq) ({                               \
     double _prob=0;                                                        \
                                                                            \
@@ -55,6 +56,7 @@ struct dist_gmix3_eta {
                                                                            \
     _prob;                                                                 \
 })
+*/
 
 
 
@@ -73,6 +75,20 @@ void dist_g_ba_fill(struct dist_g_ba *self, double sigma);
 double dist_g_ba_lnprob(const struct dist_g_ba *self, double g1, double g2);
 double dist_g_ba_prob(const struct dist_g_ba *self, double g1, double g2);
 void dist_g_ba_print(const struct dist_g_ba *self, FILE *stream);
+
+void dist_gmix3_eta_fill(struct dist_gmix3_eta *self,
+                         double ivar1, double p1,
+                         double ivar2, double p2,
+                         double ivar3, double p3);
+
+
+
+struct dist_gmix3_eta *dist_gmix3_eta_new(double ivar1, double p1,
+                                          double ivar2, double p2,
+                                          double ivar3, double p3);
+double dist_gmix3_eta_lnprob(const struct dist_gmix3_eta *self, double eta1, double eta2);
+double dist_gmix3_eta_prob(const struct dist_gmix3_eta *self, double eta1, double eta2);
+void dist_gmix3_eta_print(const struct dist_gmix3_eta *self, FILE *stream);
 
 #endif
 
