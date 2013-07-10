@@ -166,7 +166,7 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
     struct prob_data_simple_ba *data=NULL;
 
     struct dist_gauss cen1_prior, cen2_prior;
-    struct dist_g_ba g_prior;
+    struct dist_g_ba shape_prior;
     struct dist_lognorm T_prior, counts_prior;
     double mean=0, width=0;
     long status=0;
@@ -212,8 +212,8 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
         return NULL;
     }
 
-    dist_g_ba_fill(&g_prior, width);
-    DBG dist_g_ba_print(&g_prior,stderr);
+    dist_g_ba_fill(&shape_prior, width);
+    DBG dist_g_ba_print(&shape_prior,stderr);
 
     // T
     mean = pyhelp_dict_get_double(config,"T_mean",&status);
@@ -248,7 +248,7 @@ struct prob_data_simple_ba *load_ba_data(const struct obs_list *obs_list,
                                  &cen1_prior,
                                  &cen2_prior,
 
-                                 &g_prior,
+                                 &shape_prior,
 
                                  &T_prior,
                                  &counts_prior,
@@ -563,7 +563,7 @@ PyProbObject_get_lnprob(struct PyProbObject* self, PyObject *args)
     return tup;
 }
 
-static void eval_g_prior(struct PyProbObject* self,
+static void eval_shape_prior(struct PyProbObject* self,
                          double *g1,
                          double *g2,
                          double *prob,
@@ -577,7 +577,7 @@ static void eval_g_prior(struct PyProbObject* self,
             {
                 struct prob_data_simple_ba *data=self->data;
                 for (i=0; i<n; i++) {
-                    prob[i] = dist_g_ba_prob(&data->g_prior, g1[i], g2[i]);
+                    prob[i] = dist_g_ba_prob(&data->shape_prior, g1[i], g2[i]);
                 } 
             }
             break;
@@ -589,10 +589,10 @@ static void eval_g_prior(struct PyProbObject* self,
 }
 
 /*
-   Evalutate just the gprior at the indicated g1,g2 values
+   Evalutate just the shape prior at the indicated g1,g2 values
 */
 static PyObject *
-PyProbObject_get_g_prior(struct PyProbObject* self, PyObject *args)
+PyProbObject_get_shape_prior(struct PyProbObject* self, PyObject *args)
 {
     PyObject* g1_obj=NULL;
     PyObject* g2_obj=NULL;
@@ -626,7 +626,7 @@ PyProbObject_get_g_prior(struct PyProbObject* self, PyObject *args)
     prob_obj =PyArray_ZEROS(1, dims, NPY_FLOAT64, 0);
     prob_data=PyArray_DATA(prob_obj);
 
-    eval_g_prior(self, g1data, g2data, prob_data, ng, &status);
+    eval_shape_prior(self, g1data, g2data, prob_data, ng, &status);
     if (status) {
         Py_XDECREF(prob_obj);
         return NULL;
@@ -640,7 +640,7 @@ PyProbObject_get_g_prior(struct PyProbObject* self, PyObject *args)
 static PyMethodDef PyProbObject_methods[] = {
     {"get_lnprob", (PyCFunction)PyProbObject_get_lnprob,  METH_VARARGS,  "get the loglike for the input pars"},
     {"get_prob_type", (PyCFunction)PyProbObject_get_prob_type, METH_NOARGS, "Get the prob type"},
-    {"get_g_prior", (PyCFunction)PyProbObject_get_g_prior, METH_VARARGS, "Get the prior at g1,g2"},
+    {"get_shape_prior", (PyCFunction)PyProbObject_get_shape_prior, METH_VARARGS, "Get the prior at g1,g2"},
     {NULL}  /* Sentinel */
 };
 

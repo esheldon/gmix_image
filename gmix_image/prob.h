@@ -32,7 +32,7 @@ struct prob_data_simple_ba {
     struct dist_gauss cen1_prior;
     struct dist_gauss cen2_prior;
 
-    struct dist_g_ba g_prior;
+    struct dist_g_ba shape_prior;
 
     struct dist_lognorm T_prior;
     struct dist_lognorm counts_prior;
@@ -44,7 +44,7 @@ struct prob_data_simple_ba *prob_data_simple_ba_new(enum gmix_model model,
                                                     const struct dist_gauss *cen1_prior,
                                                     const struct dist_gauss *cen2_prior,
 
-                                                    const struct dist_g_ba *g_prior,
+                                                    const struct dist_g_ba *shape_prior,
 
                                                     const struct dist_lognorm *T_prior,
                                                     const struct dist_lognorm *counts_prior,
@@ -56,15 +56,6 @@ void prob_simple_ba_calc_priors(struct prob_data_simple_ba *self,
                                 double *pars, long npars,
                                 double *lnprob,
                                 long *flags);
-
-
-void prob_simple_ba_calc_likelihood(struct prob_data_simple_ba *self,
-                                    double *pars,
-                                    long npars,
-                                    double *s2n_numer,
-                                    double *s2n_denom,
-                                    double *loglike,
-                                    long *flags);
 
 // calculate the lnprob for the input pars
 // also running s/n values
@@ -132,13 +123,6 @@ void prob_simple01_calc_priors(struct prob_data_simple01 *self,
                                long *flags);
 
 
-void prob_simple01_calc_likelihood(struct prob_data_simple01 *self,
-                                   double *pars,
-                                   long npars,
-                                   double *s2n_numer,
-                                   double *s2n_denom,
-                                   double *loglike,
-                                   long *flags);
 
 // calculate the lnprob for the input pars
 // also running s/n values
@@ -149,5 +133,19 @@ void prob_simple01_calc(struct prob_data_simple01 *self,
                         long *flags);
 
 
+
+
+
+// generic likelihood calculator
+void prob_calc_simple_likelihood(struct gmix *obj0,
+                                 struct gmix *obj,
+                                 enum gmix_model model,
+                                 const struct obs_list *obs_list,
+                                 double *pars,
+                                 long npars,
+                                 double *s2n_numer,
+                                 double *s2n_denom,
+                                 double *loglike,
+                                 long *flags);
 
 #endif
