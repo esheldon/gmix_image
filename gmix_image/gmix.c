@@ -687,35 +687,36 @@ void gmix_fill_bd(struct gmix *self, double *pars, long npars, long *flags)
         return;
     }
 
-    pars_exp[0] = pars[0];
-    pars_exp[1] = pars[1];
-    pars_exp[2] = pars[2];
-    pars_exp[3] = pars[3];
-    pars_exp[4] = pars[4];
-    pars_exp[5] = pars[6];
-
     pars_dev[0] = pars[0];
     pars_dev[1] = pars[1];
     pars_dev[2] = pars[2];
     pars_dev[3] = pars[3];
-    pars_dev[4] = pars[5];
-    pars_dev[5] = pars[7];
+    pars_dev[4] = pars[4];
+    pars_dev[5] = pars[6];
 
-    gmix_exp = gmix_new_model(GMIX_EXP,pars_exp,npars_exp, flags);
+    pars_exp[0] = pars[0];
+    pars_exp[1] = pars[1];
+    pars_exp[2] = pars[2];
+    pars_exp[3] = pars[3];
+    pars_exp[4] = pars[5];
+    pars_exp[5] = pars[7];
+
+
+    gmix_dev = gmix_new_model(GMIX_DEV,pars_dev,npars_dev, flags);
     if (*flags) {
         return;
     }
-    gmix_dev = gmix_new_model(GMIX_DEV,pars_dev,npars_dev, flags);
+    gmix_exp = gmix_new_model(GMIX_EXP,pars_exp,npars_exp, flags);
     if (*flags) {
         return;
     }
 
     memcpy(self->data,
-           gmix_exp->data,
-           ngauss_exp*sizeof(struct gauss));
-    memcpy(self->data+ngauss_exp,
            gmix_dev->data,
            ngauss_dev*sizeof(struct gauss));
+    memcpy(self->data+ngauss_dev,
+           gmix_exp->data,
+           ngauss_exp*sizeof(struct gauss));
 
     gmix_exp=gmix_free(gmix_exp);
     gmix_dev=gmix_free(gmix_dev);

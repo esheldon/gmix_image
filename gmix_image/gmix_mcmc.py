@@ -1298,8 +1298,8 @@ class MixMCBD(MixMCSimple):
         print 'Ffracs:',Ffracs
         print 'Tvals:',Tmeans
         print 'Tfracs:',Tfracs
-        print 'exp Tmin,max:',self.trials[:,4].min(), self.trials[:,4].max()
-        print 'dev Tmin,max:',self.trials[:,5].min(), self.trials[:,5].max()
+        print 'exp Tmin,max:',self.trials[:,5].min(), self.trials[:,5].max()
+        print 'dev Tmin,max:',self.trials[:,4].min(), self.trials[:,4].max()
         print 'arate:',self._result['arate']
 
         prompt=self.keys.get('prompt',True)

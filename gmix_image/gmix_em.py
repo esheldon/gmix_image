@@ -62,11 +62,10 @@ class GMixEM(_gmix_em.GMixEM):
 
         Note the normalizations are only meaningful in a relative sense.
 
-    sky: number, optional
+    sky: number, required
         The sky level in the image. Must be non-zero for the EM algorithm to
         converge, since it is essentially treated like an infinitely wide
-        gaussian.  If not sent, the median of the image is used, so it is
-        recommeded to send your best estimate.
+        gaussian.
 
     jacobian: dict, optional
         A dictionary describing a jacobian of a transformation between
@@ -262,6 +261,7 @@ class GMixEMBoot:
         Get an image of the result, not normalized.
     """
     def __init__(self, image, ngauss, cen_guess,
+                 sky=None,
                  sigma_guess=1.414, # fwhm=0.9'' in des
                  jacobian=None,
                  ivar=1.0,
@@ -271,6 +271,8 @@ class GMixEMBoot:
                  maxtry=10):
 
         self.image0=image
+        self.sky=sky
+
         self._prep_image() # this sets self.image
         self.counts=self.image.sum()
 
@@ -312,7 +314,7 @@ class GMixEMBoot:
         return model
 
 
-    def get_normalized_model(self):
+    def get_normalized_model(self, full=False):
         """
         For jacobian models
 
@@ -321,12 +323,19 @@ class GMixEMBoot:
         from gmix_image.gmix_fit import GMixFitMultiPSFFlux
         from . import _render
 
+        gmix=self.get_gmix()
+        cen=gmix.get_cen()
+
         if self.jacobian is None:
-            raise ValueError("only works for jacobian")
+            jacob={'row0':cen[0],'col0':cen[1],
+                   'dudrow':1.0,'dudcol':0.0,
+                   'dvdrow':0.0,'dvdcol':1.0}
+        else:
+            jacob=self.jacobian
 
         imlist=[self.image0]
         wtlist=[self.image0*0 + self.ivar]
-        jacoblist=[self.jacobian]
+        jacoblist=[jacob]
         gmix_list=[self.get_gmix()]
 
         gm=GMixFitMultiPSFFlux(imlist,
@@ -336,12 +345,15 @@ class GMixEMBoot:
 
         res=gm.get_result()
 
-        gmix=self.get_gmix()
 
         gmix.set_psum(res['F'])
 
-        model = gmix_image.gmix2image(gmix, self.image0.shape, jacob=self.jacobian)
-        return model
+        model = gmix_image.gmix2image(gmix, self.image0.shape, jacobian=self.jacobian)
+
+        if full:
+            return model, gmix
+        else:
+            return model
 
     def get_loglike(self):
         """
@@ -453,20 +465,25 @@ class GMixEMBoot:
 
         im=self.image0.copy()
 
-        # need no zero pixels and sky value
-        im_min = im.min()
-        if im_min==0:
-            sky=0.001
-            im += sky
-        elif im_min < 0:
-            sky=0.001
-            im += (sky-im_min)
-        else:
-            #sky = im_min
-            sky=numpy.median(im)
+        if self.sky is None:
 
-        self.image=im
-        self.sky=sky
+            # need no zero pixels and sky value
+            im_min = im.min()
+            if im_min==0:
+                sky=0.001
+                im += sky
+            elif im_min < 0:
+                sky=0.001
+                im += (sky-im_min)
+            else:
+                #sky = im_min
+                sky=numpy.median(im)
+
+            self.image=im
+            self.sky=sky
+
+        else:
+            self.image=im
 
 
     def get_stats(self):

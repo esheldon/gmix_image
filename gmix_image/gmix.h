@@ -124,51 +124,6 @@ void gmix_convolve_fill(struct gmix *self,
                         const struct gmix *psf_gmix,
                         long *flags);
 
-// old
-//struct gmix *gmix_from_pars(double *pars, long npars);
-//struct gmix *gmix_new_coellip_Tfrac(double *pars, long npars);
-
-/* 
-   Generate a gmix from the inputs pars assuming an appoximate
-   gaussian representation of an exponential disk.  Values
-   from Hogg and Lang
-
-   pars should be [row,col,e1,e2,T,p]
-
-   T = sum(pi*Ti)/sum(pi)
-
-   The p and F values are chosen to make this so
-*/
-//struct gmix *gmix_from_pars_exp4(double *pars, long npars);
-//struct gmix *gmix_from_pars_exp6(double *pars, long npars);
-
-
-
-/* 
-   Generate a gmix from the inputs pars assuming an appoximate
-   10-gaussian representation of a devauc profile.
-
-   pars should be [row,col,e1,e2,T,p]
-
-   T = sum(pi*Ti)/sum(pi)
-
-   The p and F values are chosen to make this so
-*/
-
-//struct gmix *gmix_from_pars_dev10(double *pars, long npars);
-
-/* similar to above but for a turbulent psf */
-//struct gmix *gmix_from_pars_turb(double *pars, long npars);
-
-/*
-   co-elliptical bulg+disk
-
-   pars should be [row,col,e1,e2,Texp,Tdev,Fexp,Fdev]
-
-   npars is 8
-*/
-
-//struct gmix *gmix_from_pars_bd(double *pars, long npars);
 
 #define GAUSS_EVAL(gauss, rowval, colval) ({                   \
     double _u = (rowval)-(gauss)->row;                         \

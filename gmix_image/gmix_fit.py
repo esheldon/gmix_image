@@ -845,7 +845,7 @@ class GMixFitMultiSimple(GMixFitMultiBase):
                           0.0,
                           pars2[0],
                           pars2[1]], dtype='f8')
-        if self.cen_guess is not None:
+        if hasattr(self,'cen_guess') and self.cen_guess is not None:
             pars[0] = self.cen_guess[0]
             pars[1] = self.cen_guess[1]
         return pars
