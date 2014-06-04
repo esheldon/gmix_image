@@ -391,11 +391,15 @@ class GMixEMBoot:
         if flags != 0:
             print >>stderr,'em flags after',ntry,'tries:'
             gmix_image.printflags('em',flags)
+            gmix=None
+            pars=None
+        else:
+            gmix=gm.get_gmix()
+            pars=gmix.get_pars()
 
         self._fitter=gm
-        gmix=gm.get_gmix()
         self.result={'gmix':gmix,
-                     'pars':gmix.get_pars(),
+                     'pars':pars,
                      'flags':flags,
                      'numiter':gm.get_numiter(),
                      'fdiff':gm.get_fdiff(),

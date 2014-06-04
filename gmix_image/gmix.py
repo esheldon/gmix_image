@@ -193,7 +193,8 @@ class GMix(_gmix.GMix):
 
     def __repr__(self):
         import pprint
-        fmt='p: %9.7g r: %9.7g c: %9.7g irr: %9.7g irc: %9.7g icc: %9.7g'
+        #fmt='p: %9.7g r: %9.7g c: %9.7g irr: %9.7g irc: %9.7g icc: %9.7g'
+        fmt="p: %-10.5g row: %-10.5g col: %-10.5g irr: %-10.5g irc: %-10.5g icc: %-10.5g"
 
         dlist=self.get_dlist()
         slist=[]

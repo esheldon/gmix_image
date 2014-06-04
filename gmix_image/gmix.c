@@ -170,6 +170,9 @@ void gmix_fill_model(struct gmix *self,
         case GMIX_DEV:
             gmix_fill_dev10(self, pars, npars, flags);
             break;
+        case GMIX_TURB:
+            gmix_fill_turb3(self, pars, npars, flags);
+            break;
         case GMIX_BD:
             gmix_fill_bd(self, pars, npars, flags);
             break;

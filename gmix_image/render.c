@@ -14,6 +14,8 @@
 
    Simply add to the existing pixel values!
 
+   the jacob part of this is wrong!!!!
+
  */
 int fill_model_subgrid_jacob(struct image *image, 
                              const struct gmix *gmix, 
